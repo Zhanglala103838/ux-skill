@@ -335,3 +335,25 @@ test('canonical set rejects non-array JSON with a stable code', () => {
     assertCode(() => canonicalSet(value, (item) => item), 'IJSON_NON_JSON_VALUE');
   }
 });
+
+test('own toJSON data fields remain ordinary members in JCS-sorted objects', () => {
+  const value = {
+    z: 1,
+    toJSON: 0,
+    10: 'ten',
+    2: 'two',
+    a: 2,
+    nested: {
+      z: 3,
+      toJSON: { value: 4 },
+      10: 'nested-ten',
+      2: 'nested-two',
+      a: 5,
+    },
+  };
+
+  assert.equal(
+    jcsBytes(value).toString('utf8'),
+    '{"10":"ten","2":"two","a":2,"nested":{"10":"nested-ten","2":"nested-two","a":5,"toJSON":{"value":4},"z":3},"toJSON":0,"z":1}',
+  );
+});
