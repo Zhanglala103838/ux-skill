@@ -8,8 +8,9 @@ const fixtures=new Map(await Promise.all(vectorIds.map(async(id)=>[id,JSON.parse
 const registries=JSON.parse(await readFile(new URL('../../knowledge/registries.json',import.meta.url),'utf8'));
 const policies=JSON.parse(await readFile(new URL('../../knowledge/decision-policies.json',import.meta.url),'utf8'));
 const actor=(subject_id,namespace_uri='https://identity.example')=>({namespace_uri,issuer_id:'ux-skill',subject_id,kind:'human'});
-const verifiedProof=()=>({verification_status:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z'});
-const highRiskDelete=({partyProof='verified'}={})=>({action:'delete',resource_type:'admin_account',risk:'high',evaluation_effective_at:'2026-08-18T00:00:00Z',authenticated_principal:actor('admin'),effective_actor:actor('admin'),authority_root_id:'ux-skill-local-admin-root-v1',authority_root_membership:'verified',acting_edges:[],tenant_bindings:{status:'verified',required:['tenant-a'],covered:['tenant-a'],extra_effects:[]},party_graph:{snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids:['party-a']},party_proof:partyProof==='verified'?verifiedProof():null,grant:{status:'active',scope_coverage:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',revoked:false},approval:{status:'verified'},capability:{status:'verified',ledger_status:'unused'},authority_features:{execution_envelope:'verified',time_authority:'verified',commit_revalidation:'verified'}});
+const verifiedProof=()=>({proof_id:'proof-1',effect_scope_digest:'e'x64,resource_scope_digest:'r'x64,data_source_ids:['directory'],snapshot_digest:'s'x64,snapshot_version:'v1',verification_status:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
+const boundGraph=(affected_party_ids)=>({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids,effect_scope_digest:'e'x64,resource_scope_digest:'r'x64,data_source_ids:['directory'],snapshot_digest:'s'x64,snapshot_version:'v1',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
+const highRiskDelete=({partyProof='verified'}={})=>({action:'delete',resource_type:'admin_account',risk:'high',authorization_purpose:'account_deletion',evaluation_effective_at:'2026-08-18T00:00:00Z',authenticated_principal:actor('admin'),effective_actor:actor('admin'),authority_root_id:'ux-skill-local-admin-root-v1',authority_root_membership:'verified',acting_edges:[],tenant_bindings:{status:'verified',required:['target','controller'],covered:['target','controller'],extra_effects:[]},party_graph:boundGraph(['party-a']),party_proof:partyProof==='verified'?verifiedProof():null,grant:{status:'active',scope_coverage:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',revoked:false},approval:{status:'verified'},capability:{status:'verified',ledger_status:'unused'},authority_features:{execution_envelope:'verified',time_authority:'verified',commit_revalidation:'verified'}});
 const twoSafeNonDominatedCandidates=()=>({authority_status:'complete',party_inventory_status:'verified_complete',touches_safety_or_rights_floor:false,candidates:[{solution_id:'a',hard_constraints:[{id:'h',result:'T'}],soft_scores:{quality:1,speed:0}},{solution_id:'b',hard_constraints:[{id:'h',result:'T'}],soft_scores:{quality:0,speed:1}}]});
 const clone=(value)=>structuredClone(value);
 
@@ -27,8 +28,8 @@ test('safe Pareto tie never selects a candidate', () => {
 
 test('derivePartyInventory requires verified, current, closed proof instead of caller assertions',()=>{
  assert.deepEqual(derivePartyInventory({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids:['party-a'],status:'verified_complete'},null),{status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_REQUIRED'});
- assert.deepEqual(derivePartyInventory({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids:['b','a','a']},verifiedProof(),'2026-08-18T00:00:00Z'),{status:'verified_complete',party_ids:['a','b']});
- assert.deepEqual(derivePartyInventory({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids:[]},verifiedProof(),'2026-08-18T00:00:00Z'),{status:'verified_no_affected_party',party_ids:[]});
+ assert.deepEqual(derivePartyInventory(boundGraph(['b','a','a']),verifiedProof(),'2026-08-18T00:00:00Z'),{status:'verified_complete',party_ids:['a','b']});
+ assert.deepEqual(derivePartyInventory(boundGraph([]),verifiedProof(),'2026-08-18T00:00:00Z'),{status:'verified_no_affected_party',party_ids:[]});
  for(const [graph,proof,reason] of [[{snapshot_status:'closed',refs_closed:false,closure_complete:true,affected_party_ids:[]},verifiedProof(),'PARTY_GRAPH_INCOMPLETE'],[{snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids:[]},{...verifiedProof(),expires_at:'2026-08-18T00:00:00Z'},'PARTY_COMPLETENESS_PROOF_EXPIRED'],[{snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids:[]},{...verifiedProof(),verification_status:'rejected'},'PARTY_COMPLETENESS_PROOF_INVALID']]) assert.equal(derivePartyInventory(graph,proof,'2026-08-18T00:00:00Z').reason_code,reason);
 });
 
@@ -53,7 +54,7 @@ test('closed registries and policies are the runtime authority tables',()=>{
 });
 
 test('trusted-root membership is checked against the closed registry and never defaulted',()=>{
- assert.deepEqual(evaluateAuthority(highRiskDelete()),{status:'continue',reason_code:'AUTHORITY_VERIFIED'});
+ assert.deepEqual(evaluateAuthority(highRiskDelete()),{status:'escalation',reason_code:'GRANT_VALIDITY_UNKNOWN',coverage_gap_id:'grant-contract-v1'});
  const absent=highRiskDelete(); absent.authority_root_id='unregistered-root';
  assert.deepEqual(evaluateAuthority(absent),{status:'block',reason_code:'AUTHORITY_ROOT_UNTRUSTED'});
  const unknown=highRiskDelete(); delete unknown.authority_root_id; delete unknown.authority_root_membership;
@@ -62,7 +63,7 @@ test('trusted-root membership is checked against the closed registry and never d
 
 test('acting chains require exact byte-equal continuity and verified edges',()=>{
  const value=highRiskDelete(); value.authenticated_principal=actor('a'); value.effective_actor=actor('c'); value.acting_edges=[{from:actor('a'),to:actor('b'),validity:'verified'},{from:actor('b'),to:actor('c'),validity:'verified'}];
- assert.equal(evaluateAuthority(value).status,'continue');
+ assert.deepEqual(evaluateAuthority(value),{status:'escalation',reason_code:'ACTING_EDGE_UNKNOWN',coverage_gap_id:'acting-edge-proof-v1'});
  const disjoint=clone(value); disjoint.acting_edges[1].from=actor('b','https://other.example');
  assert.deepEqual(evaluateAuthority(disjoint),{status:'block',reason_code:'ACTING_CHAIN_DISJOINT'});
  const rejected=clone(value); rejected.acting_edges[0].validity='rejected';
@@ -172,5 +173,89 @@ test("tenant all-join obligations come from the closed policy and require exact 
 });
 
 test("caller verified strings and abbreviated authority objects never authorize deletion",()=>{
- assert.deepEqual(evaluateAuthority(highRiskDelete()),{status:"escalation",reason_code:"PARTY_INVENTORY_UNKNOWN",coverage_gap_id:"party-proof-contract-v1"});
+ assert.deepEqual(evaluateAuthority(highRiskDelete()),{status:"escalation",reason_code:"GRANT_VALIDITY_UNKNOWN",coverage_gap_id:"grant-contract-v1"});
+});
+
+test("party completeness proof is bound to effect resource source snapshot and algorithm",()=>{
+ assert.deepEqual(derivePartyInventory(boundGraph(["b","a","a"]),verifiedProof(),"2026-08-18T00:00:00Z"),{status:"verified_complete",party_ids:["a","b"]});
+ for(const field of ["effect_scope_digest","resource_scope_digest","snapshot_digest","snapshot_version","closure_algorithm_id","closure_algorithm_version"]){
+  const proof=verifiedProof(); proof[field]=field.endsWith("digest")?"f".repeat(64):"other";
+  assert.equal(derivePartyInventory(boundGraph(["a"]),proof,"2026-08-18T00:00:00Z").status,"unknown",field);
+ }
+ const sources=verifiedProof(); sources.data_source_ids=["other"];
+ assert.equal(derivePartyInventory(boundGraph(["a"]),sources,"2026-08-18T00:00:00Z").status,"unknown");
+ const bare={verification_status:"verified",effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z"};
+ assert.deepEqual(derivePartyInventory(boundGraph(["a"]),bare,"2026-08-18T00:00:00Z"),{status:"unknown",party_ids:[],reason_code:"PARTY_COMPLETENESS_PROOF_INVALID"});
+});
+
+test("acting edge scope time and caller verified proof are fail closed",()=>{
+ const scope={actions:["delete"],resource_types:["admin_account"],tenant_ids:["target","controller"],purposes:["account_deletion"]};
+ const edge=(from,to)=>({edge_id:`${from.subject_id}-${to.subject_id}`,sequence:0,from,to,basis_ref:"grant-1",scope,effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z",version:"1",validity:"verified"});
+ const unsupported=highRiskDelete(); unsupported.authenticated_principal=actor("a"); unsupported.effective_actor=actor("b"); unsupported.acting_edges=[edge(actor("a"),actor("b"))];
+ assert.deepEqual(evaluateAuthority(unsupported),{status:"escalation",reason_code:"ACTING_EDGE_UNKNOWN",coverage_gap_id:"acting-edge-proof-v1"});
+ const expired=clone(unsupported); expired.acting_edges[0].expires_at="2026-08-18T00:00:00Z";
+ assert.deepEqual(evaluateAuthority(expired),{status:"block",reason_code:"ACTING_EDGE_EXPIRED"});
+ const scopeMiss=clone(unsupported); scopeMiss.acting_edges[0].scope.actions=[];
+ assert.deepEqual(evaluateAuthority(scopeMiss),{status:"block",reason_code:"ACTING_SCOPE_NOT_COVERED"});
+});
+
+const dimension=(party_or_cohort_id,criterion,tier,value,floor_result="T")=>({party_or_cohort_id,criterion,tier,value,floor_result});
+const solution=(solution_id,soft_dimensions,hard_constraints=[{id:"hard",result:"T"}])=>({solution_id,hard_constraints,soft_dimensions});
+const completeUniverse=(candidates)=>({authority_status:"complete",party_inventory_status:"verified_complete",candidates});
+
+test("unsat cores are unique inclusion-minimal canonical sets",()=>{
+ const candidates=[
+  solution("a",[],[{id:"same",result:"F",conflict_class:"ordinary"}]),
+  solution("b",[],[{id:"same",result:"F",conflict_class:"ordinary"}]),
+  solution("c",[],[{id:"same",result:"F",conflict_class:"ordinary"},{id:"larger",result:"F",conflict_class:"ordinary"}])
+ ];
+ assert.deepEqual(solveCandidates(completeUniverse(candidates)).unsat_cores,[["same"]]);
+});
+
+test("soft safety and rights floors run before preference selection",()=>{
+ const result=solveCandidates(completeUniverse([
+  solution("unsafe",[dimension("party-a","safety",0,100,"F")]),
+  solution("safe",[dimension("party-a","safety",0,0,"T")])
+ ]));
+ assert.equal(result.selection_status,"selected");
+ assert.equal(result.selected_solution_id,"safe");
+ const unknown=solveCandidates(completeUniverse([solution("u",[dimension("cohort-a","rights",0,1,"U")])]));
+ assert.equal(unknown.selection_status,"undecided");
+ assert.equal(unknown.release_recommendation,"escalation");
+});
+
+test("lexicographic tiers dominate lower tiers before Pareto comparison",()=>{
+ const result=solveCandidates(completeUniverse([
+  solution("tier-zero-winner",[dimension("party-a","quality",0,2),dimension("party-a","speed",1,0)]),
+  solution("lower-tier-winner",[dimension("party-a","quality",0,1),dimension("party-a","speed",1,100)])
+ ]));
+ assert.equal(result.selection_status,"selected");
+ assert.equal(result.selected_solution_id,"tier-zero-winner");
+});
+
+test("Pareto comparison is party and cohort keyed with no cross-party aggregation",()=>{
+ const result=solveCandidates(completeUniverse([
+  solution("a",[dimension("party-a","quality",0,2),dimension("party-b","quality",0,0),dimension("cohort-x","access",0,1)]),
+  solution("b",[dimension("party-a","quality",0,0),dimension("party-b","quality",0,2),dimension("cohort-x","access",0,1)])
+ ]));
+ assert.equal(result.selection_status,"undecided");
+ assert.equal(result.selected_solution_id,null);
+ assert.equal(result.next_action,"ask_decision_owner");
+});
+
+test("multiple nondominated candidates never select and incomplete authority escalates",()=>{
+ const candidates=[solution("a",[dimension("party-a","quality",0,1),dimension("party-a","speed",0,0)]),solution("b",[dimension("party-a","quality",0,0),dimension("party-a","speed",0,1)])];
+ const safe=solveCandidates(completeUniverse(candidates));
+ assert.equal(safe.selection_status,"undecided"); assert.equal(safe.selected_solution_id,null); assert.equal(safe.release_recommendation,"undecided");
+ const incomplete=solveCandidates({...completeUniverse(candidates),authority_status:"unknown"});
+ assert.equal(incomplete.selection_status,"undecided"); assert.equal(incomplete.selected_solution_id,null); assert.equal(incomplete.release_recommendation,"escalation");
+});
+
+test("candidate and core order use unsigned UTF8 JCS bytes",()=>{
+ const tie=solveCandidates(completeUniverse([solution("😀",[dimension("party-a","quality",0,1)]),solution("",[dimension("party-a","quality",0,1)])]));
+ assert.deepEqual(tie.feasible_solution_ids,["","😀"]);
+ const unsat=solveCandidates(completeUniverse([
+  solution("x",[],[{id:"😀",result:"F",conflict_class:"ordinary"},{id:"",result:"F",conflict_class:"ordinary"}])
+ ]));
+ assert.deepEqual(unsat.unsat_cores,[["","😀"]]);
 });
