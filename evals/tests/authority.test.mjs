@@ -128,8 +128,16 @@ test('soft ties escalate when authority, party closure, or a safety floor is inc
 });
 
 test('candidate and score ordering are deterministic',()=>{
- const first=twoSafeNonDominatedCandidates();
- const second=clone(first); second.candidate_universe.reverse(); second.candidate_evaluations.reverse(); for(const candidate of second.candidate_evaluations) candidate.soft_dimensions.reverse();
+ const firstBase=twoSafeNonDominatedCandidates();
+ delete firstBase.evaluator_gate_binding;
+ for(const candidate of firstBase.candidate_universe)candidate.option_ids=[candidate.solution_id+'-option-1',candidate.solution_id+'-option-2'];
+ for(const candidate of firstBase.candidate_evaluations)candidate.hard_constraints.push({constraint_id:'h-secondary',result:'T',conflict_class:'ordinary'});
+ const first=withGateBinding(firstBase);
+ const second=clone(first);
+ second.candidate_universe.reverse();
+ second.candidate_evaluations.reverse();
+ for(const candidate of second.candidate_universe)candidate.option_ids.reverse();
+ for(const candidate of second.candidate_evaluations){candidate.hard_constraints.reverse();candidate.soft_dimensions.reverse();}
  assert.deepEqual(solveCandidates(first),solveCandidates(second));
 });
 
@@ -202,13 +210,16 @@ test("acting edge scope time and caller verified proof are fail closed",()=>{
 const dimension=(party_or_cohort_id,criterion,tier,value,floor_result="T")=>({party_or_cohort_id,criterion,tier,value,floor_result});
 const solution=(solution_id,soft_dimensions,hard_constraints=[{id:"hard",result:"T"}])=>({solution_id,hard_constraints,soft_dimensions});
 const gateDigest=(domain,value)=>createHash("sha256").update(domain,"utf8").update(jcsBytes(value)).digest("hex");
+const canonicalGateCandidateUniverse=(candidateUniverse)=>canonicalSet(candidateUniverse.map((solution)=>({...solution,option_ids:canonicalSet(solution.option_ids,(optionId)=>optionId)})),(solution)=>solution.solution_id);
+const canonicalGateCandidateEvaluations=(candidateEvaluations)=>canonicalSet(candidateEvaluations.map((evaluation)=>({...evaluation,hard_constraints:canonicalSet(evaluation.hard_constraints,(row)=>row.constraint_id),soft_dimensions:canonicalSet(evaluation.soft_dimensions,(row)=>[row.party_or_cohort_id,row.criterion])})),(evaluation)=>evaluation.solution_id);
+
 const withGateBinding=(input,statuses={})=>{
  const authority_status=statuses.authority_status??input.authority_status;
  const party_inventory_status=statuses.party_inventory_status??input.party_inventory_status;
  const safety_or_rights_floor_status=statuses.safety_or_rights_floor_status??input.safety_or_rights_floor_status;
  const evaluation_effective_at="2026-08-18T00:00:00Z",policy_version="solver-gate-policy-v1";
- const candidateUniverse=canonicalSet(input.candidate_universe,(row)=>row.solution_id);
- const candidateEvaluations=canonicalSet(input.candidate_evaluations,(row)=>row.solution_id);
+ const candidateUniverse=canonicalGateCandidateUniverse(input.candidate_universe);
+ const candidateEvaluations=canonicalGateCandidateEvaluations(input.candidate_evaluations);
  const candidate_universe_digest=gateDigest("ux-skill:candidate-universe:v1",candidateUniverse);
  const candidate_evaluations_digest=gateDigest("ux-skill:candidate-evaluations:v1",candidateEvaluations);
  const authorityBody={authorization_decision_id:"solver-authority-decision-v1",status:authority_status,candidate_universe_digest,evaluation_effective_at,policy_version,proof_trace_digest:gateDigest("ux-skill:authority-proof-trace:v1",[candidate_universe_digest,evaluation_effective_at,policy_version])};
@@ -393,4 +404,6 @@ test('EvaluatorGateBindingV1 preserves safe tie and fails closed on missing mism
  assert.equal(solveCandidates(mismatch).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
  const tampered=clone(valid); tampered.evaluator_gate_binding.authority_decision.authority_decision_digest='0'.repeat(64);
  assert.equal(solveCandidates(tampered).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
+ const valueTampered=clone(valid); valueTampered.candidate_evaluations[0].soft_dimensions[0].value+=1;
+ assert.equal(solveCandidates(valueTampered).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
 });

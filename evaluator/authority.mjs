@@ -43,6 +43,8 @@ export function tenantBindingSetDigest(tenantIds,relationshipBindings){
  }catch{return null;}
 }
 
+const canonicalCandidateUniverseForGate=(candidateUniverse)=>canonicalSet(candidateUniverse.map((solution)=>({...solution,option_ids:canonicalStrings(solution.option_ids)})),(solution)=>solution.solution_id);
+const canonicalCandidateEvaluationsForGate=(candidateEvaluations)=>canonicalSet(candidateEvaluations.map((evaluation)=>({...evaluation,hard_constraints:canonicalSet(evaluation.hard_constraints,(row)=>row.constraint_id),soft_dimensions:canonicalSet(evaluation.soft_dimensions,(row)=>[row.party_or_cohort_id,row.criterion])})),(evaluation)=>evaluation.solution_id);
 const solverArtifactDigest=(domain,value)=>createHash('sha256').update(domain,'utf8').update(jcsBytes(value)).digest('hex');
 const solverGateRequired=(feasible_solution_ids)=>({selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'});
 const validateEvaluatorGateBinding=(universe)=>{
@@ -50,8 +52,8 @@ const validateEvaluatorGateBinding=(universe)=>{
   const binding=universe.evaluator_gate_binding;
   const bindingKeys=['binding_version','evaluation_effective_at','policy_version','candidate_universe_digest','candidate_evaluations_digest','authority_decision','party_inventory','safety_or_rights_floor_assessment'];
   if(!exactKeys(binding,bindingKeys)||binding.binding_version!=='EvaluatorGateBindingV1'||instant(binding.evaluation_effective_at)===null||typeof binding.policy_version!=='string'||binding.policy_version.length===0)return null;
-  const candidateUniverse=canonicalSet(universe.candidate_universe,(row)=>row.solution_id);
-  const candidateEvaluations=canonicalSet(universe.candidate_evaluations,(row)=>row.solution_id);
+  const candidateUniverse=canonicalCandidateUniverseForGate(universe.candidate_universe);
+  const candidateEvaluations=canonicalCandidateEvaluationsForGate(universe.candidate_evaluations);
   const universeDigest=solverArtifactDigest('ux-skill:candidate-universe:v1',candidateUniverse);
   const evaluationsDigest=solverArtifactDigest('ux-skill:candidate-evaluations:v1',candidateEvaluations);
   if(binding.candidate_universe_digest!==universeDigest||binding.candidate_evaluations_digest!==evaluationsDigest)return null;
