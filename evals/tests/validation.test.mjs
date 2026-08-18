@@ -259,6 +259,23 @@ test('evidence reference relation suppresses every invalid source or target prer
  for(const [value,pointer] of cases){let result;assert.doesNotThrow(()=>{result=validateInput(value);});noReferenceLeak(result);assert.deepEqual(suppressionRows(result),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:pointer,invariant_or_schema_id:'EvidenceRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);}
 });
 
+test('evidence source relation accepts a registered source and rejects an absent target',()=>{
+ assert.equal(validateInput(unfrozenDeleteBundle()).ok,true);
+ const value=unfrozenDeleteBundle();value.evidence[0].source_ref='absent';
+ const result=validateInput(value);
+ assert.deepEqual(result,{ok:false,errors:[{stage:'collections',code:'REF_MISSING',instance_pointer:'/evidence/0/source_ref',invariant_or_schema_id:'SourceRegistryRef-v1',params_jcs:'{"ref":"absent"}'}]});
+});
+
+test('evidence source relation suppresses every invalid source or target prerequisite',()=>{
+ const cases=[];
+ {const value=unfrozenDeleteBundle();delete value.evidence[0].source_ref;cases.push(value);}
+ {const value=unfrozenDeleteBundle();value.evidence[0].source_ref=42;cases.push(value);}
+ {const value=unfrozenDeleteBundle();delete value.source_registry_refs;cases.push(value);}
+ {const value=unfrozenDeleteBundle();value.source_registry_refs=42;cases.push(value);}
+ {const value=unfrozenDeleteBundle();value.source_registry_refs=[null];cases.push(value);}
+ for(const value of cases){let result;assert.doesNotThrow(()=>{result=validateInput(value);});noReferenceLeak(result);assert.deepEqual(suppressionRows(result).filter((row)=>row.invariant_or_schema_id==='SourceRegistryRef-v1'),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:'/evidence/0/source_ref',invariant_or_schema_id:'SourceRegistryRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);}
+});
+
 const validOutput=()=>({schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:digest('1'),evaluator_digest:digest('2'),run_status:'completed_clear',validation_errors:[],rule_evaluations:[],findings:[],run_issues:[],claim_assessments:[{claim_assessment_id:'assessment-1',claim_id:'claim-1',admissible_conclusion:'descriptive',assessed_predicate:{relation_kind:'descriptive',predicate_id:'predicate-1',population_id:'population-1',context_id:'context-1',time_scope_id:'time-1',subject_id:'subject-1',value:'observed',intervention_id:null,counterfactual_id:null,effect_estimand_id:null,future_target_id:null},evidence_grade:'limited',check_results:[],dimension_scores:[],reason_codes:[]}],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]});
 test('EvaluationOutput assessed predicate is a closed nullable definition',()=>{
  assert.equal(validateBySchema('EvaluationOutput',validOutput()).ok,true);
