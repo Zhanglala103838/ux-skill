@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：第八轮闭合评审后修订，等待第九轮对抗评审  
-规格版本：0.9  
+状态：第九轮闭合评审后修订，等待第十轮终审  
+规格版本：0.10  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -399,7 +399,7 @@ SemanticProjection-v1 只含这些 top-level fields：schema_version、behavior_
 | trace / ux-skill:trace:v1 | JCS(trace projection without trace_digest) |
 | semantic / ux-skill:semantic:v1 | JCS(semantic projection without semantic_digest) |
 | semantic-member / ux-skill:semantic-member:v1 | JCS(projected collection member 或 singleton value)；SemanticDelta before/after digest 只使用本 row |
-| knowledge / ux-skill:knowledge:v1 | JCS(sorted file path+file digest index) |
+| knowledge / ux-skill:knowledge:v1 | JCS(canonical-set<{path,file_digest}>)；仅这两个必填字段、additionalProperties=false，key=CanonicalRelativePath path，按 §12.3 排序/重复策略 |
 | manifest / ux-skill:manifest:v1 | JCS(internal manifest without digest fields) |
 | artifact / ux-skill:artifact:v1 | raw canonical ustar bytes |
 
@@ -423,7 +423,7 @@ adapter_contract_digest（JCS SHA-256）固定为 f297ea75545ceefa627a4d977d528e
 MCP 没有 outputSchema，adapter 必须用自有 hulian-component-doc-v1 schema 验证 structuredContent。状态 classifier 按下列顺序首个命中，后序分支必须排除前序：
 
 1. structuredContent 可解析但 source artifact version/digest 不匹配 pinned row → incompatible_source + tool_failed；
-2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且存在 missing/versionSkew/stale/fallback → partial；
+2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且存在 missing/versionSkew/stale/fallbacks → partial；
 3. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，missing 不存在或空、versionSkew=null、stale 不为 true、fallbacks 空 → success；
 4. isError=true、无 structuredContent、首个 text 以“没有名为”开头 → not_found；
 5. 其他 isError/schema/identity failure → server_error/tool_failed。
@@ -615,6 +615,8 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | REGRESSION-DELTA-DERIVED-001 | 移除一个 Finding 时 run_status/input_digest/semantic_digest 按第 18.5 derived closure 复算，oracle 不报未声明差异 |
 | REGRESSION-BUNDLE-DRIFT-001 | 未在 bundle_delta_allowlist 的 adapter evidence 变化 → REGRESSION_UNEXPLAINED，不能被 input_digest derived closure 吞掉 |
 | REGRESSION-NEGCONTROL-001 | negative control 缺失 → gate=missing/not_increase；超阈值 → gate=failed、identification rejected、decision_required |
+| REGRESSION-NEGCONTROL-ABS-001 | observed_delta=-0.1、transform=absolute、upper=0.05 inclusive → gate=failed |
+| KNOWLEDGE-ONEFILE-001 | preimage=[{"file_digest":"0000000000000000000000000000000000000000000000000000000000000000","path":"a"}]；knowledge digest=d9262071a41bf6991251f5cf572e8ba14d73b3ef7cc023b15887899c1d9b9c9a |
 | DELTA-REPLACE-NORMAL-001 | 同 locator d0→d1 只编码一个 replace；remove+add 非正规输入 |
 | ART-ONEFILE-001 | exact uncompressed ustar raw bytes/base64/length/digest |
 
@@ -671,13 +673,15 @@ intervention hypothesis 永远不是 evidence。black_box_site 默认 read-only�
 每个真实 case 按同一顺序执行：
 
 1. **Baseline**：冻结 bundle、环境、工具结果与制品；运行 scan；保存 Assurance、Inquiry、semantic projection、截图/trace sidecar。
-2. **Hypothesis**：从 assessed Claims 和 Inquiry 选择一个可证伪假设，预注册 intended delta、guardrail、stop rule 和至少一个 negative-control threshold。
+2. **Hypothesis**：从 assessed Claims 和 Inquiry 选择一个可证伪假设，预注册 intended delta、guardrail、stop rule 和至少一个 NegativeControlGateSpec。
 3. **Intervention**：仅对允许修改的派生副本记录 changeset digest 与 canonical bundle_delta_allowlist；black-box 目标只可制作独立原型，不伪称修改原站。
 4. **Verify**：同 behavior_version、同任务、同 seed、同 actor/party inventory 和等价环境复测主 intervention，并执行每个预注册 negative control；结果全部作为 Evidence/StudyExecution/AnalysisExecution 进入 candidate bundle 和 ClaimAssessment。
 5. **Compare**：先校验 normalized bundle diff，再输出 semantic projection diff、task measure diff、negative-control diff、visual/runtime evidence diff、新增/消失 Finding 及证据链。
 6. **Decision**：只有所有 negative control 已执行且均在预注册 threshold 内、主 measure 达标、无新 release-critical Finding、guardrail 未退化且 effect ledger 干净时，RecommendationAssessment 才可提高。negative control 缺失时 gate=missing、recommendation_delta=not_increase；超阈值时 gate=failed、identification_check=rejected、recommendation_delta=not_increase、intervention_disposition=decision_required。retain/revise/rollback 仅作为 DecisionOwner 的 canonical alternatives，evaluator 不自选。
 
 CanonicalDeltaOperationV1 additionalProperties=false。locator 是 tagged union：set_member={collection_name,key_jcs}；singleton={field_name}，field_name 只能来自 registry，禁止 array index/任意 JSON Pointer。operation-set 的唯一 key=JCS(locator)，每个 locator 恰一项。正规形唯一：before only→remove(before_digest)；after only→add(after_digest)；两侧存在且 digest 不同→replace(before_digest,after_digest)；digest 相同→无 operation。SemanticDelta-v1 与 intervention manifest.bundle_delta_allowlist 都只允许此 canonical-set normal form；actual 与 preregistered operations 按 canonical bytes 精确比较。semantic member digest 用 semantic-member row，bundle member digest 用 input-member row。
+
+NegativeControlGateSpec additionalProperties=false，必填 control_id、metric_id、transform=signed|absolute、unit、scale_id、lower_bound|null、upper_bound|null、lower_inclusive、upper_inclusive；至少一个 bound 非 null，双 bound 时 lower<=upper。observed_delta 先按相同 unit/scale 归一，再应用 transform；结果逐 bound 用对应 inclusive flag 比较，全部满足才 gate=passed，否则 failed。任何 unit/scale/值/边界 invalid 或 unknown 固定 gate=unknown，recommendation 不提高并 escalation。
 
 oracle 首先按 InputCollectionRegistry 对 baseline/candidate normalized bundle 作 (collection,key_jcs) diff；每项必须被 intervention manifest.bundle_delta_allowlist 精确覆盖，member digest 只用 input-member row，否则 REGRESSION_UNEXPLAINED。通过后才比较 SemanticProjection 非派生字段并计算唯一 derived closure：input_digest 由 candidate bundle 复算；run_status 由 candidate RuleEvaluation/Finding/RunIssue/decision 复算；所有对象内在 id/digest 随其 owner entry 一起变化；semantic_digest 从比较中排除后按 candidate projection 复算。behavior_version 与 evaluator_digest 必须 byte-equal。除 operations 与该 derived closure 外的变化固定 REGRESSION_UNEXPLAINED。
 
@@ -715,9 +719,9 @@ Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每�
 
 当前仍只做设计。
 
-1. 提交 v0.9 到 design/v0；
+1. 提交 v0.10 到 design/v0；
 2. 自检所有 MUST/唯一表是否存在对应 schema/vector，消除“固定但未给值”；
-3. 第九轮使用三个全新对抗上下文复核第八轮 7 个最小反例；只接受能导致核心输出分叉或不安全动作的 blocker；
+3. 第十轮使用三个全新对抗上下文只复核第九轮两个残余反例与整体 release gate；
 4. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户最终审阅；
 5. 用户明确批准后才调用 writing-plans；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
