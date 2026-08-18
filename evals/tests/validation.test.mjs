@@ -41,7 +41,7 @@ test('later ref validation is suppressed when schema prerequisite is absent',()=
  assert.deepEqual(errors.filter((e)=>e.code==='SUPPRESSED_BY_STAGE'),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:'/scenario_profile_id',invariant_or_schema_id:'ScenarioProfileRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);
 });
 
-const inspect=(node,path='')=>{if(!node||typeof node!=='object')return;if(node.type==='object'){assert.equal(node.additionalProperties,false,`${path||'/'} is open`);assert.ok(Array.isArray(node.required),`${path||'/'} lacks required`);}for(const [key,value] of Object.entries(node))inspect(value,`${path}/${key}`);};
+const inspect=(node,path='')=>{if(!node||typeof node!=='object')return;if(node.type==='object'||(Array.isArray(node.type)\&\&node.type.includes('object'))){assert.equal(node.additionalProperties,false,`${path||'/'} is open`);assert.ok(Array.isArray(node.required),`${path||'/'} lacks required`);}for(const [key,value] of Object.entries(node))inspect(value,`${path}/${key}`);};
 
 test('all domain schema objects are explicitly closed',async()=>{for(const path of paths)inspect(JSON.parse(await readFile(path,'utf8')));});
 
@@ -179,4 +179,90 @@ test('fixed-design schema domains expose authority, assessment, fingerprint, inq
 
 test('unknown schema IDs, including prototype names, fail closed deterministically',()=>{
  for(const schemaId of ['missing-schema','__proto__'])assert.deepEqual(validateBySchema(schemaId,{}),{ok:false,errors:[{stage:'schema',code:'INVARIANT_SCHEMA_ID_UNKNOWN',instance_pointer:'',invariant_or_schema_id:'SchemaRegistry-v1',params_jcs:`{"schema_id":"${schemaId}"}`}]});
+});const registryMemberCases=[
+ ['EvaluationInputBundle','scenario_profiles'],['EvaluationInputBundle','candidate_universe'],['EvaluationInputBundle','journeys'],['EvaluationInputBundle','source_registry_refs'],['EvaluationInputBundle','evidence'],['EvaluationInputBundle','studies'],['EvaluationInputBundle','claims'],['EvaluationInputBundle','adapter_evidence'],
+ ['AuthorityBundle','authority_roots'],['AuthorityBundle','acting_edges'],['AuthorityBundle','grants'],['AuthorityBundle','control_principal_edges'],['AuthorityBundle','party_graph_proofs'],['AuthorityBundle','party_inventories'],['AuthorityBundle','authorization_decisions'],['AuthorityBundle','execution_envelopes'],['AuthorityBundle','approval_decisions'],['AuthorityBundle','time_authority_policies'],['AuthorityBundle','capabilities'],['AuthorityBundle','capability_ledger_entries'],['AuthorityBundle','invalidations'],['AuthorityBundle','execution_leases'],['AuthorityBundle','external_effect_connectors'],
+ ['ClaimsBundle','sources'],['ClaimsBundle','fragments'],['ClaimsBundle','proposition_assessments'],['ClaimsBundle','policy_adoptions'],['ClaimsBundle','claims'],['ClaimsBundle','claim_assessments'],['ClaimsBundle','claim_assessment_policies'],
+ ['SnapshotClosureManifest','replay_profiles'],['SnapshotClosureManifest','network_records'],['SnapshotClosureManifest','observation_records'],
+ ['EvaluationOutput','rule_evaluations'],['EvaluationOutput','findings'],['EvaluationOutput','run_issues'],['EvaluationOutput','claim_assessments'],['EvaluationOutput','risk_assessments'],['EvaluationOutput','recommendation_assessments'],['EvaluationOutput','alternatives'],['EvaluationOutput','solutions'],['EvaluationOutput','unsat_cores'],['EvaluationOutput','resolution_traces'],['EvaluationOutput','coverage_gaps'],
+ ['SemanticProjection','rule_evaluations'],['SemanticProjection','findings'],['SemanticProjection','run_issues'],['SemanticProjection','claim_assessments'],['SemanticProjection','risk_assessments'],['SemanticProjection','recommendation_assessments'],['SemanticProjection','resolution_traces'],['SemanticProjection','coverage_gaps'],
+ ['RealWorldRegressionCase','hypotheses'],['RealWorldRegressionCase','measures'],['RealWorldRegressionCase','negative_controls']
+];
+for(const [schemaId,field] of registryMemberCases)test(`registry ${schemaId}.${field} preserves schema-invalid members without throwing`,()=>{
+ let result;assert.doesNotThrow(()=>{result=validateBySchema(schemaId,{[field]:[null]});});
+ assert.equal(result.ok,false);
+ assert.deepEqual(result.errors.filter((row)=>row.instance_pointer===`/${field}/0`).map((row)=>[row.stage,row.code]),[['schema','TYPE_MISMATCH']]);
+});
+
+test('valid control-principal edges normalize by control_edge_id',()=>{
+ const actor={namespace_uri:'https://identity.example',issuer_id:'issuer',subject_id:'subject',kind:'human'};
+ const edge={control_edge_id:'edge-1',from:actor,to:{...actor,subject_id:'controller'},basis_ref:'basis-1',effective_at:'2026-08-18T00:00:00Z',expires_at:null,status:'verified'};
+ const value={authority_roots:[],acting_edges:[],grants:[],control_principal_edges:[edge],party_graph_proofs:[],party_inventories:[],authorization_decisions:[],execution_envelopes:[],approval_decisions:[],time_authority_policies:[],capabilities:[],capability_ledger_entries:[],invalidations:[],execution_leases:[],external_effect_connectors:[]};
+ assert.deepEqual(validateBySchema('AuthorityBundle',value),{ok:true,value});
+});
+
+const branchNodes=[
+ {node_id:'',op:'literal',value:true},
+ {node_id:'',op:'exists',path:'/x'},
+ {node_id:'',op:'eq',path:'/x',value:null},
+ {node_id:'',op:'in',path:'/x',value:'x'},
+ {node_id:'',op:'compare',path:'/x',operator:'lt',value:1},
+ {node_id:'',op:'all',children:[]},
+ {node_id:'',op:'any',children:[]},
+ {node_id:'',op:'not',child:{node_id:'child',op:'literal',value:true}},
+ {node_id:'',op:'builtin',invariant_id:'known',params:{}}
+];
+test('every AST branch applies its declared non-type constraints',()=>{
+ for(const node of branchNodes){
+  const direct=validateBySchema('AstNode',node);
+  assert.deepEqual(direct.errors.filter((row)=>row.instance_pointer==='/node_id'),[{stage:'schema',code:'FORMAT_INVALID',instance_pointer:'/node_id',invariant_or_schema_id:'AstNode',params_jcs:'{"constraint":"minLength"}'}]);
+  const nested=validateBySchema('Rule',{...validRule(),applicability:node});
+  assert.deepEqual(nested.errors.filter((row)=>row.instance_pointer==='/applicability/node_id'),[{stage:'schema',code:'FORMAT_INVALID',instance_pointer:'/applicability/node_id',invariant_or_schema_id:'AstNode',params_jcs:'{"constraint":"minLength"}'}]);
+ }
+});
+
+test('selected path and builtin branches use the compiled branch schema',()=>{
+ const invalidNodes=[
+  [{node_id:'n',op:'exists',path:''},'/path','FORMAT_INVALID'],
+  [{node_id:'n',op:'eq',path:'',value:null},'/path','FORMAT_INVALID'],
+  [{node_id:'n',op:'in',path:'',value:'x'},'/path','FORMAT_INVALID'],
+  [{node_id:'n',op:'compare',path:'',operator:'lt',value:1},'/path','FORMAT_INVALID'],
+  [{node_id:'n',op:'builtin',invariant_id:'',params:{}},'/invariant_id','FORMAT_INVALID'],
+  [{node_id:'n',op:'builtin',invariant_id:'known',params:{unexpected:true}},'/params/unexpected','ADDITIONAL_PROPERTY']
+ ];
+ for(const [node,pointer,code] of invalidNodes){
+  const direct=validateBySchema('AstNode',node);assert.ok(direct.errors.some((row)=>row.instance_pointer===pointer&&row.code===code),JSON.stringify(direct));
+  const nested=validateBySchema('Rule',{...validRule(),applicability:node});assert.ok(nested.errors.some((row)=>row.instance_pointer===`/applicability${pointer}`&&row.code===code),JSON.stringify(nested));
+ }
+});
+
+const suppressionRows=(result)=>result.errors.filter((row)=>row.code==='SUPPRESSED_BY_STAGE');
+const noReferenceLeak=(result)=>assert.equal(result.errors.some((row)=>row.code==='REF_MISSING'),false);
+test('scenario reference relation suppresses every invalid source or target prerequisite',()=>{
+ const cases=[];
+ {const value=unfrozenDeleteBundle();delete value.scenario_profile_id;cases.push(value);}
+ {const value=unfrozenDeleteBundle();value.scenario_profile_id=42;cases.push(value);}
+ {const value=unfrozenDeleteBundle();delete value.scenario_profiles;cases.push(value);}
+ {const value=unfrozenDeleteBundle();value.scenario_profiles=42;cases.push(value);}
+ {const value=unfrozenDeleteBundle();value.scenario_profiles=[null];cases.push(value);}
+ for(const value of cases){let result;assert.doesNotThrow(()=>{result=validateInput(value);});noReferenceLeak(result);assert.deepEqual(suppressionRows(result),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:'/scenario_profile_id',invariant_or_schema_id:'ScenarioProfileRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);}
+});
+
+test('evidence reference relation suppresses every invalid source or target prerequisite',()=>{
+ const cases=[];
+ {const value=unfrozenDeleteBundle();delete value.claims[0].evidence_refs;cases.push([value,'/claims/0/evidence_refs']);}
+ {const value=unfrozenDeleteBundle();value.claims[0].evidence_refs=42;cases.push([value,'/claims/0/evidence_refs']);}
+ {const value=unfrozenDeleteBundle();value.claims[0].evidence_refs=[null];cases.push([value,'/claims/0/evidence_refs/0']);}
+ {const value=unfrozenDeleteBundle();delete value.evidence;cases.push([value,'/claims/0/evidence_refs']);}
+ {const value=unfrozenDeleteBundle();value.evidence=42;cases.push([value,'/claims/0/evidence_refs']);}
+ {const value=unfrozenDeleteBundle();value.evidence=[null];cases.push([value,'/claims/0/evidence_refs']);}
+ for(const [value,pointer] of cases){let result;assert.doesNotThrow(()=>{result=validateInput(value);});noReferenceLeak(result);assert.deepEqual(suppressionRows(result),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:pointer,invariant_or_schema_id:'EvidenceRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);}
+});
+
+const validOutput=()=>({schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:digest('1'),evaluator_digest:digest('2'),run_status:'completed_clear',validation_errors:[],rule_evaluations:[],findings:[],run_issues:[],claim_assessments:[{claim_assessment_id:'assessment-1',claim_id:'claim-1',admissible_conclusion:'descriptive',assessed_predicate:{relation_kind:'descriptive',predicate_id:'predicate-1',population_id:'population-1',context_id:'context-1',time_scope_id:'time-1',subject_id:'subject-1',value:'observed',intervention_id:null,counterfactual_id:null,effect_estimand_id:null,future_target_id:null},evidence_grade:'limited',check_results:[],dimension_scores:[],reason_codes:[]}],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]});
+test('EvaluationOutput assessed predicate is a closed nullable definition',()=>{
+ assert.equal(validateBySchema('EvaluationOutput',validOutput()).ok,true);
+ const invalid=validOutput();invalid.claim_assessments[0].assessed_predicate.unexpected=true;
+ const result=validateBySchema('EvaluationOutput',invalid);
+ assert.deepEqual(result.errors.filter((row)=>row.code==='ADDITIONAL_PROPERTY'),[{stage:'schema',code:'ADDITIONAL_PROPERTY',instance_pointer:'/claim_assessments/0/assessed_predicate/unexpected',invariant_or_schema_id:'EvaluationOutput',params_jcs:'{"additionalProperty":"unexpected"}'}]);
 });
