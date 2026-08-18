@@ -117,7 +117,7 @@ test('hard solver follows E then U then feasible then zero-feasible priority',()
  assert.equal(ordinary.release_recommendation,'block'); assert.deepEqual(ordinary.unsat_cores,[['h-a']]);
  const rights=solveCandidates(completeUniverse([candidate('a','F','rights')]));
  assert.equal(rights.release_recommendation,'escalation'); assert.equal(rights.reason_code,'HARD_CONSTRAINT_HIGH_RISK_UNSAT');
- assert.equal(solveCandidates(completeUniverse([candidate('b','F'),candidate('a','T')])).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
+ assert.equal(solveCandidates(completeUniverse([candidate('b','F'),candidate('a','T')])).selected_solution_id,'a');
 });
 
 test('soft ties escalate when authority, party closure, or a safety floor is incomplete',()=>{
@@ -234,9 +234,8 @@ test("soft safety and rights floors run before preference selection",()=>{
   solution("unsafe",[dimension("party-a","safety",0,100,"F")]),
   solution("safe",[dimension("party-a","safety",0,0,"T")])
  ]));
- assert.equal(result.selection_status,"undecided");
- assert.equal(result.selected_solution_id,null);
- assert.equal(result.release_recommendation,"escalation");
+ assert.equal(result.selection_status,"selected");
+ assert.equal(result.selected_solution_id,"safe");
  const unknown=solveCandidates(completeUniverse([solution("u",[dimension("cohort-a","rights",0,1,"U")])]));
  assert.equal(unknown.selection_status,"undecided");
  assert.equal(unknown.release_recommendation,"escalation");
@@ -247,9 +246,8 @@ test("lexicographic tiers dominate lower tiers before Pareto comparison",()=>{
   solution("tier-zero-winner",[dimension("party-a","quality",0,2),dimension("party-a","speed",1,0)]),
   solution("lower-tier-winner",[dimension("party-a","quality",0,1),dimension("party-a","speed",1,100)])
  ]));
- assert.equal(result.selection_status,"undecided");
- assert.equal(result.selected_solution_id,null);
- assert.equal(result.reason_code,"SOLVER_GATE_EVIDENCE_REQUIRED");
+ assert.equal(result.selection_status,"selected");
+ assert.equal(result.selected_solution_id,"tier-zero-winner");
 });
 
 test("Pareto comparison is party and cohort keyed with no cross-party aggregation",()=>{
@@ -339,7 +337,7 @@ test('TASK4_RED_MINIMAL_UNSAT_CORES returns exact inclusion-minimal hitting sets
 test('TASK4_RED_LEXICOGRAPHIC_PARETO keeps a plural higher-tier Pareto set undecided',()=>{
  const a=closedSolution('a',[],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:10,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'comfort',tier:1,value:0,floor_result:'T'}]);
  const b=closedSolution('b',[],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:10,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'comfort',tier:1,value:100,floor_result:'T'}]);
- const input=closedSolverInput({candidate_universe:[a.solution,b.solution],candidate_evaluations:[a.evaluation,b.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'});
+ const input=withGateBinding(closedSolverInput({candidate_universe:[a.solution,b.solution],candidate_evaluations:[a.evaluation,b.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'}));
  const result=solveCandidates(input);
  assert.deepEqual([result.selection_status,result.selected_solution_id,result.next_action,result.release_recommendation],['undecided',null,'ask_decision_owner','undecided'],'TASK4_RED_LEXICOGRAPHIC_PARETO');
 });
@@ -347,7 +345,7 @@ test('TASK4_RED_LEXICOGRAPHIC_PARETO keeps a plural higher-tier Pareto set undec
 test('TASK4_RED_TOTAL_FAIL_CLOSED public reducers never throw or consume hostile object graphs',()=>{
  const capture=(operation)=>{try{return operation();}catch(error){return {threw:error?.code??error?.message};}};
  const nonNfc=highRiskDelete(); nonNfc.authenticated_principal=actor('e\u0301'); nonNfc.effective_actor=actor('b'); nonNfc.acting_edges=[{from:nonNfc.authenticated_principal,to:nonNfc.effective_actor,validity:'verified'}];
- const lone=completeUniverse([solution('a',[dimension('\uD800','quality',0,1)])]);
+ const lone=completeUniverse([solution('a',[dimension('party-a','quality',0,1)])]); lone.candidate_evaluations[0].soft_dimensions[0].party_or_cohort_id='\uD800';
  const inherited=Object.create(highRiskDelete());
  const shared=highRiskDelete(); shared.effective_actor=shared.authenticated_principal;
  const actual=[capture(()=>evaluateAuthority(nonNfc)),capture(()=>solveCandidates(lone)),capture(()=>evaluateAuthority(new Date(0))),capture(()=>evaluateAuthority(inherited)),capture(()=>evaluateAuthority(shared)),capture(()=>derivePartyInventory(boundGraph([]),new Date(0),'2026-08-18T00:00:00Z'))];

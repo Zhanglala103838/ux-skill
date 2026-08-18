@@ -51,6 +51,9 @@
         "unresolved",
         "triggered"
       ]
+    },
+    "evaluator_gate_binding": {
+      "$ref": "#/$defs/EvaluatorGateBindingV1"
     }
   },
   "$defs": {
@@ -145,6 +148,274 @@
             "T",
             "U"
           ]
+        }
+      }
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "CompletenessProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proof_id",
+        "effect_scope_digest",
+        "resource_scope_digest",
+        "data_source_ids",
+        "snapshot_digest",
+        "snapshot_version",
+        "effective_at",
+        "expires_at",
+        "closure_algorithm_id",
+        "closure_algorithm_version",
+        "verification_status",
+        "completeness_proof_digest"
+      ],
+      "properties": {
+        "proof_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effect_scope_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "resource_scope_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "data_source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "snapshot_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "snapshot_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "closure_algorithm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "closure_algorithm_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "unknown"
+          ]
+        },
+        "completeness_proof_digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "AuthorityDecisionBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorization_decision_id",
+        "status",
+        "candidate_universe_digest",
+        "evaluation_effective_at",
+        "policy_version",
+        "proof_trace_digest",
+        "authority_decision_digest"
+      ],
+      "properties": {
+        "authorization_decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "unknown"
+          ]
+        },
+        "candidate_universe_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "evaluation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proof_trace_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "authority_decision_digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "PartyInventoryBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "party_inventory_id",
+        "status",
+        "party_ids",
+        "candidate_universe_digest",
+        "evaluation_effective_at",
+        "policy_version",
+        "completeness_proof_digest",
+        "party_inventory_digest",
+        "completeness_proof"
+      ],
+      "properties": {
+        "party_inventory_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "verified_complete",
+            "verified_no_affected_party"
+          ]
+        },
+        "party_ids": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "candidate_universe_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "evaluation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "completeness_proof_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "party_inventory_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "completeness_proof": {
+          "$ref": "#/$defs/CompletenessProof"
+        }
+      }
+    },
+    "FloorAssessmentBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment_id",
+        "status",
+        "candidate_universe_digest",
+        "candidate_evaluations_digest",
+        "evaluation_effective_at",
+        "policy_version",
+        "assessment_digest"
+      ],
+      "properties": {
+        "assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "resolved",
+            "unresolved",
+            "triggered"
+          ]
+        },
+        "candidate_universe_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "candidate_evaluations_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "evaluation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessment_digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "EvaluatorGateBindingV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding_version",
+        "evaluation_effective_at",
+        "policy_version",
+        "candidate_universe_digest",
+        "candidate_evaluations_digest",
+        "authority_decision",
+        "party_inventory",
+        "safety_or_rights_floor_assessment"
+      ],
+      "properties": {
+        "binding_version": {
+          "const": "EvaluatorGateBindingV1"
+        },
+        "evaluation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_universe_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "candidate_evaluations_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "authority_decision": {
+          "$ref": "#/$defs/AuthorityDecisionBinding"
+        },
+        "party_inventory": {
+          "$ref": "#/$defs/PartyInventoryBinding"
+        },
+        "safety_or_rights_floor_assessment": {
+          "$ref": "#/$defs/FloorAssessmentBinding"
         }
       }
     }

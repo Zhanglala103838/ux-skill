@@ -43,6 +43,46 @@ export function tenantBindingSetDigest(tenantIds,relationshipBindings){
  }catch{return null;}
 }
 
+const solverArtifactDigest=(domain,value)=>createHash('sha256').update(domain,'utf8').update(jcsBytes(value)).digest('hex');
+const solverGateRequired=(feasible_solution_ids)=>({selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'});
+const validateEvaluatorGateBinding=(universe)=>{
+ try{
+  const binding=universe.evaluator_gate_binding;
+  const bindingKeys=['binding_version','evaluation_effective_at','policy_version','candidate_universe_digest','candidate_evaluations_digest','authority_decision','party_inventory','safety_or_rights_floor_assessment'];
+  if(!exactKeys(binding,bindingKeys)||binding.binding_version!=='EvaluatorGateBindingV1'||instant(binding.evaluation_effective_at)===null||typeof binding.policy_version!=='string'||binding.policy_version.length===0)return null;
+  const candidateUniverse=canonicalSet(universe.candidate_universe,(row)=>row.solution_id);
+  const candidateEvaluations=canonicalSet(universe.candidate_evaluations,(row)=>row.solution_id);
+  const universeDigest=solverArtifactDigest('ux-skill:candidate-universe:v1',candidateUniverse);
+  const evaluationsDigest=solverArtifactDigest('ux-skill:candidate-evaluations:v1',candidateEvaluations);
+  if(binding.candidate_universe_digest!==universeDigest||binding.candidate_evaluations_digest!==evaluationsDigest)return null;
+  const authority=binding.authority_decision;
+  const authorityKeys=['authorization_decision_id','status','candidate_universe_digest','evaluation_effective_at','policy_version','proof_trace_digest','authority_decision_digest'];
+  if(!exactKeys(authority,authorityKeys)||!['complete','unknown'].includes(authority.status)||authority.candidate_universe_digest!==universeDigest||authority.evaluation_effective_at!==binding.evaluation_effective_at||authority.policy_version!==binding.policy_version)return null;
+  const expectedTrace=solverArtifactDigest('ux-skill:authority-proof-trace:v1',[universeDigest,binding.evaluation_effective_at,binding.policy_version]);
+  const authorityBody={authorization_decision_id:authority.authorization_decision_id,status:authority.status,candidate_universe_digest:authority.candidate_universe_digest,evaluation_effective_at:authority.evaluation_effective_at,policy_version:authority.policy_version,proof_trace_digest:authority.proof_trace_digest};
+  if(authority.proof_trace_digest!==expectedTrace||authority.authority_decision_digest!==solverArtifactDigest('ux-skill:authority-decision:v1',authorityBody))return null;
+  const inventory=binding.party_inventory,proof=inventory?.completeness_proof;
+  const proofKeys=['proof_id','effect_scope_digest','resource_scope_digest','data_source_ids','snapshot_digest','snapshot_version','effective_at','expires_at','closure_algorithm_id','closure_algorithm_version','verification_status','completeness_proof_digest'];
+  if(!exactKeys(proof,proofKeys)||!['verified','unknown'].includes(proof.verification_status))return null;
+  const proofBody={proof_id:proof.proof_id,effect_scope_digest:proof.effect_scope_digest,resource_scope_digest:proof.resource_scope_digest,data_source_ids:proof.data_source_ids,snapshot_digest:proof.snapshot_digest,snapshot_version:proof.snapshot_version,effective_at:proof.effective_at,expires_at:proof.expires_at,closure_algorithm_id:proof.closure_algorithm_id,closure_algorithm_version:proof.closure_algorithm_version,verification_status:proof.verification_status};
+  if(proof.completeness_proof_digest!==solverArtifactDigest('ux-skill:party-completeness-proof:v1',proofBody))return null;
+  const inventoryKeys=['party_inventory_id','status','party_ids','candidate_universe_digest','evaluation_effective_at','policy_version','completeness_proof_digest','party_inventory_digest','completeness_proof'];
+  if(!exactKeys(inventory,inventoryKeys)||!['unknown','verified_complete','verified_no_affected_party'].includes(inventory.status)||!isStringArray(inventory.party_ids)&&!(Array.isArray(inventory.party_ids)&&inventory.party_ids.length===0)||new Set(inventory.party_ids).size!==inventory.party_ids.length||inventory.candidate_universe_digest!==universeDigest||inventory.evaluation_effective_at!==binding.evaluation_effective_at||inventory.policy_version!==binding.policy_version||inventory.completeness_proof_digest!==proof.completeness_proof_digest)return null;
+  const inventoryBody={party_inventory_id:inventory.party_inventory_id,status:inventory.status,party_ids:inventory.party_ids,candidate_universe_digest:inventory.candidate_universe_digest,evaluation_effective_at:inventory.evaluation_effective_at,policy_version:inventory.policy_version,completeness_proof_digest:inventory.completeness_proof_digest};
+  if(inventory.party_inventory_digest!==solverArtifactDigest('ux-skill:party-inventory:v1',inventoryBody))return null;
+  const proofAt=instant(binding.evaluation_effective_at),proofStart=instant(proof.effective_at),proofEnd=proof.expires_at===null?Infinity:instant(proof.expires_at);
+  if(proofAt===null||proofStart===null||proofEnd===null||proofStart>proofAt||proofEnd<=proofAt)return null;
+  if(['verified_complete','verified_no_affected_party'].includes(inventory.status)&&proof.verification_status!=='verified')return null;
+  if(inventory.status==='verified_complete'&&inventory.party_ids.length===0||inventory.status==='verified_no_affected_party'&&inventory.party_ids.length!==0)return null;
+  const floor=binding.safety_or_rights_floor_assessment;
+  const floorKeys=['assessment_id','status','candidate_universe_digest','candidate_evaluations_digest','evaluation_effective_at','policy_version','assessment_digest'];
+  if(!exactKeys(floor,floorKeys)||!['not_applicable','resolved','unresolved','triggered'].includes(floor.status)||floor.candidate_universe_digest!==universeDigest||floor.candidate_evaluations_digest!==evaluationsDigest||floor.evaluation_effective_at!==binding.evaluation_effective_at||floor.policy_version!==binding.policy_version)return null;
+  const floorBody={assessment_id:floor.assessment_id,status:floor.status,candidate_universe_digest:floor.candidate_universe_digest,candidate_evaluations_digest:floor.candidate_evaluations_digest,evaluation_effective_at:floor.evaluation_effective_at,policy_version:floor.policy_version};
+  if(floor.assessment_digest!==solverArtifactDigest('ux-skill:safety-rights-floor-assessment:v1',floorBody))return null;
+  return {authority_status:authority.status,party_inventory_status:inventory.status,safety_or_rights_floor_status:floor.status};
+ }catch{return null;}
+};
+
 function derivePartyInventorySnapshot(graph,proof,effectiveAt){
  if(!isRecord(graph)||!Array.isArray(graph.affected_party_ids)||!graph.affected_party_ids.every((id)=>typeof id==='string'&&id.length>0))return {status:'unknown',party_ids:[],reason_code:'PARTY_GRAPH_INVALID'};
  if(!isRecord(proof))return {status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_REQUIRED'};
@@ -255,7 +295,8 @@ export function solveCandidates(universeInput){
  if(!schemaResult.ok)return invalidCandidates();
  universe=schemaResult.value;
  const universeKeys=['candidate_universe','candidate_evaluations','authority_status','party_inventory_status','safety_or_rights_floor_status'];
- if(!exactKeys(universe,universeKeys)||!Array.isArray(universe.candidate_universe)||universe.candidate_universe.length===0||!Array.isArray(universe.candidate_evaluations)||!['complete','unknown'].includes(universe.authority_status)||!['unknown','verified_complete','verified_no_affected_party'].includes(universe.party_inventory_status)||!['not_applicable','resolved','unresolved','triggered'].includes(universe.safety_or_rights_floor_status))return invalidCandidates();
+ const boundUniverseKeys=[...universeKeys,'evaluator_gate_binding'];
+ if(!(exactKeys(universe,universeKeys)||exactKeys(universe,boundUniverseKeys))||!Array.isArray(universe.candidate_universe)||universe.candidate_universe.length===0||!Array.isArray(universe.candidate_evaluations)||!['complete','unknown'].includes(universe.authority_status)||!['unknown','verified_complete','verified_no_affected_party'].includes(universe.party_inventory_status)||!['not_applicable','resolved','unresolved','triggered'].includes(universe.safety_or_rights_floor_status))return invalidCandidates();
  const solutionSeen=new Set();
  for(const solution of universe.candidate_universe){
   if(!exactKeys(solution,['solution_id','option_ids'])||typeof solution.solution_id!=='string'||solution.solution_id.length===0||solutionSeen.has(solution.solution_id)||!isStringArray(solution.option_ids)&&!(Array.isArray(solution.option_ids)&&solution.option_ids.length===0)||new Set(solution.option_ids).size!==solution.option_ids.length)return invalidCandidates();
