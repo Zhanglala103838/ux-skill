@@ -136,3 +136,41 @@ test('authority and candidate APIs reject malformed input without authorizing',(
  for(const value of [null,{}, {action:'delete',resource_type:'admin_account',risk:'high',authority_root_membership:'verified',acting_edges:'not-an-array'}]) assert.deepEqual(evaluateAuthority(value),{status:'invalid_input',reason_code:'AUTHORITY_INPUT_INVALID'});
  assert.deepEqual(solveCandidates({candidates:[]}),{selection_status:'invalid_input',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_input',release_recommendation:'escalation',reason_code:'CANDIDATE_INPUT_INVALID'});
 });
+
+
+test("closed root and policy lookup cannot be bypassed by caller assertions",()=>{
+ const missing=highRiskDelete(); delete missing.authority_root_id;
+ assert.deepEqual(evaluateAuthority(missing),{status:"escalation",reason_code:"AUTHORITY_ROOT_UNKNOWN",coverage_gap_id:"authority-root-proof-v1"});
+ const unknown=highRiskDelete(); unknown.authority_root_id="unknown-root";
+ assert.deepEqual(evaluateAuthority(unknown),{status:"block",reason_code:"AUTHORITY_ROOT_UNTRUSTED"});
+ const expired=highRiskDelete(); expired.authority_root_id="ux-skill-expired-admin-root-v1";
+ assert.deepEqual(evaluateAuthority(expired),{status:"block",reason_code:"AUTHORITY_ROOT_EXPIRED"});
+ const revoked=highRiskDelete(); revoked.authority_root_id="ux-skill-revoked-admin-root-v1";
+ assert.deepEqual(evaluateAuthority(revoked),{status:"block",reason_code:"AUTHORITY_ROOT_REVOKED"});
+ const purpose=highRiskDelete(); purpose.authorization_purpose="bulk-marketing";
+ assert.deepEqual(evaluateAuthority(purpose),{status:"block",reason_code:"AUTHORITY_ROOT_SCOPE_NOT_COVERED"});
+ const risk=highRiskDelete(); risk.risk="unregistered-risk";
+ assert.deepEqual(evaluateAuthority(risk),{status:"escalation",reason_code:"AUTHORITY_COVERAGE_GAP",coverage_gap_id:"action-resource-purpose-risk-policy-v1"});
+});
+
+test("acting chains reject self-support cycles repeated nodes and incomplete Task 3 edges",()=>{
+ const self=highRiskDelete(); self.authenticated_principal=actor("a"); self.effective_actor=actor("a"); self.acting_edges=[{from:actor("a"),to:actor("a"),validity:"verified"}];
+ assert.deepEqual(evaluateAuthority(self),{status:"block",reason_code:"ACTING_CHAIN_CYCLE"});
+ const cycle=highRiskDelete(); cycle.authenticated_principal=actor("a"); cycle.effective_actor=actor("a"); cycle.acting_edges=[{from:actor("a"),to:actor("b"),validity:"verified"},{from:actor("b"),to:actor("a"),validity:"verified"}];
+ assert.deepEqual(evaluateAuthority(cycle),{status:"block",reason_code:"ACTING_CHAIN_CYCLE"});
+ const repeated=highRiskDelete(); repeated.authenticated_principal=actor("a"); repeated.effective_actor=actor("b"); repeated.acting_edges=[{from:actor("a"),to:actor("b"),validity:"verified"},{from:actor("b"),to:actor("c"),validity:"verified"},{from:actor("c"),to:actor("b"),validity:"verified"}];
+ assert.deepEqual(evaluateAuthority(repeated),{status:"block",reason_code:"ACTING_CHAIN_CYCLE"});
+ const incomplete=highRiskDelete(); incomplete.authenticated_principal=actor("a"); incomplete.effective_actor=actor("b"); incomplete.acting_edges=[{from:actor("a"),to:actor("b"),validity:"verified"}];
+ assert.deepEqual(evaluateAuthority(incomplete),{status:"escalation",reason_code:"ACTING_EDGE_UNKNOWN",coverage_gap_id:"acting-edge-proof-v1"});
+});
+
+test("tenant all-join obligations come from the closed policy and require exact coverage",()=>{
+ const erased=highRiskDelete(); erased.tenant_bindings={status:"verified",required:[],covered:[],extra_effects:[]};
+ assert.deepEqual(evaluateAuthority(erased),{status:"block",reason_code:"TENANT_SCOPE_NOT_COVERED"});
+ const superset=highRiskDelete(); superset.tenant_bindings={status:"verified",required:["target","controller"],covered:["target","controller","unregistered"],extra_effects:[]};
+ assert.deepEqual(evaluateAuthority(superset),{status:"block",reason_code:"TENANT_SCOPE_NOT_COVERED"});
+});
+
+test("caller verified strings and abbreviated authority objects never authorize deletion",()=>{
+ assert.deepEqual(evaluateAuthority(highRiskDelete()),{status:"escalation",reason_code:"PARTY_INVENTORY_UNKNOWN",coverage_gap_id:"party-proof-contract-v1"});
+});
