@@ -443,8 +443,8 @@ test('EvaluatorGateBindingV1 signature binds policy time body candidates evaluat
 
 test('EvaluatorGateBindingV1 valid signatures preserve safe ties and unique selection',()=>{
  assert.equal(solveCandidates(twoSafeNonDominatedCandidates()).reason_code,'SOFT_PARETO_TIE');
- const unique=completeUniverse([solution('signed-unique',[dimension('party-a','quality',0,1)])]);
- assert.deepEqual(solveCandidates(unique),{selection_status:'selected',selected_solution_id:'signed-unique',feasible_solution_ids:['signed-unique'],next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'});
+ const unique=completeUniverse([solution("unsafe",[dimension("party-a","safety",0,100,"F")]),solution("safe",[dimension("party-a","safety",0,0,"T")])]);
+ assert.deepEqual(solveCandidates(unique),{selection_status:'selected',selected_solution_id:'safe',feasible_solution_ids:['safe','unsafe'],next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'});
 });
 
 test('EvaluatorGateBindingV1 preserves safe tie and fails closed on missing mismatch or digest tamper',()=>{
