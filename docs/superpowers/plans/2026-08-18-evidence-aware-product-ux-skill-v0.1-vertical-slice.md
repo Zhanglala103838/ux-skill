@@ -64,6 +64,8 @@ evals/parity/*.json                      Skill/CLI/MCP equivalent transports
 evals/artifact/*                         ART-ONEFILE-001 fixture and expected bytes
 evals/public-cases/*.json                GOV.UK, Apple, IKEA and Stripe case manifests
 evals/holdout-commitments.json           Public commitments only, no secret/case output
+evals/helpers/*.mjs                      Shared deterministic test fixture/process helpers
+knowledge/artifact-manifest.json         Exact distributable path set for canonical packing
 evals/tests/*.test.mjs                   Node test suites
 .github/workflows/ci.yml                 Clean-environment verification
 ```
@@ -98,7 +100,7 @@ test('catalog freezes every approved vector exactly once', async () => {
 
 - [ ] **Step 2: Run it and preserve RED**
 
-Run: `pnpm node --test evals/tests/vector-catalog.test.mjs`
+Run: `node --test evals/tests/vector-catalog.test.mjs`
 
 Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `scripts/check-vector-catalog.mjs`.
 
@@ -107,7 +109,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `scripts/check-vector-catalog.mjs
 `package.json` must contain:
 
 ```json
-{"name":"@hulianui-labs/ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.1","yaml":"2.9.0"}}
+{"name":"ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","capture:closure":"node scripts/capture-snapshot-closure.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.1","yaml":"2.9.0"},"devDependencies":{"playwright":"1.62.1"}}
 ```
 
 Implement `loadVectorCatalog()` to reject duplicate IDs, missing `expected_contract`, and any difference between committed catalog IDs and the §18.1 Markdown table. Populate `evals/vector-catalog.json` with all 100 exact IDs and their full §18.1 contract text.
@@ -126,12 +128,12 @@ Expected: process exits 0 only when all 100 rows are `red`; summary prints `gree
 
 - [ ] **Step 5: Run and commit**
 
-Run: `pnpm vectors:check && pnpm test`
+Run: `pnpm install --lockfile-only && pnpm vectors:check && pnpm test`
 
-Expected: PASS; the baseline remains RED by content.
+Expected: PASS; `pnpm-lock.yaml` is created and the baseline remains RED by content.
 
 ```bash
-git add package.json .nvmrc evals/vector-catalog.json scripts/check-vector-catalog.mjs scripts/run-red-baseline.mjs evals/tests/vector-catalog.test.mjs
+git add package.json pnpm-lock.yaml .nvmrc evals/vector-catalog.json scripts/check-vector-catalog.mjs scripts/run-red-baseline.mjs evals/tests/vector-catalog.test.mjs
 git commit -m "test: freeze UX evaluator RED catalog"
 ```
 
@@ -170,7 +172,7 @@ test('path rejects separators and dot segments', () => {
 
 - [ ] **Step 2: Run to verify missing modules fail**
 
-Run: `pnpm node --test evals/tests/canonical.test.mjs`
+Run: `node --test evals/tests/canonical.test.mjs`
 
 Expected: FAIL with module-not-found.
 
@@ -190,7 +192,7 @@ Assert the exact §18.3 preimage produces `e01f97c0db9a39b9bd3f61c187ce9892a962a
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `pnpm node --test evals/tests/canonical.test.mjs`
+Run: `node --test evals/tests/canonical.test.mjs`
 
 Expected: PASS.
 
@@ -204,9 +206,10 @@ git commit -m "feat: add canonical UX data primitives"
 **Files:**
 - Create: `schemas/core/evaluation-input.schema.json`, `schemas/core/snapshot-closure.schema.json`, `schemas/core/authority.schema.json`, `schemas/core/claims.schema.json`
 - Create: `schemas/evaluator/output.schema.json`, `evaluator/validation.mjs`
-- Create: `evals/tests/validation.test.mjs`, `evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json`
+- Create: `evals/tests/validation.test.mjs`, `evals/helpers/fixtures.mjs`, `evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json`
 
 **Interfaces:**
+- `evals/helpers/fixtures.mjs` produces `fixtureWithHeaders`, `fixtureWithRedirectHop`, `highRiskDelete`, `twoSafeNonDominatedCandidates`, `ruleWithTwoRequiredTools`, `input`, `cancelled`, `timeout`, `deleteBundle`, `closureWithCsp`, `casWithoutHeaderBytes`, `appleCase`, and `fakeBrowserRequesting`; helpers return frozen JSON and perform no network.
 - Produces: `validateInput(value): {ok:true,value}|{ok:false,errors:NormalizedError[]}`.
 - `NormalizedError` key is the complete tuple from spec §12.2.
 
@@ -223,7 +226,7 @@ test('headers is required and nested objects reject unknown fields', () => {
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `pnpm node --test evals/tests/validation.test.mjs`
+Run: `node --test evals/tests/validation.test.mjs`
 
 Expected: FAIL because `validateInput` is absent.
 
@@ -237,12 +240,12 @@ Map only to the spec codes, deduplicate by full tuple, and sort with `canonicalS
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `pnpm node --test evals/tests/validation.test.mjs`
+Run: `node --test evals/tests/validation.test.mjs`
 
 Expected: PASS for missing headers, extra hop fields, NFC, duplicate IDs, ref missing, and suppressed stages.
 
 ```bash
-git add schemas evaluator/validation.mjs evals/tests/validation.test.mjs evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json
+git add schemas evaluator/validation.mjs evals/helpers/fixtures.mjs evals/tests/validation.test.mjs evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json
 git commit -m "feat: add closed UX schemas and normalized errors"
 ```
 
@@ -276,7 +279,7 @@ test('safe Pareto tie never selects a candidate', () => {
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `pnpm node --test evals/tests/authority.test.mjs`
+Run: `node --test evals/tests/authority.test.mjs`
 
 Expected: FAIL with missing exports.
 
@@ -286,7 +289,7 @@ Implement exact acting-chain continuity, trusted-root membership, tenant coverag
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `pnpm node --test evals/tests/authority.test.mjs`
+Run: `node --test evals/tests/authority.test.mjs`
 
 Expected: PASS for the six named vectors and all table branches used by the delete flow.
 
@@ -325,7 +328,7 @@ test('critical unknown emits escalation and no invented success', () => {
 
 - [ ] **Step 2: Confirm RED, implement the exact first-match tables, then rerun**
 
-Run before implementation: `pnpm node --test evals/tests/rules-runtime.test.mjs`
+Run before implementation: `node --test evals/tests/rules-runtime.test.mjs`
 
 Expected: FAIL with missing module.
 
@@ -369,7 +372,7 @@ test('soft tie remains undecided', () => {
 
 - [ ] **Step 2: Confirm RED and implement closed lookup tables**
 
-Run: `pnpm node --test evals/tests/claims.test.mjs`
+Run: `node --test evals/tests/claims.test.mjs`
 
 Expected before implementation: FAIL; after implementing exact §8-§9 first-match tables: PASS.
 
@@ -405,7 +408,7 @@ test('same normalized delete bundle replays to one semantic digest', async () =>
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `pnpm node --test evals/tests/evaluator.test.mjs`
+Run: `node --test evals/tests/evaluator.test.mjs`
 
 Expected: FAIL with missing evaluator entry point.
 
@@ -415,7 +418,7 @@ Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `pnpm node --test evals/tests/evaluator.test.mjs`
+Run: `node --test evals/tests/evaluator.test.mjs`
 
 Expected: PASS with five identical digests and byte-equal golden projection.
 
@@ -427,14 +430,14 @@ git commit -m "feat: compose deterministic UX evaluator"
 ### Task 8: HulianUI AlertDialog Evidence Adapter
 
 **Files:**
-- Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`
+- Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`, `adapters/hulianui/bridge.mjs`
 - Create: `schemas/adapters/hulian-component-doc-v1.schema.json`
 - Create: `evals/tests/hulianui-adapter.test.mjs`
 - Create: relevant adapter RED/golden fixtures
 
 **Interfaces:**
-- Produces: `classifyHulianResult(result,contract)`, `mapHulianComponentDoc(result,contract): CanonicalAdapterEvidence`.
-- Does not call or modify HulianUI MCP; accepts captured or caller-provided tool results.
+- Produces: `classifyHulianResult(result,contract)`, `mapHulianComponentDoc(result,contract): CanonicalAdapterEvidence`, `evaluateHulianMcpResult(bundle,toolResult): EvaluationResult`.
+- `bridge.mjs` maps then calls the sole `evaluate()` export; it contains no rule table. It does not call or modify HulianUI MCP and accepts captured or caller-provided tool results.
 
 - [ ] **Step 1: Write classifier and digest failures**
 
@@ -452,7 +455,7 @@ test('canonical evidence never asserts UX outcome', () => {
 
 - [ ] **Step 2: Confirm RED, implement, and verify**
 
-Run before and after: `pnpm node --test evals/tests/hulianui-adapter.test.mjs`
+Run before and after: `node --test evals/tests/hulianui-adapter.test.mjs`
 
 Expected before: FAIL. Expected after: all adapter vectors PASS and shuffled exports/props/events/slots produce byte-equal evidence.
 
@@ -467,11 +470,12 @@ git commit -m "feat: add pinned HulianUI evidence adapter"
 
 **Files:**
 - Create: `scripts/ux-evaluate.mjs`
-- Create: `evals/tests/cli.test.mjs`
+- Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
 - Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
 
 **Interfaces:**
 - CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
+- `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
 - Produces stdout JSON only; diagnostics go to stderr.
 
 - [ ] **Step 1: Write CLI contract tests**
@@ -490,7 +494,7 @@ test('transport metadata does not change semantic digest', async () => {
 
 - [ ] **Step 2: Confirm RED, implement thin transport, verify**
 
-Run: `pnpm node --test evals/tests/cli.test.mjs`
+Run: `node --test evals/tests/cli.test.mjs`
 
 Expected before: FAIL; after: PASS. The CLI must call `evaluate()` and contain no UX rule or recommendation table.
 
@@ -526,7 +530,7 @@ test('Skill is lean and modes load exact references', async () => {
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `pnpm node --test evals/tests/skill-contract.test.mjs`
+Run: `node --test evals/tests/skill-contract.test.mjs`
 
 Expected: FAIL because Skill and manifest are absent.
 
@@ -538,16 +542,16 @@ Set `agents/openai.yaml` to:
 
 ```yaml
 interface:
-  display_name: Evidence-aware Product UX
-  short_description: Evaluate and improve digital-product UX with explicit evidence boundaries.
-  default_prompt: Use $improving-product-ux to guide, scan, refactor, or verify this product experience.
+  display_name: "Evidence-aware Product UX"
+  short_description: "Evidence-bounded guidance for digital product UX"
+  default_prompt: "Use $improving-product-ux to guide, scan, refactor, or verify this product experience."
 policy:
   allow_implicit_invocation: true
 ```
 
 - [ ] **Step 4: Verify knowledge digests and commit**
 
-Run: `node scripts/check-knowledge.mjs && pnpm node --test evals/tests/skill-contract.test.mjs`
+Run: `node scripts/check-knowledge.mjs && node --test evals/tests/skill-contract.test.mjs`
 
 Expected: PASS; changing one reference byte fails the manifest check.
 
@@ -559,12 +563,12 @@ git commit -m "feat: add evidence-aware Product UX Skill"
 ### Task 11: Canonical ustar Artifact
 
 **Files:**
-- Create: `scripts/pack-ustar.mjs`
+- Create: `scripts/pack-ustar.mjs`, `knowledge/artifact-manifest.json`
 - Create: `evals/artifact/one-file-input/a`, `evals/artifact/ART-ONEFILE-001.json`
 - Create: `evals/tests/artifact.test.mjs`
 
 **Interfaces:**
-- Produces: `packCanonicalUstar(entries): Buffer` and CLI `pack-ustar <source-dir> <output.tar>`.
+- Produces: `packCanonicalUstar(entries): Buffer` and CLI `pack-ustar <artifact-manifest.json> <output.tar>`; the CLI reads only exact canonical paths in the manifest and cannot include its output file.
 
 - [ ] **Step 1: Decode the spec golden into a test**
 
@@ -578,16 +582,22 @@ test('one-file ustar is byte exact', async () => {
 });
 ```
 
+The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
+
+```json
+{"path":"a","file_base64":"eA==","archive_length":2048,"artifact_digest":"f6a0f180d997c4dcecf1bdf2aa17e0cfc2aa05ea1c7161f26fa7a4df5b0954a3","archive_base64":"YQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAwMDA2NDQAMDAwMDAwMAAwMDAwMDAwADAwMDAwMDAwMDAxADAwMDAwMDAwMDAwADAwNjA3NwAgMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB1c3RhcgAwMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}
+```
+
 - [ ] **Step 2: Confirm RED, implement headers byte-by-byte, verify**
 
-Run: `pnpm node --test evals/tests/artifact.test.mjs`
+Run: `node --test evals/tests/artifact.test.mjs`
 
 Expected before: FAIL; after: PASS. Do not shell out to `tar`; reject directories, links, PAX, long names, and non-canonical paths.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/pack-ustar.mjs evals/artifact evals/tests/artifact.test.mjs
+git add scripts/pack-ustar.mjs knowledge/artifact-manifest.json evals/artifact evals/tests/artifact.test.mjs
 git commit -m "feat: add canonical UX Skill artifact packer"
 ```
 
@@ -621,7 +631,7 @@ test('live or mutating request blocks the case', async () => {
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `pnpm node --test evals/tests/snapshot-closure.test.mjs`
+Run: `node --test evals/tests/snapshot-closure.test.mjs`
 
 Expected: FAIL with missing capture module.
 
@@ -635,7 +645,7 @@ Apple uses the three exact profiles from spec §18.3. GOV.UK uses one desktop-ke
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `pnpm node --test evals/tests/snapshot-closure.test.mjs`
+Run: `node --test evals/tests/snapshot-closure.test.mjs`
 
 Expected: PASS with every miss mapping to `target_unavailable + RunIssue + no_release`.
 
@@ -648,10 +658,11 @@ git commit -m "feat: add fail-closed website regression harness"
 
 **Files:**
 - Create: `scripts/check-release.mjs`
-- Create: `evals/tests/parity.test.mjs`, `evals/tests/release-gate.test.mjs`
+- Create: `evals/tests/parity.test.mjs`, `evals/tests/release-gate.test.mjs`, `evals/helpers/transports.mjs`
 - Create: `evals/holdout-commitments.json`
 
 **Interfaces:**
+- `evals/helpers/transports.mjs` produces `evaluateThreeTransports(path)` by evaluating the fixture directly, through the CLI helper, and through `evaluateHulianMcpResult`; it strips audit sidecars before parity comparison.
 - Produces: `checkParity(transports): ParityReport`, `checkRelease(inputs): ReleaseGateReport`.
 
 - [ ] **Step 1: Write release-failure tests**
@@ -671,7 +682,7 @@ test('Skill CLI and MCP bridge are semantic peers', async () => {
 
 - [ ] **Step 2: Confirm RED, implement deterministic set reduction, verify**
 
-Run: `pnpm node --test evals/tests/parity.test.mjs evals/tests/release-gate.test.mjs`
+Run: `node --test evals/tests/parity.test.mjs evals/tests/release-gate.test.mjs`
 
 Expected before: FAIL; after: PASS. Sort all reason codes canonically. Holdout status other than current-generation `pass` is always `no_release`; do not expose private case details.
 
@@ -684,7 +695,7 @@ Expected for this experimental slice: `no_release` until every required vector, 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/check-release.mjs evals/tests/parity.test.mjs evals/tests/release-gate.test.mjs evals/holdout-commitments.json
+git add scripts/check-release.mjs evals/helpers/transports.mjs evals/tests/parity.test.mjs evals/tests/release-gate.test.mjs evals/holdout-commitments.json
 git commit -m "test: enforce UX semantic parity and release gates"
 ```
 
@@ -718,7 +729,7 @@ Each job uses `actions/checkout`, `pnpm/action-setup` with 8.15.5, `actions/setu
 ```bash
 pnpm vectors:check
 pnpm test
-pnpm artifact:pack -- . ux-skill.tar
+pnpm artifact:pack -- knowledge/artifact-manifest.json ux-skill.tar
 pnpm release:check
 ```
 
@@ -732,7 +743,7 @@ Run twice from separately extracted source archives:
 corepack enable
 pnpm install --frozen-lockfile
 pnpm test
-pnpm artifact:pack -- . ux-skill.tar
+pnpm artifact:pack -- knowledge/artifact-manifest.json ux-skill.tar
 shasum -a 256 ux-skill.tar
 ```
 
@@ -755,4 +766,4 @@ The issue body must contain the implementation commit, artifact SHA-256, exact f
 - Spec coverage for the approved first vertical slice is mapped to Tasks 1-14: exact mode routing, canonical validation, authority boundary, one destructive-action rule, Claim/Risk/Recommendation, shared evaluator, HulianUI adapter, Skill, artifact, public-site closure, parity, holdout/release behavior, and clean CI.
 - Full production execution of every authority/research/effect capability remains outside this vertical slice and therefore must surface as fail-closed coverage gaps; this plan does not silently approximate it.
 - All referenced functions are introduced before downstream use; transports depend only on `evaluate()`.
-- The plan contains no placeholder steps and never permits a missing vector, missing evidence, or unavailable website to become a passing result.
+- The plan contains no placeholder steps; test fixture/process/transport helpers and the full artifact golden are named explicitly, and no missing vector, evidence, or unavailable website can become a passing result.
