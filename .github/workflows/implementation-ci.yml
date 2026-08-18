@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  lockfile-bootstrap:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +20,7 @@ jobs:
         with:
           version: 8.15.5
           run_install: false
-      - run: pnpm install --lockfile-only
-      - name: Emit generated lockfile for remote-only completion
-        run: node -e "const fs=require('node:fs'); console.log('LOCKFILE_BASE64='+fs.readFileSync('pnpm-lock.yaml').toString('base64'))"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vectors:check
+      - run: pnpm test
+      - run: pnpm baseline:red
