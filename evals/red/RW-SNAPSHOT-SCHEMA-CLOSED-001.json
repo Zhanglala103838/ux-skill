@@ -1,0 +1,1 @@
+{"vector_id":"RW-SNAPSHOT-SCHEMA-CLOSED-001","behavior_version":"0.1.0","expected_normalized_errors":[{"code":"REQUIRED_MISSING","instance_pointer":"/headers"},{"code":"ADDITIONAL_PROPERTY","instance_pointer":"/note"}],"expected_release":"no_release","frozen":true}

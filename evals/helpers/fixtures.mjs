@@ -1,0 +1,2 @@
+const freeze=(value)=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+export const fixtureWithRedirectHop=(overrides={})=>freeze({sequence:0,status:301,url:'https://example.test/start',location:'https://example.test/final',header_digest:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',content_addressed_header_artifact_locator:'cas/headers/a',...overrides});
