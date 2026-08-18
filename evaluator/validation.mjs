@@ -71,6 +71,25 @@ const discriminatorErrors=(node,pointer='')=>{
  if(node.op==='not'&&node.child)out.push(...discriminatorErrors(node.child,pointer+'/child'));
  return out;
 };
+const astBranchFields={
+ literal:{required:['value'],allowed:['node_id','op','value']},
+ exists:{required:['path'],allowed:['node_id','op','path']},
+ eq:{required:['path','value'],allowed:['node_id','op','path','value']},
+ in:{required:['path','value'],allowed:['node_id','op','path','value']},
+ compare:{required:['path','operator','value'],allowed:['node_id','op','path','operator','value']},
+ all:{required:['children'],allowed:['node_id','op','children']},
+ any:{required:['children'],allowed:['node_id','op','children']},
+ not:{required:['child'],allowed:['node_id','op','child']},
+ builtin:{required:['invariant_id','params'],allowed:['node_id','op','invariant_id','params']}
+};
+const selectedBranchErrors=(node,pointer='')=>{
+ const spec=astBranchFields[node.op],out=[];if(!spec)return out;
+ for(const field of spec.required)if(!Object.hasOwn(node,field))out.push(error('schema','REQUIRED_MISSING',pointer+'/'+field,'AstNode',{missingProperty:field}));
+ for(const field of Object.keys(node))if(!spec.allowed.includes(field))out.push(error('schema','ADDITIONAL_PROPERTY',pointer+'/'+pointerToken(field),'AstNode',{additionalProperty:field}));
+ if((node.op==='all'||node.op==='any')&&Array.isArray(node.children))node.children.forEach((child,index)=>out.push(...selectedBranchErrors(child,pointer+'/children/'+index)));
+ if(node.op==='not'&&node.child&&typeof node.child==='object')out.push(...selectedBranchErrors(node.child,pointer+'/child'));
+ return out;
+};
 const schemaValidate=(schemaId,value)=>{
  const validate=ajv.getSchema(ids[schemaId]);
  if(!validate)return[error('schema','INVARIANT_SCHEMA_ID_UNKNOWN','',schemaId,{schemaId})];
@@ -78,8 +97,12 @@ const schemaValidate=(schemaId,value)=>{
  if(tagged.length)return tagged;
  validate(value);
  const out=(validate.errors||[]).map((raw)=>ajvError(schemaId,raw));
+ if(schemaId==='AstNode')out.push(...selectedBranchErrors(value));
  if(schemaId==='Rule'&&value&&typeof value==='object'){
-  for(const field of ['applicability','exclusion','precondition','check'])if(value[field])out.push(...discriminatorErrors(value[field],'/'+field));
+  for(const field of ['applicability','exclusion','precondition','check'])if(value[field]){
+   out.push(...discriminatorErrors(value[field],'/'+field));
+   out.push(...selectedBranchErrors(value[field],'/'+field));
+  }
  }
  return out;
 };
