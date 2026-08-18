@@ -94,58 +94,31 @@ const normalizeAjvErrors=(schemaId,rawErrors)=>{
  return out;
 };
 
-const astOps=new Set(['literal','exists','eq','in','compare','all','any','not','builtin']);
-const astBranches=Object.freeze({
- literal:{required:['value'],allowed:['node_id','op','value']},
- exists:{required:['path'],allowed:['node_id','op','path']},
- eq:{required:['path','value'],allowed:['node_id','op','path','value']},
- in:{required:['path','value'],allowed:['node_id','op','path','value']},
- compare:{required:['path','operator','value'],allowed:['node_id','op','path','operator','value']},
- all:{required:['children'],allowed:['node_id','op','children']},
- any:{required:['children'],allowed:['node_id','op','children']},
- not:{required:['child'],allowed:['node_id','op','child']},
- builtin:{required:['invariant_id','params'],allowed:['node_id','op','invariant_id','params']}
-});
-const typeError=(pointer,expected)=>normalizedError('schema','TYPE_MISMATCH',pointer,'AstNode',{expected});
-const scalar=(value)=>value===null||['boolean','string','number'].includes(typeof value);
+const ruleSchema=schemas.find((schema)=>schema.$id==='https://ux-skill.invalid/schemas/evaluator/rule.schema.json');
+const astBranchValidators=new Map(ruleSchema.$defs.AstNode.oneOf.map((branch,index)=>[
+ branch.properties.op.const,
+ ajv.compile({$ref:`${ruleSchema.$id}#/$defs/AstNode/oneOf/${index}`})
+]));
+const placeholderAst={node_id:'validation-placeholder',op:'literal',value:true};
 const astNodeErrors=(node,pointer='')=>{
- if(!isPlainObject(node))return[typeError(pointer,'object')];
+ if(!isPlainObject(node))return[normalizedError('schema','TYPE_MISMATCH',pointer,'AstNode',{expected:'object'})];
  if(!Object.hasOwn(node,'op'))return[normalizedError('schema','AST_OP_REQUIRED',`${pointer}/op`,'AST-v1',{missingProperty:'op'})];
- if(!astOps.has(node.op))return[normalizedError('schema','AST_OP_UNKNOWN',`${pointer}/op`,'AST-v1',{op:node.op})];
- const branch=astBranches[node.op],out=[];
- if(!Object.hasOwn(node,'node_id'))out.push(normalizedError('schema','REQUIRED_MISSING',`${pointer}/node_id`,'AstNode',{missingProperty:'node_id'}));
- else if(typeof node.node_id!=='string')out.push(typeError(`${pointer}/node_id`,'string'));
- else if(node.node_id.length===0)out.push(normalizedError('schema','FORMAT_INVALID',`${pointer}/node_id`,'AstNode',{constraint:'minLength'}));
- for(const field of branch.required)if(!Object.hasOwn(node,field))out.push(normalizedError('schema','REQUIRED_MISSING',`${pointer}/${field}`,'AstNode',{missingProperty:field}));
- for(const field of Object.keys(node))if(!branch.allowed.includes(field))out.push(normalizedError('schema','ADDITIONAL_PROPERTY',`${pointer}/${pointerToken(field)}`,'AstNode',{additionalProperty:field}));
- const has=(field)=>Object.hasOwn(node,field);
- if(node.op==='literal'&&has('value')&&typeof node.value!=='boolean')out.push(typeError(`${pointer}/value`,'boolean'));
- if(node.op==='exists'&&has('path')&&typeof node.path!=='string')out.push(typeError(`${pointer}/path`,'string'));
- if((node.op==='eq'||node.op==='in')){
-  if(has('path')&&typeof node.path!=='string')out.push(typeError(`${pointer}/path`,'string'));
-  if(has('value')&&!scalar(node.value))out.push(typeError(`${pointer}/value`,'scalar'));
+ const validate=astBranchValidators.get(node.op);
+ if(!validate)return[normalizedError('schema','AST_OP_UNKNOWN',`${pointer}/op`,'AST-v1',{op:node.op})];
+ const candidate=defensiveCopy(node),nested=[];
+ if((node.op==='all'||node.op==='any')&&Array.isArray(node.children)){
+  node.children.forEach((child,index)=>nested.push(...astNodeErrors(child,`${pointer}/children/${index}`)));
+  candidate.children=node.children.map(()=>placeholderAst);
  }
- if(node.op==='compare'){
-  if(has('path')&&typeof node.path!=='string')out.push(typeError(`${pointer}/path`,'string'));
-  if(has('operator')&&!['lt','lte','gt','gte'].includes(node.operator))out.push(normalizedError('schema','ENUM_MISMATCH',`${pointer}/operator`,'AstNode',{allowed:['lt','lte','gt','gte']}));
-  if(has('value')&&typeof node.value!=='number')out.push(typeError(`${pointer}/value`,'number'));
+ if(node.op==='not'&&Object.hasOwn(node,'child')){
+  nested.push(...astNodeErrors(node.child,`${pointer}/child`));
+  candidate.child=placeholderAst;
  }
- if(node.op==='all'||node.op==='any'){
-  if(has('children')&&!Array.isArray(node.children))out.push(typeError(`${pointer}/children`,'array'));
-  else if(Array.isArray(node.children))node.children.forEach((child,index)=>out.push(...astNodeErrors(child,`${pointer}/children/${index}`)));
- }
- if(node.op==='not'){
-  if(has('child')&&!isPlainObject(node.child))out.push(typeError(`${pointer}/child`,'object'));
-  else if(isPlainObject(node.child))out.push(...astNodeErrors(node.child,`${pointer}/child`));
- }
- if(node.op==='builtin'){
-  if(has('invariant_id')&&typeof node.invariant_id!=='string')out.push(typeError(`${pointer}/invariant_id`,'string'));
-  if(has('params')&&!isPlainObject(node.params))out.push(typeError(`${pointer}/params`,'object'));
- }
- return out;
+ validate(candidate);
+ const branchRows=normalizeAjvErrors('AstNode',(validate.errors||[]).map((raw)=>({...raw,instancePath:`${pointer}${raw.instancePath||''}`})));
+ return[...branchRows,...nested];
 };
 const ruleAstFields=['applicability','exclusion','precondition','check'];
-const placeholderAst={node_id:'validation-placeholder',op:'literal',value:true};
 
 const schemaErrors=(schemaId,value)=>{
  if(!Object.hasOwn(schemaIds,schemaId))return[normalizedError('schema','INVARIANT_SCHEMA_ID_UNKNOWN','','SchemaRegistry-v1',{schema_id:schemaId})];
@@ -169,24 +142,53 @@ const collectionInvariant=(schemaId)=>schemaId==='EvaluationOutput'||schemaId===
 const normalizeSet=(owner,field,keyOf,keyPointer,pathPrefix,invariant,out)=>{
  const items=owner?.[field];
  if(!Array.isArray(items))return;
- const seen=new Map();let conflict=false;
+ const seen=new Map();let conflict=false,unusableKey=false;
  items.forEach((item,index)=>{
   let key;
-  try{key=keyOf(item);}catch{return;}
-  if(key===undefined)return;
-  const keyBytes=params(key),itemBytes=params(item);
+  try{key=keyOf(item);}catch{unusableKey=true;return;}
+  if(key===undefined){unusableKey=true;return;}
+  let keyBytes,itemBytes;
+  try{keyBytes=params(key);itemBytes=params(item);}catch{unusableKey=true;return;}
   if(seen.has(keyBytes)&&seen.get(keyBytes)!==itemBytes){
    const suffix=keyPointer?`/${pointerToken(keyPointer)}`:'';
    out.push(normalizedError('collections','DUPLICATE_ID_CONFLICT',`${pathPrefix}/${index}${suffix}`,invariant,{key}));
    conflict=true;
   }else if(!seen.has(keyBytes))seen.set(keyBytes,itemBytes);
  });
- if(!conflict)owner[field]=canonicalSet(items,keyOf);
+ if(!conflict&&!unusableKey)owner[field]=canonicalSet(items,keyOf);
 };
 const normalizeSequence=(items,pathPrefix,invariant,out)=>{
  if(!Array.isArray(items))return;
  items.forEach((item,index)=>{if(isPlainObject(item)&&Number.isInteger(item.sequence)&&item.sequence!==index)out.push(normalizedError('collections','INVARIANT_SEQUENCE_CONTIGUOUS',`${pathPrefix}/${index}/sequence`,invariant,{actual:item.sequence,expected:index}));});
 };
+const inputReferenceRelations=Object.freeze([
+ {
+  check(value,schemaRows,out){
+   const sourceInvalid=schemaErrorAt(schemaRows,'/scenario_profile_id');
+   const targetInvalid=schemaErrorAt(schemaRows,'/scenario_profiles')||!Array.isArray(value.scenario_profiles);
+   if(sourceInvalid||targetInvalid)out.push(normalizedError('collections','SUPPRESSED_BY_STAGE','/scenario_profile_id','ScenarioProfileRef-v1',{prerequisite_stage:'schema'}));
+   else if(typeof value.scenario_profile_id==='string'&&!value.scenario_profiles.some((row)=>row?.scenario_profile_id===value.scenario_profile_id))out.push(normalizedError('collections','REF_MISSING','/scenario_profile_id','ScenarioProfileRef-v1',{ref:value.scenario_profile_id}));
+  }
+ },
+ {
+  check(value,schemaRows,out){
+   if(!Array.isArray(value.claims))return;
+   const targetInvalid=schemaErrorAt(schemaRows,'/evidence')||!Array.isArray(value.evidence);
+   const evidenceIds=targetInvalid?new Set():new Set(value.evidence.map((row)=>row?.evidence_id));
+   value.claims.forEach((claim,claimIndex)=>{
+    if(!isPlainObject(claim))return;
+    const sourcePointer=`/claims/${claimIndex}/evidence_refs`;
+    const sourceInvalid=schemaErrorAt(schemaRows,sourcePointer)||!Array.isArray(claim.evidence_refs);
+    if(sourceInvalid||targetInvalid){
+     const invalidItems=Array.isArray(claim.evidence_refs)?claim.evidence_refs.map((_,index)=>`${sourcePointer}/${index}`).filter((pointer)=>schemaErrorAt(schemaRows,pointer)):[];
+     for(const pointer of invalidItems.length?invalidItems:[sourcePointer])out.push(normalizedError('collections','SUPPRESSED_BY_STAGE',pointer,'EvidenceRef-v1',{prerequisite_stage:'schema'}));
+     return;
+    }
+    claim.evidence_refs.forEach((refValue,refIndex)=>{if(!evidenceIds.has(refValue))out.push(normalizedError('collections','REF_MISSING',`${sourcePointer}/${refIndex}`,'EvidenceRef-v1',{ref:refValue}));});
+   });
+  }
+ }
+]);
 const normalizeEvaluationInput=(value,schemaRows,out)=>{
  if(!isPlainObject(value))return;
  const invariant='InputCollectionRegistry-v1';
@@ -194,22 +196,7 @@ const normalizeEvaluationInput=(value,schemaRows,out)=>{
  normalizeSet(value,'source_registry_refs',(item)=>item,null,'/source_registry_refs',invariant,out);
  if(Array.isArray(value.candidate_universe))value.candidate_universe.forEach((row,index)=>{if(isPlainObject(row))normalizeSet(row,'option_ids',(item)=>item,null,`/candidate_universe/${index}/option_ids`,invariant,out);});
  if(Array.isArray(value.claims))value.claims.forEach((row,index)=>{if(isPlainObject(row)&&!schemaErrorAt(schemaRows,`/claims/${index}/evidence_refs`))normalizeSet(row,'evidence_refs',(item)=>item,null,`/claims/${index}/evidence_refs`,invariant,out);});
- const scenarioInvalid=schemaErrorAt(schemaRows,'/scenario_profile_id');
- const scenarioRegistryInvalid=schemaErrorAt(schemaRows,'/scenario_profiles')||!Array.isArray(value.scenario_profiles);
- if(scenarioInvalid||scenarioRegistryInvalid)out.push(normalizedError('collections','SUPPRESSED_BY_STAGE','/scenario_profile_id','ScenarioProfileRef-v1',{prerequisite_stage:'schema'}));
- else if(typeof value.scenario_profile_id==='string'&&!value.scenario_profiles.some((row)=>row?.scenario_profile_id===value.scenario_profile_id))out.push(normalizedError('collections','REF_MISSING','/scenario_profile_id','ScenarioProfileRef-v1',{ref:value.scenario_profile_id}));
- if(!Array.isArray(value.claims))return;
- const evidenceRegistryInvalid=schemaErrorAt(schemaRows,'/evidence')||!Array.isArray(value.evidence);
- const evidenceIds=evidenceRegistryInvalid?new Set():new Set(value.evidence.map((row)=>row?.evidence_id));
- value.claims.forEach((claim,claimIndex)=>{
-  if(!isPlainObject(claim)||!Array.isArray(claim.evidence_refs))return;
-  if(evidenceRegistryInvalid){out.push(normalizedError('collections','SUPPRESSED_BY_STAGE',`/claims/${claimIndex}/evidence_refs`,'EvidenceRef-v1',{prerequisite_stage:'schema'}));return;}
-  claim.evidence_refs.forEach((refValue,refIndex)=>{
-   const refPointer=`/claims/${claimIndex}/evidence_refs/${refIndex}`;
-   if(schemaErrorAt(schemaRows,refPointer))out.push(normalizedError('collections','SUPPRESSED_BY_STAGE',refPointer,'EvidenceRef-v1',{prerequisite_stage:'schema'}));
-   else if(typeof refValue==='string'&&!evidenceIds.has(refValue))out.push(normalizedError('collections','REF_MISSING',refPointer,'EvidenceRef-v1',{ref:refValue}));
-  });
- });
+ for(const relation of inputReferenceRelations)relation.check(value,schemaRows,out);
 };
 const normalizeSnapshot=(schemaId,value,out)=>{
  if(!isPlainObject(value))return;
@@ -233,7 +220,7 @@ const normalizeGenericBundle=(schemaId,value,out)=>{
  if(!isPlainObject(value))return;
  const invariant=collectionInvariant(schemaId);
  const tables={
-  AuthorityBundle:[['authority_roots','authority_root_id'],['grants','grant_id'],['control_principal_edges','sequence'],['party_graph_proofs','proof_id'],['party_inventories','party_inventory_id'],['authorization_decisions','authorization_decision_id'],['execution_envelopes','envelope_id'],['time_authority_policies','time_authority_policy_id'],['capabilities','capability_id'],['capability_ledger_entries','capability_digest'],['invalidations','invalidation_id'],['execution_leases','execution_lease_id'],['external_effect_connectors','connector_id']],
+  AuthorityBundle:[['authority_roots','authority_root_id'],['grants','grant_id'],['control_principal_edges','control_edge_id'],['party_graph_proofs','proof_id'],['party_inventories','party_inventory_id'],['authorization_decisions','authorization_decision_id'],['execution_envelopes','envelope_id'],['time_authority_policies','time_authority_policy_id'],['capabilities','capability_id'],['capability_ledger_entries','capability_digest'],['invalidations','invalidation_id'],['execution_leases','execution_lease_id'],['external_effect_connectors','connector_id']],
   ClaimsBundle:[['sources','source_id'],['fragments','fragment_id'],['proposition_assessments','assessment_id'],['policy_adoptions','adoption_id'],['claims','claim_id'],['claim_assessments','claim_assessment_id'],['claim_assessment_policies','policy_id']],
   RealWorldRegressionCase:[['hypotheses','hypothesis_id'],['measures','measure_id'],['negative_controls','control_id']]
  };
