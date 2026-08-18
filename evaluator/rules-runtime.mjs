@@ -65,6 +65,7 @@ export function evaluateRule(rule,input,toolResults){
   try{validateRegistry(safeRule);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   let dependency_trace;try{dependency_trace=dependencyTrace(safeRule,safeTools);}catch{return errorRow(safeRule,'invalid_input','INVALID_INPUT');}
   const decision=dependencyDecision(dependency_trace);if(decision){const dependency_id=decision.status?dependency_trace.find(item=>item.status===decision.status)?.dependency_id??null:null;return row(safeRule,decision.terminal,decision.outcome,decision.reason_code,[],dependency_trace,decision.outcome==='evaluation_error'?{code:'RULE_EVALUATION_ERROR',instance_pointer:'/required_dependencies',dependency_id}:null);}
+  if(safeRule.required_input_pointers.some(pointer=>at(safeInput,pointer)===MISSING))return row(safeRule,'completed','not_run','REQUIRED_INPUT_PARTIAL',[],dependency_trace);
   const trace=[];let app,exclusion;try{app=ast(safeRule.applicability,safeInput,trace);exclusion=ast(safeRule.exclusion,safeInput,trace);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   const notExclusion=exclusion==='T'?'F':exclusion==='F'?'T':exclusion,effective=combined(app,notExclusion,ALL,'T');
   if(effective==='E')return row(safeRule,'completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR',trace,dependency_trace,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/applicability',dependency_id:null});
@@ -92,5 +93,58 @@ function fingerprint(rowValue,finding_type,emission_reason_code){
  const full=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(value)).digest('hex');return{fingerprint:value,fingerprint_full_digest:full,finding_id:`f_${full.slice(0,32)}`};
 }
 export function emitFinding(ruleEvaluation){try{const value=snapshot(ruleEvaluation);if(!object(value)||!OUTCOMES.has(value.outcome)||typeof value.release_critical!=='boolean')return null;const [kind,emission_reason_code]=EMISSION[value.outcome][String(value.release_critical)];if(kind===null)return null;const finding_type=kind==='rule'?value.finding_type:kind;if(typeof finding_type!=='string'||finding_type.length===0)return null;return{...fingerprint(value,finding_type,emission_reason_code),finding_type,emission_reason_code,rule_id:value.rule_id,rule_version:value.rule_version};}catch{return null;}}
-const registered=(value)=>{const code=typeof value?.reason_code==='string'?value.reason_code:typeof value?.emission_reason_code==='string'?value.emission_reason_code:typeof value?.code==='string'?value.code:null;return code===null||REASONS.has(code);};
-export function reduceRunStatus(parts){try{const values=snapshot(parts);if(!Array.isArray(values)||values.some(value=>!object(value)||!registered(value)))return'failed';if(values.some(value=>value.terminal==='invalid_input'||value.terminal==='invalid_rule'))return'failed';if(values.some(value=>value.outcome==='evaluation_error'&&value.release_critical===true))return'failed';if(values.some(value=>value.finding_type==='block'))return'completed_blocked';if(values.some(value=>value.finding_type==='escalation'))return'completed_escalated';if(values.some(value=>['partial','unknown','not_run','evaluation_error'].includes(value.outcome)))return'completed_with_gaps';return'completed_clear';}catch{return'failed';}}
+const RULE_PAIRS=Object.freeze({
+ invalid_input:Object.freeze({evaluation_error:new Set(['INVALID_INPUT'])}),
+ invalid_rule:Object.freeze({evaluation_error:new Set(['INVALID_RULE'])}),
+ tool_failed:Object.freeze({evaluation_error:new Set(['REQUIRED_TOOL_INVALID_REQUEST','REQUIRED_TOOL_AUTH_ERROR','REQUIRED_TOOL_INCOMPATIBLE_SOURCE','REQUIRED_TOOL_TIMEOUT','REQUIRED_TOOL_SERVER_ERROR'])}),
+ cancelled:Object.freeze({not_run:new Set(['REQUIRED_TOOL_CANCELLED'])}),
+ completed:Object.freeze({
+  pass:new Set(['CHECK_PASS']),
+  fail:new Set(['CHECK_FAILED']),
+  partial:new Set(['CHECK_PARTIAL']),
+  not_run:new Set(['REQUIRED_INPUT_PARTIAL','REQUIRED_INPUT_NOT_FOUND','PRECONDITION_FALSE','PRECONDITION_UNKNOWN']),
+  not_applicable:new Set(['APPLICABILITY_FALSE','EXCLUSION_TRUE']),
+  unknown:new Set(['APPLICABILITY_UNKNOWN','EXCLUSION_UNKNOWN','CHECK_UNKNOWN']),
+  evaluation_error:new Set(['APPLICABILITY_EVALUATION_ERROR','PRECONDITION_EVALUATION_ERROR','CHECK_EVALUATION_ERROR'])
+ })
+});
+const FINDING_PAIRS=Object.freeze({
+ RULE_CHECK_FAILED:null,
+ RULE_PARTIAL:'unknown',
+ RELEASE_CRITICAL_PARTIAL:'escalation',
+ RULE_NOT_RUN:'unknown',
+ RELEASE_CRITICAL_NOT_RUN:'escalation',
+ RULE_UNKNOWN:'unknown',
+ RELEASE_CRITICAL_UNKNOWN:'escalation',
+ RELEASE_CRITICAL_EVALUATION_ERROR:'escalation'
+});
+function validRulePart(value){
+ if(typeof value.terminal!=='string'||typeof value.outcome!=='string'||typeof value.reason_code!=='string'||typeof value.release_critical!=='boolean')return false;
+ const outcomes=Object.hasOwn(RULE_PAIRS,value.terminal)?RULE_PAIRS[value.terminal]:null;
+ return outcomes!==null&&Object.hasOwn(outcomes,value.outcome)&&outcomes[value.outcome].has(value.reason_code);
+}
+function validFindingPart(value){
+ if(typeof value.finding_type!=='string'||value.finding_type.length===0||typeof value.emission_reason_code!=='string'||!Object.hasOwn(FINDING_PAIRS,value.emission_reason_code))return false;
+ const requiredType=FINDING_PAIRS[value.emission_reason_code];
+ return requiredType===null||value.finding_type===requiredType;
+}
+function validRunIssuePart(value){return typeof value.code==='string'&&REASONS.has(value.code)&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||typeof value.dependency_id==='string');}
+function validRunPart(value){
+ if(!object(value))return false;
+ if(Object.hasOwn(value,'terminal')||Object.hasOwn(value,'outcome')||Object.hasOwn(value,'reason_code')||Object.hasOwn(value,'release_critical'))return validRulePart(value);
+ if(Object.hasOwn(value,'finding_type')||Object.hasOwn(value,'emission_reason_code'))return validFindingPart(value);
+ if(Object.hasOwn(value,'code')||Object.hasOwn(value,'instance_pointer')||Object.hasOwn(value,'dependency_id'))return validRunIssuePart(value);
+ return false;
+}
+export function reduceRunStatus(parts){
+ try{
+  const values=snapshot(parts);
+  if(!Array.isArray(values)||values.some(value=>!validRunPart(value)))return'failed';
+  if(values.some(value=>value.terminal==='invalid_input'||value.terminal==='invalid_rule'))return'failed';
+  if(values.some(value=>value.outcome==='evaluation_error'&&value.release_critical===true))return'failed';
+  if(values.some(value=>value.finding_type==='block'))return'completed_blocked';
+  if(values.some(value=>value.finding_type==='escalation'))return'completed_escalated';
+  if(values.some(value=>value.outcome==='partial'||value.outcome==='unknown'||value.outcome==='not_run'||value.outcome==='evaluation_error'))return'completed_with_gaps';
+  return'completed_clear';
+ }catch{return'failed';}
+}
