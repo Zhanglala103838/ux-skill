@@ -1,4 +1,4 @@
-import { canonicalize } from 'json-canonicalize';
+import { canonicalize } from 'json-canonicalize/esm2015/index.js';
 
 const fail = (code) => {
   const error = new TypeError(code);
