@@ -1,0 +1,402 @@
+[
+  {
+    "vector_id": "AST-APP-FE-001",
+    "expected_contract": "applicability=F、exclusion=E，RuleEvaluation=evaluation_error，RunStatus=failed"
+  },
+  {
+    "vector_id": "AST-OBJECT-EQ-001",
+    "expected_contract": "object 参与 eq，normalized error=TYPE_MISMATCH，rule 不执行"
+  },
+  {
+    "vector_id": "FIND-INC-001",
+    "expected_contract": "release-critical unknown 发射 escalation/RELEASE_CRITICAL_UNKNOWN；noncritical unknown 发射 unknown/RULE_UNKNOWN"
+  },
+  {
+    "vector_id": "EMISSION-REASON-001",
+    "expected_contract": "每个 Finding 仅使用第 10 节表中唯一 reason_code；不匹配即 FINDING_REASON_INVALID"
+  },
+  {
+    "vector_id": "BUNDLE-DUP-001",
+    "expected_contract": "同 id 不同 JCS → DUPLICATE_ID_CONFLICT"
+  },
+  {
+    "vector_id": "ERROR-UNION-001",
+    "expected_contract": "同时触发 required/type/semantic 三类错误，仅输出规范化集合并按 ErrorCollectionRegistry 排序"
+  },
+  {
+    "vector_id": "OUTPUT-ORDER-001",
+    "expected_contract": "输入排列与工具完成顺序改变，所有输出 collection JCS 与 digest 不变"
+  },
+  {
+    "vector_id": "STATE-DEP-TIMEOUT-001",
+    "expected_contract": "依赖 rule=evaluation_error+escalation，独立 rule=pass，RunStatus=failed"
+  },
+  {
+    "vector_id": "TOOL-PARTIAL-001",
+    "expected_contract": "partial tool result 映射为第 11 节唯一 terminal state；依赖规则按表映射，不由 adapter 自选"
+  },
+  {
+    "vector_id": "TOOL-MULTI-CANCEL-TIMEOUT-001",
+    "expected_contract": "同一 rule 的 required dependencies 同时 cancelled+timeout → tool_failed/evaluation_error/REQUIRED_TOOL_TIMEOUT"
+  },
+  {
+    "vector_id": "ACT-IMPERSONATE-001",
+    "expected_contract": "ActingEdge basis 已证实不存在 → block"
+  },
+  {
+    "vector_id": "ACT-BASIS-U-001",
+    "expected_contract": "ActingEdge basis validity unknown → escalation"
+  },
+  {
+    "vector_id": "ACT-DISJOINT-001",
+    "expected_contract": "两条各自有效但端点不连续的 ActingEdge → block"
+  },
+  {
+    "vector_id": "AUTH-ROOT-001",
+    "expected_contract": "自签或已证实未在 AuthorityRootRegistry 的根 → AUTHORITY_ROOT_UNTRUSTED + block"
+  },
+  {
+    "vector_id": "CONTROL-CLOSURE-001",
+    "expected_contract": "shared final control principal → not_separated + block"
+  },
+  {
+    "vector_id": "SOD-UNKNOWN-001",
+    "expected_contract": "required SoD 的 control closure 断边/环/不完整 → escalation，不按风险改变"
+  },
+  {
+    "vector_id": "TENANT-JOIN-001",
+    "expected_contract": "required target/controller scope 已证实任一不覆盖 → block"
+  },
+  {
+    "vector_id": "TENANT-UNKNOWN-001",
+    "expected_contract": "任一 required tenant binding/closure/conflict unknown → escalation，不按 impact 分叉"
+  },
+  {
+    "vector_id": "GRANT-PARENT-REVOKED-001",
+    "expected_contract": "ancestor revoked → block"
+  },
+  {
+    "vector_id": "LINEAGE-TOMBSTONE-001",
+    "expected_contract": "invalidation tombstone 后旧 lineage 即使重放 valid grant 也不得复活"
+  },
+  {
+    "vector_id": "ENVELOPE-H1-H2-001",
+    "expected_contract": "approval/authorization/effect digest 不同 → no effect + escalation"
+  },
+  {
+    "vector_id": "ENVELOPE-DIGEST-001",
+    "expected_contract": "固定 body 的 ExecutionEnvelope id 必须等于第 5 节公式 golden digest"
+  },
+  {
+    "vector_id": "APPROVAL-RACE-001",
+    "expected_contract": "两 worker 仅一笔 atomic consume/effect"
+  },
+  {
+    "vector_id": "APPROVAL-DUP-VOTE-001",
+    "expected_contract": "同一 approver 的两条 Decision 在 quorum=2 时只计一票 → block"
+  },
+  {
+    "vector_id": "SOD-COMMIT-CHANGE-001",
+    "expected_contract": "evaluation 时 separated、commit 前 control closure 变为 shared principal → commit 重算 not_separated + no effect/block"
+  },
+  {
+    "vector_id": "PARTY-COMMIT-CHANGE-001",
+    "expected_contract": "commit 前 party/effect graph 新增 affected party → 旧 inventory invalidated，重新派生 incomplete/unknown + no effect/escalation"
+  },
+  {
+    "vector_id": "PARTY-COMPLETENESS-PROOF-001",
+    "expected_contract": "finite graph snapshot 无 verified completeness proof → PartyInventory=unknown + escalation"
+  },
+  {
+    "vector_id": "EFFECT-ACK-LOST-001",
+    "expected_contract": "receiver 已执行但 ack 丢失；fresh recover capability 对同 envelope_digest 查询/重发不重复 effect；无法证明则 unknown_effect + escalation"
+  },
+  {
+    "vector_id": "EFFECT-LEASE-NOT-TIME-001",
+    "expected_contract": "lease=[10:00,10:20) 不能提供 current time；commit 必须读取 policy-selected time authority，读不到 → no effect/escalation"
+  },
+  {
+    "vector_id": "EFFECT-TIME-AUTH-CONFLICT-001",
+    "expected_contract": "两个可信 time readings 但不符合 envelope time_authority_policy 唯一选择 → no effect/escalation"
+  },
+  {
+    "vector_id": "RESEARCH-RECEIVER-WITHDRAW-001",
+    "expected_contract": "outbox 后 withdrawal epoch 增加；receiver 原子 fence 拒绝旧 research_guard → no external intervention"
+  },
+  {
+    "vector_id": "CAP-REPLAY-001",
+    "expected_contract": "channel/session/nonce 变化 → block"
+  },
+  {
+    "vector_id": "CAP-FORGE-001",
+    "expected_contract": "payload 可解析但签名/MAC 错误或 ledger 不存在 → block"
+  },
+  {
+    "vector_id": "CAP-USE-PURPOSE-001",
+    "expected_contract": "authorization_purpose=account_deletion 与 capability_use=execute/recover 分字段进入 digest，不发生同名冲突"
+  },
+  {
+    "vector_id": "PARTY-UNKNOWN-001",
+    "expected_contract": "high impact + inventory unknown → escalation"
+  },
+  {
+    "vector_id": "PARTY-MEDIUM-UNKNOWN-001",
+    "expected_contract": "medium human effect + derived PartyInventory 不完整 → escalation"
+  },
+  {
+    "vector_id": "HARD-UNSAT-001",
+    "expected_contract": "非法律/权利/高风险的 mandatory fail 导致 zero feasible → no selection + 全部 minimal unsat cores + block"
+  },
+  {
+    "vector_id": "HARD-UNSAT-RIGHTS-001",
+    "expected_contract": "法律、权利或高风险冲突导致 zero feasible → no selection + 全部 minimal unsat cores + escalation"
+  },
+  {
+    "vector_id": "HARD-U-001",
+    "expected_contract": "任一 hard constraint=U → candidate 不进入 feasible set + escalation"
+  },
+  {
+    "vector_id": "HARD-FU-MIXED-001",
+    "expected_contract": "zero feasible 且 candidate 集合含 F 与 U、无 E → 全局 U 分支 + escalation"
+  },
+  {
+    "vector_id": "HARD-FEASIBLE-U-001",
+    "expected_contract": "至少一个 feasible 且另一个 candidate=U → no final selection + escalation"
+  },
+  {
+    "vector_id": "SOFT-TIE-001",
+    "expected_contract": "PartyInventory/authority 完整且未触及 floor 的 Pareto tie → SelectionDecision=undecided + ReleaseRecommendation=undecided + ask_decision_owner"
+  },
+  {
+    "vector_id": "SOFT-TIE-AUTH-U-001",
+    "expected_contract": "PartyInventory/authority 不完整的 Pareto tie → SelectionDecision=undecided + ReleaseRecommendation=escalation"
+  },
+  {
+    "vector_id": "SOURCE-PROP-001",
+    "expected_contract": "Fragment proposition 没有 verified FragmentPropositionAssessment → 不得形成有效 Adoption/authority"
+  },
+  {
+    "vector_id": "TIME-EFFECTIVE-001",
+    "expected_contract": "同一 evaluation_effective_at 驱动纯评价中的 source/adoption/grant/consent/capability；混用 wall clock → TIME_BASIS_MISMATCH"
+  },
+  {
+    "vector_id": "EFFECT-TIME-EXPIRY-001",
+    "expected_contract": "evaluation 10:00、授权 10:05 过期、trusted commit_effective_at=10:10 → no effect + block"
+  },
+  {
+    "vector_id": "CLAIM-FAKE-RCT-001",
+    "expected_contract": "claimed randomized 但 execution mismatch → ClaimAssessment.status=unresolved"
+  },
+  {
+    "vector_id": "CLAIM-DOWNGRADE-001",
+    "expected_contract": "causal/predictive claim 未满足对应门槛 → 按第 8 节唯一降级，不保留原强度"
+  },
+  {
+    "vector_id": "GRADE-POLICY-001",
+    "expected_contract": "固定 assessments 只得到一个 EvidenceGrade；禁止 associational/descriptive 二选一文本"
+  },
+  {
+    "vector_id": "EVIDENCE-DUP-001",
+    "expected_contract": "same dependency cluster 不增加 grade"
+  },
+  {
+    "vector_id": "SIGNAL-MATERIAL-PROHIBITED-001",
+    "expected_contract": "sensitive+material reliance+verified applicable prohibition/mandatory fail → block/completed_blocked"
+  },
+  {
+    "vector_id": "SIGNAL-MATERIAL-NO-PROHIBITION-001",
+    "expected_contract": "sensitive+material reliance 且 prohibition verified false 或 applicability unknown → escalation/completed_escalated"
+  },
+  {
+    "vector_id": "SIGNAL-DEFAULT-001",
+    "expected_contract": "signal 缺少 registry row 时采用第 8 节默认矩阵，不能 adapter 自定义"
+  },
+  {
+    "vector_id": "REC-WEAK-001",
+    "expected_contract": "insufficient grade → ResearchQuestion only"
+  },
+  {
+    "vector_id": "REC-HIGH-PREDICTIVE-001",
+    "expected_contract": "high predictive、authority neutral、risk clear、reversible → conditional_advice"
+  },
+  {
+    "vector_id": "REC-HIGH-CAUSAL-001",
+    "expected_contract": "high causal、authority neutral、risk clear、reversible → strong_advice"
+  },
+  {
+    "vector_id": "REC-HIGH-NORMATIVE-001",
+    "expected_contract": "high normative+assessed predicate 精确蕴含 exact requires action、risk clear、reversible → required"
+  },
+  {
+    "vector_id": "REC-HIGH-NORMATIVE-NONENTAIL-001",
+    "expected_contract": "high normative 但不精确蕴含 action、其余 clear → conditional_advice"
+  },
+  {
+    "vector_id": "REC-REDUCER-001",
+    "expected_contract": "多个 ceiling 同时命中时只取 strength ordering 的 min；hard block 产生 no recommendation"
+  },
+  {
+    "vector_id": "REC-UNRESOLVED-LIMITED-001",
+    "expected_contract": "conclusion=unresolved+overall=limited → evidence 表首行 none"
+  },
+  {
+    "vector_id": "REC-REVERSIBILITY-U-MANDATORY-001",
+    "expected_contract": "reversibility=unknown+exact mandatory action → reversibility 表首个命中 explore"
+  },
+  {
+    "vector_id": "RELEASE-NO-CONDITION-001",
+    "expected_contract": "所有 gate clear 且 ResidualConditionSet 空 → allow"
+  },
+  {
+    "vector_id": "RELEASE-VERIFIED-CONDITION-001",
+    "expected_contract": "所有 gate clear 且非空 conditions 全 verified_executable → allow_with_conditions"
+  },
+  {
+    "vector_id": "RELEASE-SOFT-TIE-001",
+    "expected_contract": "gates clear 但 soft selection=undecided → undecided+ask_decision_owner"
+  },
+  {
+    "vector_id": "HOLDOUT-MISSING-001",
+    "expected_contract": "current generation holdout missing/failed/exhausted/contaminated → no_release"
+  },
+  {
+    "vector_id": "RESEARCH-NO-AUTH-001",
+    "expected_contract": "complete low-risk protocol but no authorization → blocked"
+  },
+  {
+    "vector_id": "RESEARCH-MINOR-ASSENT-001",
+    "expected_contract": "requirement=assent_and_representative、仅 representative consent valid、无 waiver → blocked"
+  },
+  {
+    "vector_id": "RESEARCH-WITHDRAW-RACE-001",
+    "expected_contract": "withdrawal 与 effect 并发；research_guard_digest 原子复验失败 → no effect"
+  },
+  {
+    "vector_id": "INQUIRY-NO-AUTH-001",
+    "expected_contract": "InquiryDraft 文本无论措辞多肯定都不能进入 Finding、Recommendation、authorization 或 release gate"
+  },
+  {
+    "vector_id": "PROJ-VOLATILE-001",
+    "expected_contract": "transport time/message excluded；business expiry retained"
+  },
+  {
+    "vector_id": "PROJECTION-TRACE-001",
+    "expected_contract": "SemanticProjection 缺 registry 指定的 trace 关系 → PROJECTION_TRACE_INCOMPLETE"
+  },
+  {
+    "vector_id": "FINDING-FINGERPRINT-001",
+    "expected_contract": "第 10 节固定 object 的 JCS/full digest/finding_id 与 golden 完全一致"
+  },
+  {
+    "vector_id": "SET-UTF8-ORDER-001",
+    "expected_contract": "keys U+E000 与 U+10000 按 UTF8(JCS(key)) unsigned bytes 排序，host UTF-16 order 不得进入输出"
+  },
+  {
+    "vector_id": "EVALUATOR-DIGEST-001",
+    "expected_contract": "固定 evaluator logical files/manifests 只得到第 12 节 evaluator_digest golden"
+  },
+  {
+    "vector_id": "VALID-UNICODE-001",
+    "expected_contract": "NFC 通过，非 NFC → UNICODE_NOT_NFC"
+  },
+  {
+    "vector_id": "PATH-DOUBLE-SLASH-001",
+    "expected_contract": "double slash、dot segment、反斜杠或 percent-encoded separator → PATH_INVALID"
+  },
+  {
+    "vector_id": "ADAPTER-TRANSPORT-001",
+    "expected_contract": "canonical evidence equal，audit sidecar different"
+  },
+  {
+    "vector_id": "ADAPTER-HULIAN-ALERT-001",
+    "expected_contract": "固定 HulianUI JCS row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims"
+  },
+  {
+    "vector_id": "ADAPTER-EXPORTS-ORDER-001",
+    "expected_contract": "provider exports 逆序输入 → canonical-set<string> 排序/去重后的唯一 bytes"
+  },
+  {
+    "vector_id": "ADAPTER-MISMATCH-PARTIAL-001",
+    "expected_contract": "artifact mismatch+stale=true 同时存在 → first-match incompatible_source/tool_failed"
+  },
+  {
+    "vector_id": "ADAPTER-STALE-FALSE-001",
+    "expected_contract": "source match+stale=false+其他完整 → success，不因字段存在判 partial"
+  },
+  {
+    "vector_id": "SEMANTIC-MEMBER-DIGEST-001",
+    "expected_contract": "固定 projected member 的 before/after digest 只用 semantic-member domain golden"
+  },
+  {
+    "vector_id": "REGRESSION-DELTA-DERIVED-001",
+    "expected_contract": "移除一个 Finding 时 run_status/input_digest/semantic_digest 按第 18.5 derived closure 复算，oracle 不报未声明差异"
+  },
+  {
+    "vector_id": "REGRESSION-BUNDLE-DRIFT-001",
+    "expected_contract": "未在 bundle_delta_allowlist 的 adapter evidence 变化 → REGRESSION_UNEXPLAINED，不能被 input_digest derived closure 吞掉"
+  },
+  {
+    "vector_id": "REGRESSION-NEGCONTROL-001",
+    "expected_contract": "negative control 缺失 → gate=missing/not_increase；超阈值 → gate=failed、identification rejected、decision_required"
+  },
+  {
+    "vector_id": "REGRESSION-NEGCONTROL-ABS-001",
+    "expected_contract": "observed_delta=-0.1、transform=absolute、upper=0.05 inclusive → gate=failed"
+  },
+  {
+    "vector_id": "RW-BRAND-NOT-AUTHORITY-001",
+    "expected_contract": "仅给出“Apple 是知名品牌/设计标杆”，没有 case evidence → 不生成 SourceAssertion、ClaimAssessment 提升、正向 Finding 或 Recommendation"
+  },
+  {
+    "vector_id": "RW-SNAPSHOT-DRIFT-001",
+    "expected_contract": "SnapshotClosureManifest 任一 captured response header/body/observation bytes digest 不符，或 replay 出现未登记 network event → target_unavailable+RunIssue+no_release；不得改读 live page、沿用旧结论或把漂移判作 UX 回归"
+  },
+  {
+    "vector_id": "RW-SNAPSHOT-HEADERS-001",
+    "expected_contract": "固定 HTML/script bodies；capture header 含 CSP script-src 'none'；replay 必须从 header CAS 恢复同一 CanonicalResponseHeaders，遗漏/改写 CSP → target_unavailable+no_release，不能产生第二个 DOM/Finding"
+  },
+  {
+    "vector_id": "RW-REPLAY-PROFILE-001",
+    "expected_contract": "同一 Apple step 的 desktop keyboard/no-preference、desktop keyboard/reduce、mobile touch/no-preference 三个 exact replay_profile_id 不可由 ordinal 或执行顺序互换；缺失/错引 → REF_MISSING 或 INVARIANT_REPLAY_PROFILE_COVERAGE"
+  },
+  {
+    "vector_id": "RW-SNAPSHOT-SCHEMA-CLOSED-001",
+    "expected_contract": "redirect hop 或 observation item 加 note 属性 → 唯一 normalized error=ADDITIONAL_PROPERTY；CanonicalResponseHeaders={} → 唯一 normalized error=REQUIRED_MISSING(/headers)；未知/缺失字段不得进入 closure digest"
+  },
+  {
+    "vector_id": "RW-BLACKBOX-EFFECT-001",
+    "expected_contract": "task_script 试图登录、加入购物车、提交表单、调用真实 API 或进入 checkout → prohibited_effect+no effect+completed_blocked"
+  },
+  {
+    "vector_id": "RW-ROTATION-SELECT-001",
+    "expected_contract": "exact ids 按 UTF8(JCS(id)) 排序为 [RW-DOCS-STRIPE-001,RW-WEBSITE-IKEA-001]；generation_sequence=0/1 唯一选择 STRIPE/IKEA，输入次序不改变选择"
+  },
+  {
+    "vector_id": "RW-ROTATION-DIGEST-001",
+    "expected_contract": "generation_commitment=64 个 0、generation_id=gen-000、sequence=0、portfolio=real-world-portfolio-v1 的第 18.3 节正规形 preimage 唯一产生 manifest_digest=e01f97c0db9a39b9bd3f61c187ce9892a962a953328eb3cdac67658974a3bfcd"
+  },
+  {
+    "vector_id": "RW-ROTATION-SKIP-001",
+    "expected_contract": "current generation 未运行预提交 selected_case_id、运行非所选 case 或所选目标 unavailable → HoldoutReleaseGate=no_release，不得临时替换"
+  },
+  {
+    "vector_id": "RW-CROSS-SITE-RANK-001",
+    "expected_contract": "Apple/IKEA/Stripe 的异构任务 measure 不可聚合为跨站总分、排行榜或“谁的 UX 最好”；只允许 within-case baseline/candidate delta"
+  },
+  {
+    "vector_id": "SCENARIO-FAMILY-REGISTRY-001",
+    "expected_contract": "第 4 节 exact 8 ids 的 JCS preimage 唯一产生 registry digest=b764d922bd94ceb6869cd60984261acae344cd0a5e21c1cc9970cff710e417d0；缺失、额外或自由文本 alias 均 invalid"
+  },
+  {
+    "vector_id": "KNOWLEDGE-ONEFILE-001",
+    "expected_contract": "preimage=[{\"file_digest\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"path\":\"a\"}]；knowledge digest=d9262071a41bf6991251f5cf572e8ba14d73b3ef7cc023b15887899c1d9b9c9a"
+  },
+  {
+    "vector_id": "DELTA-REPLACE-NORMAL-001",
+    "expected_contract": "同 locator d0→d1 只编码一个 replace；remove+add 非正规输入"
+  },
+  {
+    "vector_id": "ART-ONEFILE-001",
+    "expected_contract": "exact uncompressed ustar raw bytes/base64/length/digest"
+  }
+]

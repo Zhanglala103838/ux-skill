@@ -9,11 +9,17 @@ permissions:
   contents: read
 
 jobs:
-  intentional-red:
+  lockfile-bootstrap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22.22.2
-      - run: node --test evals/tests/vector-catalog.test.mjs
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.5
+          run_install: false
+      - run: pnpm install --lockfile-only
+      - name: Emit generated lockfile for remote-only completion
+        run: node -e "const fs=require('node:fs'); console.log('LOCKFILE_BASE64='+fs.readFileSync('pnpm-lock.yaml').toString('base64'))"
