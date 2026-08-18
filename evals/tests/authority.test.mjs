@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
+import {createHash,generateKeyPairSync,sign} from 'node:crypto';
 import {canonicalSet,jcsBytes} from '../../evaluator/canonical.mjs';
 import {evaluateAuthority,derivePartyInventory,solveCandidates} from '../../evaluator/authority.mjs';
 
@@ -210,6 +210,21 @@ test("acting edge scope time and caller verified proof are fail closed",()=>{
 const dimension=(party_or_cohort_id,criterion,tier,value,floor_result="T")=>({party_or_cohort_id,criterion,tier,value,floor_result});
 const solution=(solution_id,soft_dimensions,hard_constraints=[{id:"hard",result:"T"}])=>({solution_id,hard_constraints,soft_dimensions});
 const gateDigest=(domain,value)=>createHash("sha256").update(domain,"utf8").update(jcsBytes(value)).digest("hex");
+const provenanceSignatureDomain='ux-skill:evaluator-gate-binding-signature:v1';
+const provenanceKeyPair=generateKeyPairSync('ed25519');
+const provenanceSignatures=new Map();
+const recordProvenanceSignature=(unsignedBinding)=>{
+ const signedBody={...unsignedBinding,issuer_id:'ux-skill-fixture-evaluator-v1',key_version:'1',algorithm:'Ed25519'};
+ const bodyBytes=jcsBytes(signedBody);
+ const bodyDigest=createHash('sha256').update(bodyBytes).digest('hex');
+ const signingBytes=Buffer.concat([Buffer.from(provenanceSignatureDomain,'utf8'),bodyBytes]);
+ provenanceSignatures.set(bodyDigest,sign(null,signingBytes,provenanceKeyPair.privateKey).toString('base64'));
+};
+process.on('exit',()=>{
+ const manifest={algorithm:'Ed25519',signature_domain:provenanceSignatureDomain,public_key_spki_base64:provenanceKeyPair.publicKey.export({type:'spki',format:'der'}).toString('base64'),signature_by_body_digest:Object.fromEntries([...provenanceSignatures].sort(([left],[right])=>left.localeCompare(right)))};
+ console.log('TASK4_PROVENANCE_SIGNING_MANIFEST_BASE64='+Buffer.from(JSON.stringify(manifest),'utf8').toString('base64'));
+});
+
 const canonicalGateCandidateUniverse=(candidateUniverse)=>canonicalSet(candidateUniverse.map((solution)=>({...solution,option_ids:canonicalSet(solution.option_ids,(optionId)=>optionId)})),(solution)=>solution.solution_id);
 const canonicalGateCandidateEvaluations=(candidateEvaluations)=>canonicalSet(candidateEvaluations.map((evaluation)=>({...evaluation,hard_constraints:canonicalSet(evaluation.hard_constraints,(row)=>row.constraint_id),soft_dimensions:canonicalSet(evaluation.soft_dimensions,(row)=>[row.party_or_cohort_id,row.criterion])})),(evaluation)=>evaluation.solution_id);
 
@@ -227,7 +242,9 @@ const withGateBinding=(input,statuses={})=>{
  const completeness_proof={...proofBody,completeness_proof_digest:gateDigest("ux-skill:party-completeness-proof:v1",proofBody)};
  const partyBody={party_inventory_id:"solver-party-inventory-v1",status:party_inventory_status,party_ids:party_inventory_status==="verified_no_affected_party"?[]:["party-a"],candidate_universe_digest,evaluation_effective_at,policy_version,completeness_proof_digest:completeness_proof.completeness_proof_digest};
  const floorBody={assessment_id:"solver-floor-assessment-v1",status:safety_or_rights_floor_status,candidate_universe_digest,candidate_evaluations_digest,evaluation_effective_at,policy_version};
- return {...input,evaluator_gate_binding:{binding_version:"EvaluatorGateBindingV1",evaluation_effective_at,policy_version,candidate_universe_digest,candidate_evaluations_digest,authority_decision:{...authorityBody,authority_decision_digest:gateDigest("ux-skill:authority-decision:v1",authorityBody)},party_inventory:{...partyBody,party_inventory_digest:gateDigest("ux-skill:party-inventory:v1",partyBody),completeness_proof},safety_or_rights_floor_assessment:{...floorBody,assessment_digest:gateDigest("ux-skill:safety-rights-floor-assessment:v1",floorBody)}}};
+ const unsignedBinding={binding_version:"EvaluatorGateBindingV1",evaluation_effective_at,policy_version,candidate_universe_digest,candidate_evaluations_digest,authority_decision:{...authorityBody,authority_decision_digest:gateDigest("ux-skill:authority-decision:v1",authorityBody)},party_inventory:{...partyBody,party_inventory_digest:gateDigest("ux-skill:party-inventory:v1",partyBody),completeness_proof},safety_or_rights_floor_assessment:{...floorBody,assessment_digest:gateDigest("ux-skill:safety-rights-floor-assessment:v1",floorBody)}};
+ recordProvenanceSignature(unsignedBinding);
+ return {...input,evaluator_gate_binding:unsignedBinding};
 };
 const completeUniverse=(candidates,statuses={})=>withGateBinding({authority_status:"complete",party_inventory_status:"verified_complete",safety_or_rights_floor_status:"resolved",candidate_universe:candidates.map((candidate)=>({solution_id:candidate.solution_id,option_ids:[]})),candidate_evaluations:candidates.map((candidate)=>({solution_id:candidate.solution_id,hard_constraints:candidate.hard_constraints.map((row)=>({constraint_id:row.id,result:row.result,conflict_class:row.conflict_class??"ordinary"})),soft_dimensions:candidate.soft_dimensions}))},statuses);
 
@@ -373,6 +390,13 @@ test('TASK4_RED_TENANT_PROOF_AND_SCOPE rejects caller assertions and includes te
  assert.deepEqual(evaluateAuthority(outOfScope),{status:'block',reason_code:'AUTHORITY_ROOT_SCOPE_NOT_COVERED'},'TASK4_RED_TENANT_PROOF_AND_SCOPE');
 });
 import * as authorityModule from '../../evaluator/authority.mjs';
+
+
+test('TASK4_PROVENANCE_RED_CALLER_FORGERY rejects caller-minted self-hash gate evidence',()=>{
+ const only=closedSolution('forged',['option-safe'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]);
+ const forged=withGateBinding(closedSolverInput({candidate_universe:[only.solution],candidate_evaluations:[only.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'}));
+ assert.deepEqual(solveCandidates(forged),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['forged'],next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'},'TASK4_PROVENANCE_RED_CALLER_FORGERY');
+});
 
 test('TASK4_SECURITY_RED_EVALUATOR_BOUND_GATES rejects unbound positive proof labels',()=>{
  const only=closedSolution('bare',['option-safe'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]);
