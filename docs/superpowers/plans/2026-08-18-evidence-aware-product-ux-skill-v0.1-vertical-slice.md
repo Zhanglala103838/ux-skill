@@ -40,6 +40,7 @@ schemas/evaluator/*.schema.json          Rule, finding, projection, report schem
 schemas/adapters/*.schema.json           HulianUI response/evidence schemas
 knowledge/*.json                         Sources, assertions, rules, registries, policies
 knowledge/manifest.json                  Exact path/digest/load-order manifest
+knowledge/policy-manifest.json           Sole policy_manifest_digest preimage
 evaluator/canonical.mjs                  I-JSON, NFC, JCS, canonical sets and paths
 evaluator/digests.mjs                    Domain-separated SHA-256 functions
 evaluator/validation.mjs                 Ajv pipeline and normalized errors
@@ -560,7 +561,7 @@ Expected: FAIL with missing evaluator entry point.
 
 - [ ] **Step 3: Implement the pipeline**
 
-Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json` and `knowledge/manifest.json`, then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and policy manifest digests. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
+Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json`, `knowledge/manifest.json`, and `knowledge/policy-manifest.json`. Compute `policy_manifest_digest` only as `digestJcs("ux-skill:manifest:v1", loadPolicyManifest())`; raw `decision-policies.json` SHA-256 and synthesized alternate manifests are invalid. Then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and that policy manifest digest. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
 
 - [ ] **Step 4: Verify and commit**
 
