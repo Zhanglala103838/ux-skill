@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：第十轮闭合评审后修订，等待第十一轮最终复核  
-规格版本：0.11  
+状态：第十一轮最终复核后闭合，等待用户审阅  
+规格版本：0.12  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -167,7 +167,7 @@ CandidateUniverse 必须作为 EvaluationInputBundle 的显式 canonical-set<Sol
 
 hard 永不按 priority 放松，只有 verified override 生效。Override DAG、requires/incompatible hypergraph 与 closure 均确定执行。绝不选择违反或 indeterminate 的 Solution；输出全部 inclusion-minimal unsat cores，稳定排序。
 
-SoftPreference 维度为 (party/cohort, criterion)，禁止跨 party 聚合。safety/rights floor 后按 lexicographic tier，tier 内 Pareto。多个非支配 Solution：PartyInventory/authority 不完整或触及 floor→escalation；否则 ask_decision_owner；ReleaseRecommendation 始终 undecided，不能 allow。ResolutionTrace 固定保存 universe digest、T/F/U/E matrix、closures、cores、Pareto 和 branch reason。
+SoftPreference 维度为 (party/cohort, criterion)，禁止跨 party 聚合。safety/rights floor 后按 lexicographic tier，tier 内 Pareto。多个非支配 Solution 时 SelectionDecision 始终 undecided，不能选择任何 Solution。PartyInventory/authority 不完整或触及 floor→ReleaseRecommendation=escalation；否则 ReleaseRecommendation=undecided + ask_decision_owner。ResolutionTrace 固定保存 universe digest、T/F/U/E matrix、closures、cores、Pareto 和 branch reason。
 
 
 ## 8. ClaimAssessmentPolicy 与 sensitive use
@@ -576,8 +576,8 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | HARD-U-001 | 任一 hard constraint=U → candidate 不进入 feasible set + escalation |
 | HARD-FU-MIXED-001 | zero feasible 且 candidate 集合含 F 与 U、无 E → 全局 U 分支 + escalation |
 | HARD-FEASIBLE-U-001 | 至少一个 feasible 且另一个 candidate=U → no final selection + escalation |
-| SOFT-TIE-001 | PartyInventory/authority 完整且未触及 floor 的 Pareto tie → undecided + ask_decision_owner |
-| SOFT-TIE-AUTH-U-001 | PartyInventory/authority 不完整的 Pareto tie → undecided + escalation |
+| SOFT-TIE-001 | PartyInventory/authority 完整且未触及 floor 的 Pareto tie → SelectionDecision=undecided + ReleaseRecommendation=undecided + ask_decision_owner |
+| SOFT-TIE-AUTH-U-001 | PartyInventory/authority 不完整的 Pareto tie → SelectionDecision=undecided + ReleaseRecommendation=escalation |
 | SOURCE-PROP-001 | Fragment proposition 没有 verified FragmentPropositionAssessment → 不得形成有效 Adoption/authority |
 | TIME-EFFECTIVE-001 | 同一 evaluation_effective_at 驱动纯评价中的 source/adoption/grant/consent/capability；混用 wall clock → TIME_BASIS_MISMATCH |
 | EFFECT-TIME-EXPIRY-001 | evaluation 10:00、授权 10:05 过期、trusted commit_effective_at=10:10 → no effect + block |
@@ -724,9 +724,9 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 
 当前仍只做设计。
 
-1. 提交 v0.11 到 design/v0；
-2. 自检所有 MUST/唯一表是否存在对应 schema/vector，消除“固定但未给值”；
-3. 第十一轮使用三个全新上下文只复核 soft-tie/release、holdout gate 与 adapter classifier；
+1. 提交 v0.12 到 design/v0；
+2. 自检所有 MUST/唯一表与 89 个 vectors；
+3. 第十一轮已完成：release/holdout 与 adapter 评审 GO；综合评审的 SelectionDecision/ReleaseRecommendation 命名冲突已闭合；
 4. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户最终审阅；
 5. 用户明确批准后才调用 writing-plans；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
