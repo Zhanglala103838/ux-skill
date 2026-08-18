@@ -112,7 +112,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `scripts/check-vector-catalog.mjs
 {"name":"ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","capture:closure":"node scripts/capture-snapshot-closure.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.1","yaml":"2.9.0"},"devDependencies":{"playwright":"1.62.1"}}
 ```
 
-Implement `loadVectorCatalog()` to reject duplicate IDs, missing `expected_contract`, and any difference between committed catalog IDs and the §18.1 Markdown table. Populate `evals/vector-catalog.json` with all 100 exact IDs and their full §18.1 contract text.
+Write `.nvmrc` as the single line `22.22.2`. Implement `loadVectorCatalog()` to reject duplicate IDs, missing `expected_contract`, and any difference between committed catalog IDs and the §18.1 Markdown table. Populate `evals/vector-catalog.json` with all 100 exact IDs and their full §18.1 contract text.
 
 - [ ] **Step 4: Record a baseline that cannot be mistaken for success**
 
@@ -128,7 +128,7 @@ Expected: process exits 0 only when all 100 rows are `red`; summary prints `gree
 
 - [ ] **Step 5: Run and commit**
 
-Run: `pnpm install --lockfile-only && pnpm vectors:check && pnpm test`
+Run: `pnpm install --lockfile-only && pnpm install --frozen-lockfile && pnpm vectors:check && pnpm test`
 
 Expected: PASS; `pnpm-lock.yaml` is created and the baseline remains RED by content.
 
@@ -383,129 +383,7 @@ git add evaluator/claims.mjs knowledge/sources.json knowledge/assertions.json ev
 git commit -m "feat: add evidence-aware UX recommendation reducers"
 ```
 
-### Task 7: Sole Evaluator Entry Point and Semantic Projection
-
-**Files:**
-- Create: `evaluator/projection.mjs`, `evaluator/index.mjs`
-- Create: `schemas/evaluator/semantic-projection.schema.json`
-- Create: `evals/tests/evaluator.test.mjs`
-- Create: `evals/golden/high-risk-delete.json`
-
-**Interfaces:**
-- Produces: `evaluate(bundle,{adapterEvidence=[]}): EvaluationResult`.
-- `EvaluationResult` contains `assurance`, `inquiry`, `semantic_projection`, `semantic_digest`, and non-semantic `audit_sidecar`.
-
-- [ ] **Step 1: Write the end-to-end failing test**
-
-```js
-test('same normalized delete bundle replays to one semantic digest', async () => {
-  const outputs = await Promise.all(Array.from({length:5}, () => evaluate(deleteBundle(), {adapterEvidence:[]})));
-  assert.equal(new Set(outputs.map((x) => x.semantic_digest)).size, 1);
-  assert.match(outputs[0].assurance.warning, /does not mean UX is good/i);
-  assert.equal(outputs[0].inquiry.authoritative, false);
-});
-```
-
-- [ ] **Step 2: Confirm RED**
-
-Run: `node --test evals/tests/evaluator.test.mjs`
-
-Expected: FAIL with missing evaluator entry point.
-
-- [ ] **Step 3: Implement the pipeline**
-
-Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
-
-- [ ] **Step 4: Verify and commit**
-
-Run: `node --test evals/tests/evaluator.test.mjs`
-
-Expected: PASS with five identical digests and byte-equal golden projection.
-
-```bash
-git add evaluator/index.mjs evaluator/projection.mjs schemas/evaluator/semantic-projection.schema.json evals/tests/evaluator.test.mjs evals/golden/high-risk-delete.json
-git commit -m "feat: compose deterministic UX evaluator"
-```
-
-### Task 8: HulianUI AlertDialog Evidence Adapter
-
-**Files:**
-- Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`, `adapters/hulianui/bridge.mjs`
-- Create: `schemas/adapters/hulian-component-doc-v1.schema.json`
-- Create: `evals/tests/hulianui-adapter.test.mjs`
-- Create: relevant adapter RED/golden fixtures
-
-**Interfaces:**
-- Produces: `classifyHulianResult(result,contract)`, `mapHulianComponentDoc(result,contract): CanonicalAdapterEvidence`, `evaluateHulianMcpResult(bundle,toolResult): EvaluationResult`.
-- `bridge.mjs` maps then calls the sole `evaluate()` export; it contains no rule table. It does not call or modify HulianUI MCP and accepts captured or caller-provided tool results.
-
-- [ ] **Step 1: Write classifier and digest failures**
-
-```js
-test('mismatch dominates stale and partial', () => {
-  assert.equal(classifyHulianResult(mismatchedAndStale(), contract), 'incompatible_source');
-});
-
-test('canonical evidence never asserts UX outcome', () => {
-  const evidence = mapHulianComponentDoc(validFixture, contract);
-  assert.equal(digestJcs('ux-skill:manifest:v1', contract), 'f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c');
-  assert.deepEqual(evidence.prohibited_claims, ['complete-destructive-flow','user-success','ux-outcome','wcag-conformance']);
-});
-```
-
-- [ ] **Step 2: Confirm RED, implement, and verify**
-
-Run before and after: `node --test evals/tests/hulianui-adapter.test.mjs`
-
-Expected before: FAIL. Expected after: all adapter vectors PASS and shuffled exports/props/events/slots produce byte-equal evidence.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add adapters schemas/adapters evals/tests/hulianui-adapter.test.mjs evals/red evals/golden
-git commit -m "feat: add pinned HulianUI evidence adapter"
-```
-
-### Task 9: CLI Transport and Four Request Modes
-
-**Files:**
-- Create: `scripts/ux-evaluate.mjs`
-- Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
-- Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
-
-**Interfaces:**
-- CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
-- `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
-- Produces stdout JSON only; diagnostics go to stderr.
-
-- [ ] **Step 1: Write CLI contract tests**
-
-```js
-test('unknown and multiple modes are invalid_input', async () => {
-  assert.equal((await runCli(['--mode','audit+verify'])).json.run_status, 'invalid_input');
-});
-
-test('transport metadata does not change semantic digest', async () => {
-  const a = await runCli(['--mode','scan','--input','evals/parity/scan.json']);
-  const b = await runCliWithDifferentRequestId(['--mode','scan','--input','evals/parity/scan.json']);
-  assert.equal(a.json.semantic_digest, b.json.semantic_digest);
-});
-```
-
-- [ ] **Step 2: Confirm RED, implement thin transport, verify**
-
-Run: `node --test evals/tests/cli.test.mjs`
-
-Expected before: FAIL; after: PASS. The CLI must call `evaluate()` and contain no UX rule or recommendation table.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add scripts/ux-evaluate.mjs evals/tests/cli.test.mjs evals/parity
-git commit -m "feat: expose UX evaluator CLI transport"
-```
-
-### Task 10: Skill Router, Progressive References, and Knowledge Manifest
+### Task 7: Skill Router, Progressive References, and Knowledge Manifest
 
 **Files:**
 - Create: `SKILL.md`, `agents/openai.yaml`, all eight `references/*.md`
@@ -514,7 +392,7 @@ git commit -m "feat: expose UX evaluator CLI transport"
 
 **Interfaces:**
 - Skill invokes `pnpm ux:evaluate -- --mode <mode> --input - --output json`.
-- `knowledge/manifest.json` fixes path, SHA-256, load order, and dependency closure per mode.
+- `knowledge/manifest.json` fixes every knowledge/reference path, SHA-256, load order, and dependency closure per mode before evaluator golden digests are created in Task 8.
 
 - [ ] **Step 1: Write the Skill contract test**
 
@@ -560,6 +438,128 @@ git add SKILL.md agents references knowledge/manifest.json scripts/check-knowled
 git commit -m "feat: add evidence-aware Product UX Skill"
 ```
 
+### Task 8: Sole Evaluator Entry Point and Semantic Projection
+
+**Files:**
+- Create: `evaluator/projection.mjs`, `evaluator/index.mjs`
+- Create: `schemas/evaluator/semantic-projection.schema.json`
+- Create: `evals/tests/evaluator.test.mjs`
+- Create: `evals/golden/high-risk-delete.json`
+
+**Interfaces:**
+- Produces: `evaluate(bundle,{adapterEvidence=[]}): EvaluationResult`.
+- `EvaluationResult` contains `assurance`, `inquiry`, `semantic_projection`, `semantic_digest`, and non-semantic `audit_sidecar`.
+
+- [ ] **Step 1: Write the end-to-end failing test**
+
+```js
+test('same normalized delete bundle replays to one semantic digest', async () => {
+  const outputs = await Promise.all(Array.from({length:5}, () => evaluate(deleteBundle(), {adapterEvidence:[]})));
+  assert.equal(new Set(outputs.map((x) => x.semantic_digest)).size, 1);
+  assert.match(outputs[0].assurance.warning, /does not mean UX is good/i);
+  assert.equal(outputs[0].inquiry.authoritative, false);
+});
+```
+
+- [ ] **Step 2: Confirm RED**
+
+Run: `node --test evals/tests/evaluator.test.mjs`
+
+Expected: FAIL with missing evaluator entry point.
+
+- [ ] **Step 3: Implement the pipeline**
+
+Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `node --test evals/tests/evaluator.test.mjs`
+
+Expected: PASS with five identical digests and byte-equal golden projection.
+
+```bash
+git add evaluator/index.mjs evaluator/projection.mjs schemas/evaluator/semantic-projection.schema.json evals/tests/evaluator.test.mjs evals/golden/high-risk-delete.json
+git commit -m "feat: compose deterministic UX evaluator"
+```
+
+### Task 9: HulianUI AlertDialog Evidence Adapter
+
+**Files:**
+- Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`, `adapters/hulianui/bridge.mjs`
+- Create: `schemas/adapters/hulian-component-doc-v1.schema.json`
+- Create: `evals/tests/hulianui-adapter.test.mjs`
+- Create: relevant adapter RED/golden fixtures
+
+**Interfaces:**
+- Produces: `classifyHulianResult(result,contract)`, `mapHulianComponentDoc(result,contract): CanonicalAdapterEvidence`, `evaluateHulianMcpResult(bundle,toolResult): EvaluationResult`.
+- `bridge.mjs` maps then calls the sole `evaluate()` export; it contains no rule table. It does not call or modify HulianUI MCP and accepts captured or caller-provided tool results.
+
+- [ ] **Step 1: Write classifier and digest failures**
+
+```js
+test('mismatch dominates stale and partial', () => {
+  assert.equal(classifyHulianResult(mismatchedAndStale(), contract), 'incompatible_source');
+});
+
+test('canonical evidence never asserts UX outcome', () => {
+  const evidence = mapHulianComponentDoc(validFixture, contract);
+  assert.equal(digestJcs('ux-skill:manifest:v1', contract), 'f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c');
+  assert.deepEqual(evidence.prohibited_claims, ['complete-destructive-flow','user-success','ux-outcome','wcag-conformance']);
+});
+```
+
+- [ ] **Step 2: Confirm RED, implement, and verify**
+
+Run before and after: `node --test evals/tests/hulianui-adapter.test.mjs`
+
+Expected before: FAIL. Expected after: all adapter vectors PASS and shuffled exports/props/events/slots produce byte-equal evidence.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add adapters schemas/adapters evals/tests/hulianui-adapter.test.mjs evals/red evals/golden
+git commit -m "feat: add pinned HulianUI evidence adapter"
+```
+
+### Task 10: CLI Transport and Four Request Modes
+
+**Files:**
+- Create: `scripts/ux-evaluate.mjs`
+- Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
+- Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
+
+**Interfaces:**
+- CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
+- `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
+- Produces stdout JSON only; diagnostics go to stderr.
+
+- [ ] **Step 1: Write CLI contract tests**
+
+```js
+test('unknown and multiple modes are invalid_input', async () => {
+  assert.equal((await runCli(['--mode','audit+verify'])).json.run_status, 'invalid_input');
+});
+
+test('transport metadata does not change semantic digest', async () => {
+  const a = await runCli(['--mode','scan','--input','evals/parity/scan.json']);
+  const b = await runCliWithDifferentRequestId(['--mode','scan','--input','evals/parity/scan.json']);
+  assert.equal(a.json.semantic_digest, b.json.semantic_digest);
+});
+```
+
+- [ ] **Step 2: Confirm RED, implement thin transport, verify**
+
+Run: `node --test evals/tests/cli.test.mjs`
+
+Expected before: FAIL; after: PASS. The CLI must call `evaluate()` and contain no UX rule or recommendation table.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/ux-evaluate.mjs evals/tests/cli.test.mjs evals/parity
+git commit -m "feat: expose UX evaluator CLI transport"
+```
+
 ### Task 11: Canonical ustar Artifact
 
 **Files:**
@@ -581,6 +581,8 @@ test('one-file ustar is byte exact', async () => {
   assert.equal(digest('ux-skill:artifact:v1', bytes), golden.artifact_digest);
 });
 ```
+
+`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all nine named schemas from the file map/tasks, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all seven evaluator modules, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
 
 The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
 
@@ -642,6 +644,15 @@ Capture only anonymous read-only GET/HEAD traffic. Store CanonicalResponseHeader
 - [ ] **Step 4: Encode exact case profiles**
 
 Apple uses the three exact profiles from spec §18.3. GOV.UK uses one desktop-keyboard profile. IKEA uses anonymous Beijing/no-geolocation and stops before cart. Stripe stops before login, key creation, or API call. Mark discovery curl digests as non-replayable provenance, not formal closure artifacts.
+
+On the development machine, install the pinned browser and run an authorized read-only capture:
+
+```bash
+pnpm exec playwright install chromium
+pnpm capture:closure -- --case evals/public-cases/apple.json --cas .artifacts/cas --output .artifacts/apple-closure.json
+```
+
+Expected: either `completeness_status=complete` with no outbound effects, or a machine-readable `target_unavailable/no_release`; never substitute current live bytes after capture.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -724,7 +735,7 @@ test('all public and Hulian fixtures respect evidence ceilings', async () => {
 
 - [ ] **Step 2: Write CI with exact commands**
 
-Each job uses `actions/checkout`, `pnpm/action-setup` with 8.15.5, `actions/setup-node` with 22.22.2 and pnpm cache, then `pnpm install --frozen-lockfile`. Run:
+Each job uses `actions/checkout@v4`, `pnpm/action-setup@v4` with 8.15.5, `actions/setup-node@v4` with 22.22.2 and pnpm cache, and `actions/upload-artifact@v4`, then `pnpm install --frozen-lockfile`. Run:
 
 ```bash
 pnpm vectors:check
@@ -757,9 +768,9 @@ git commit -m "ci: verify reproducible UX Skill artifacts"
 git push -u origin implementation/v0.1-vertical-slice
 ```
 
-- [ ] **Step 5: Open the developer-validation issue**
+- [ ] **Step 5: Hand off to the development machine**
 
-The issue body must contain the implementation commit, artifact SHA-256, exact failing release gates, commands above, expected output, and a request that the development machine report defects as one issue per vector ID or runtime failure. Do not mark the Skill stable and do not merge to `main` before that validation.
+Record the implementation commit, artifact SHA-256, exact failing release gates, pull/install/test commands, and expected output in the task handoff. The development machine—not this implementation run—opens one GitHub issue per vector ID or runtime failure after validation. Do not mark the Skill stable and do not merge to `main` before that feedback is resolved.
 
 ## Plan Self-Review Result
 
