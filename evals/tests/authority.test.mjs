@@ -342,3 +342,25 @@ test('TASK4_RED_TENANT_PROOF_AND_SCOPE rejects caller assertions and includes te
  const outOfScope=highRiskDelete(); outOfScope.tenant_ids=['tenant-b'];
  assert.deepEqual(evaluateAuthority(outOfScope),{status:'block',reason_code:'AUTHORITY_ROOT_SCOPE_NOT_COVERED'},'TASK4_RED_TENANT_PROOF_AND_SCOPE');
 });
+import * as authorityModule from '../../evaluator/authority.mjs';
+
+test('TASK4_SECURITY_RED_EVALUATOR_BOUND_GATES rejects unbound positive proof labels',()=>{
+ const only=closedSolution('bare',['option-safe'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]);
+ const input=closedSolverInput({candidate_universe:[only.solution],candidate_evaluations:[only.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'});
+ assert.deepEqual(solveCandidates(input),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['bare'],next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'},'TASK4_SECURITY_RED_EVALUATOR_BOUND_GATES');
+});
+
+test('TASK4_SECURITY_RED_MINIMAL_CORE_BOUNDS bounds exact independent-pair core work before search',()=>{
+ const independentPairs=(count)=>completeUniverse(Array.from({length:count},(_,index)=>solution(`pair-${index}`,[],[{id:`a-${index}`,result:'F',conflict_class:'ordinary'},{id:`b-${index}`,result:'F',conflict_class:'ordinary'}])));
+ assert.equal(solveCandidates(independentPairs(8)).unsat_cores.length,256,'TASK4_SECURITY_RED_MINIMAL_CORE_BOUNDS');
+ assert.deepEqual(solveCandidates(independentPairs(9)),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:[],next_action:'reduce_candidate_complexity',release_recommendation:'escalation',reason_code:'MINIMAL_CORE_COMPLEXITY_LIMIT'},'TASK4_SECURITY_RED_MINIMAL_CORE_BOUNDS');
+});
+
+test('TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION hashes tenant bindings as canonical sets',()=>{
+ assert.equal(typeof authorityModule.tenantBindingSetDigest,'function','TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION');
+ const tenants=['tenant-b','tenant-a'];
+ const bindings=[{relationship:'target',tenant_id:'tenant-a'},{relationship:'controller',tenant_id:'tenant-b'}];
+ const forward=authorityModule.tenantBindingSetDigest(tenants,bindings);
+ const permuted=authorityModule.tenantBindingSetDigest([...tenants].reverse(),[...bindings].reverse());
+ assert.equal(forward,permuted,'TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION');
+});
