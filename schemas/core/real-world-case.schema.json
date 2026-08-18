@@ -737,15 +737,9 @@
         {
           "properties": {
             "measures": {
+              "type": "array",
               "contains": {
-                "properties": {
-                  "measure_role": {
-                    "const": "success"
-                  }
-                },
-                "required": [
-                  "measure_role"
-                ]
+                "$ref": "#/$defs/SuccessMeasureRoleFilter"
               }
             }
           }
@@ -753,20 +747,44 @@
         {
           "properties": {
             "measures": {
+              "type": "array",
               "contains": {
-                "properties": {
-                  "measure_role": {
-                    "const": "guardrail"
-                  }
-                },
-                "required": [
-                  "measure_role"
-                ]
+                "$ref": "#/$defs/GuardrailMeasureRoleFilter"
               }
             }
           }
         }
       ]
+    },
+    "SuccessMeasureRoleFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measure_role"
+      ],
+      "properties": {
+        "measure_id": true,
+        "kind": true,
+        "direction": true,
+        "measure_role": {
+          "const": "success"
+        }
+      }
+    },
+    "GuardrailMeasureRoleFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measure_role"
+      ],
+      "properties": {
+        "measure_id": true,
+        "kind": true,
+        "direction": true,
+        "measure_role": {
+          "const": "guardrail"
+        }
+      }
     },
     "NegativeControlGateSpec": {
       "type": "object",
@@ -902,15 +920,9 @@
     {
       "properties": {
         "measures": {
+          "type": "array",
           "contains": {
-            "properties": {
-              "measure_role": {
-                "const": "success"
-              }
-            },
-            "required": [
-              "measure_role"
-            ]
+            "$ref": "#/$defs/SuccessMeasureRoleFilter"
           }
         }
       }
@@ -918,15 +930,9 @@
     {
       "properties": {
         "measures": {
+          "type": "array",
           "contains": {
-            "properties": {
-              "measure_role": {
-                "const": "guardrail"
-              }
-            },
-            "required": [
-              "measure_role"
-            ]
+            "$ref": "#/$defs/GuardrailMeasureRoleFilter"
           }
         }
       }
