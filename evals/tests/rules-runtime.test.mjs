@@ -319,10 +319,19 @@ test('TASK5_FULL_PART_UNION_RED',()=>{
  const fullRule=(terminal,outcome,reason_code,release_critical=false,run_issue_value=outcome==='evaluation_error'?issue:null)=>({...passBlock,terminal,outcome,reason_code,release_critical,run_issue:run_issue_value,trace:[],dependency_trace:[]});
  const legalRows=[
   ['invalid_input','evaluation_error','INVALID_INPUT','failed'],['invalid_rule','evaluation_error','INVALID_RULE','failed'],
-  ['tool_failed','evaluation_error','REQUIRED_TOOL_INVALID_REQUEST','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_AUTH_ERROR','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_INCOMPATIBLE_SOURCE','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_TIMEOUT','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_SERVER_ERROR','completed_with_gaps'],
-  ['cancelled','not_run','REQUIRED_TOOL_CANCELLED','completed_with_gaps'],['completed','pass','CHECK_PASS','completed_clear'],['completed','fail','CHECK_FAILED','completed_clear'],['completed','partial','CHECK_PARTIAL','completed_with_gaps'],['completed','not_run','REQUIRED_INPUT_PARTIAL','completed_with_gaps'],['completed','not_run','REQUIRED_INPUT_NOT_FOUND','completed_with_gaps'],['completed','not_run','PRECONDITION_FALSE','completed_with_gaps'],['completed','not_run','PRECONDITION_UNKNOWN','completed_with_gaps'],['completed','not_applicable','APPLICABILITY_FALSE','completed_clear'],['completed','not_applicable','EXCLUSION_TRUE','completed_clear'],['completed','unknown','APPLICABILITY_UNKNOWN','completed_with_gaps'],['completed','unknown','EXCLUSION_UNKNOWN','completed_with_gaps'],['completed','unknown','CHECK_UNKNOWN','completed_with_gaps'],['completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR','completed_with_gaps'],['completed','evaluation_error','PRECONDITION_EVALUATION_ERROR','completed_with_gaps'],['completed','evaluation_error','CHECK_EVALUATION_ERROR','completed_with_gaps']
+  ['completed','pass','CHECK_PASS','completed_clear'],['completed','fail','CHECK_FAILED','completed_clear'],['completed','partial','CHECK_PARTIAL','completed_with_gaps'],['completed','not_run','PRECONDITION_FALSE','completed_with_gaps'],['completed','not_run','PRECONDITION_UNKNOWN','completed_with_gaps'],['completed','not_applicable','APPLICABILITY_FALSE','completed_clear'],['completed','not_applicable','EXCLUSION_TRUE','completed_clear'],['completed','unknown','APPLICABILITY_UNKNOWN','completed_with_gaps'],['completed','unknown','EXCLUSION_UNKNOWN','completed_with_gaps'],['completed','unknown','CHECK_UNKNOWN','completed_with_gaps'],['completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR','completed_with_gaps'],['completed','evaluation_error','PRECONDITION_EVALUATION_ERROR','completed_with_gaps'],['completed','evaluation_error','CHECK_EVALUATION_ERROR','completed_with_gaps']
  ];
  for(const [terminal,outcome,reason,status] of legalRows)assert.equal(reduceRunStatus([fullRule(terminal,outcome,reason)]),status,`${terminal}/${outcome}/${reason}`);
+ const toolRows=[
+  ['invalid_request',true,'completed_with_gaps'],['auth_error',true,'completed_with_gaps'],['incompatible_source',true,'completed_with_gaps'],
+  ['timeout',true,'completed_with_gaps'],['server_error',true,'completed_with_gaps'],['cancelled',true,'completed_with_gaps'],
+  ['partial',false,'completed_with_gaps'],['not_found',true,'completed_with_gaps'],
+  ['success',false,'completed_clear'],['partial',true,'completed_clear']
+ ];
+ for(const [toolStatus,complete,status] of toolRows){
+  const produced=evaluateRule(dependencyRule([{dependency_id:'a',required:true}]),{target:{}},[dep('a',toolStatus,complete)]);
+  assert.equal(reduceRunStatus([produced]),status,`${toolStatus}/${complete}`);
+ }
  for(const invalid of [fullRule('completed','pass','CHECK_FAILED'),fullRule('cancelled','evaluation_error','REQUIRED_TOOL_CANCELLED'),fullRule('tool_failed','evaluation_error','CHECK_EVALUATION_ERROR'),fullRule('completed','evaluation_error','CHECK_EVALUATION_ERROR',false,null),fullRule('completed','pass','CHECK_PASS',false,issue)])assert.equal(reduceRunStatus([invalid]),'failed');
 
  const traced=evalRule({applicability:{node_id:'root',op:'all',children:[lit('a',true),lit('b',true)]}});
