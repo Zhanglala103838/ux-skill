@@ -1,6 +1,6 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：v0.13 第十二轮最终 schema 修订候选，等待定点复核  
+状态：v0.13 第十二轮对抗复核闭合，等待用户审阅  
 规格版本：0.13  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
@@ -772,7 +772,7 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 1. 提交 v0.13 真实站点回归扩展到 design/v0；
 2. 自检所有 MUST/唯一表与 100 个 vectors；
 3. 第十一轮已完成：release/holdout 与 adapter 评审 GO；综合评审的 SelectionDecision/ReleaseRecommendation 命名冲突已闭合；
-4. 第十二轮复核依次发现 snapshot closure、scenario-family/rotation identity、header replay、profile identity 与 nested-schema required blocker；本候选已补闭合 schema、header CAS、exact ReplayProfile/registry/digest 和对应 golden vectors，等待最终定点重验；
+4. 第十二轮复核依次发现并闭合 snapshot closure、scenario-family/rotation identity、header replay、profile identity 与 nested-schema required blocker；portfolio、release 与 adapter 三条最终复验均 GO；
 5. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户审阅并进入 implementation plan；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
 7. 首纵切不修改 HulianUI MCP、不写第三方 upstream、不扩第二个实现 adapter、不宣称 stable。
