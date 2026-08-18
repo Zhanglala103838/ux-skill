@@ -206,21 +206,21 @@ git commit -m "feat: add canonical UX data primitives"
 
 **Files:**
 - Create: `schemas/core/evaluation-input.schema.json`, `schemas/core/snapshot-closure.schema.json`, `schemas/core/authority.schema.json`, `schemas/core/claims.schema.json`
-- Create: `schemas/evaluator/output.schema.json`, `schemas/evaluator/rule.schema.json`, `schemas/evaluator/semantic-projection.schema.json`, `schemas/adapters/hulian-component-doc-v1.schema.json`, `schemas/core/real-world-case.schema.json`, `schemas/manifest.json`, `evaluator/validation.mjs`
+- Create: `schemas/evaluator/output.schema.json`, `schemas/evaluator/rule.schema.json`, `schemas/evaluator/semantic-projection.schema.json`, `schemas/adapters/hulian-component-doc-v1.schema.json`, `schemas/adapters/hulian-evaluation-request-v1.schema.json`, `schemas/core/real-world-case.schema.json`, `schemas/manifest.json`, `evaluator/validation.mjs`
 - Create: `evals/tests/validation.test.mjs`, `evals/helpers/fixtures.mjs`, `evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json`
 
 **Interfaces:**
 - `evals/helpers/fixtures.mjs` produces `fixtureWithHeaders`, `fixtureWithRedirectHop`, `highRiskDelete`, `twoSafeNonDominatedCandidates`, `ruleWithTwoRequiredTools`, `input`, `cancelled`, `timeout`, `deleteBundle`, `closureWithCsp`, `casWithoutHeaderBytes`, `appleCase`, and `fakeBrowserRequesting`; helpers return frozen JSON and perform no network.
-- Produces: `validateInput(value): {ok:true,value}|{ok:false,errors:NormalizedError[]}`.
+- Produces: `validateBySchema(schemaId,value): {ok:true,value}|{ok:false,errors:NormalizedError[]}` and bundle wrapper `validateInput(value)`.
 - `NormalizedError` key is the complete tuple from spec §12.2.
 
 - [ ] **Step 1: Freeze the nested-schema regression**
 
 ```js
 test('headers is required and nested objects reject unknown fields', () => {
-  const missing = validateInput(fixtureWithHeaders({}));
-  assert.deepEqual(missing.errors.map((e) => [e.code,e.instance_pointer]), [['REQUIRED_MISSING','/target_snapshot/headers']]);
-  const extra = validateInput(fixtureWithRedirectHop({status:302,url:'https://a',location:'https://b',note:'x'}));
+  const missing = validateBySchema('CanonicalResponseHeaders', {});
+  assert.deepEqual(missing.errors.map((e) => [e.code,e.instance_pointer]), [['REQUIRED_MISSING','/headers']]);
+  const extra = validateBySchema('RedirectHop', {status:302,url:'https://a',location:'https://b',note:'x'});
   assert.deepEqual(extra.errors.map((e) => e.code), ['ADDITIONAL_PROPERTY']);
 });
 ```
@@ -233,11 +233,11 @@ Expected: FAIL because `validateInput` is absent.
 
 - [ ] **Step 3: Encode schemas as closed objects**
 
-Set `additionalProperties:false` and explicit `required` on all nine domain schemas and every Manifest, ReplayProfile, CanonicalResponseHeaders wrapper/item, network item, redirect hop, observation item, authority item, claim item, and output projection item. Compile with Ajv 2020 and `allErrors:true`.
+Set `additionalProperties:false` and explicit `required` on all ten domain schemas and every Manifest, ReplayProfile, CanonicalResponseHeaders wrapper/item, network item, redirect hop, observation item, authority item, claim item, and output projection item. Compile with Ajv 2020 and `allErrors:true`.
 
 - [ ] **Step 4: Normalize Ajv output**
 
-Map only to the spec codes, deduplicate by full tuple, and sort with `canonicalSet`. Tagged unions validate the selected branch only; never expose Ajv `oneOf` summary text. Write `schemas/manifest.json` as exact `{path,file_digest}` rows for all nine domain schemas, sorted by CanonicalRelativePath.
+Map only to the spec codes, deduplicate by full tuple, and sort with `canonicalSet`. Tagged unions validate the selected branch only; never expose Ajv `oneOf` summary text. Write `schemas/manifest.json` as exact `{path,file_digest}` rows for all ten domain schemas, sorted by CanonicalRelativePath.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -384,72 +384,59 @@ git add evaluator/claims.mjs knowledge/sources.json knowledge/assertions.json ev
 git commit -m "feat: add evidence-aware UX recommendation reducers"
 ```
 
-### Task 7: Skill Router, Progressive References, and Knowledge Manifest
+### Task 7: Progressive References and Final Knowledge Manifest
 
 **Files:**
-- Create: `SKILL.md`, `agents/openai.yaml`, all eight `references/*.md`
-- Create: `knowledge/manifest.json`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`
-- Create: `evals/tests/skill-contract.test.mjs`
+- Create: all eight `references/*.md`
+- Create: `knowledge/manifest.json`, `scripts/check-knowledge.mjs`
+- Create: `evals/tests/knowledge-manifest.test.mjs`
 
 **Interfaces:**
-- Skill invokes `pnpm ux:evaluate -- --mode <mode> --input - --output json`.
-- `knowledge/manifest.json` fixes every knowledge/reference path, SHA-256, load order, and dependency closure per mode before adapter/closure manifests and evaluator golden digests are created in Tasks 8-10.
+- Produces: `loadKnowledgeManifest(): Promise<KnowledgeManifest>` and exact route closures for `guide|scan|refactor|verify`.
+- `knowledge/manifest.json` fixes every knowledge/reference path, SHA-256, load order, and dependency closure before adapter/closure manifests and evaluator golden digests are created in Tasks 8-10.
 
-- [ ] **Step 1: Write the Skill contract test**
+- [ ] **Step 1: Write the manifest contract test**
 
 ```js
-test('Skill is lean and modes load exact references', async () => {
-  const skill = await readFile('SKILL.md','utf8');
-  assert.match(skill, /^---\nname: improving-product-ux\ndescription:/);
-  assert.ok(skill.split('\n').length < 500);
-  const manifest = await loadManifest();
+test('guide route has one exact dependency closure', async () => {
+  const manifest = await loadKnowledgeManifest();
   assert.deepEqual(manifest.routes.guide.paths, ['references/context-model.md','references/journey-authority.md','references/claim-study.md','references/inquiry-design.md','references/ethics.md']);
+  assert.equal(new Set(manifest.files.map((row) => row.path)).size, manifest.files.length);
 });
 ```
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `node --test evals/tests/skill-contract.test.mjs`
+Run: `node --test evals/tests/knowledge-manifest.test.mjs`
 
-Expected: FAIL because Skill and manifest are absent.
+Expected: FAIL because the manifest loader is absent.
 
-- [ ] **Step 3: Write imperative Skill instructions and references**
+- [ ] **Step 3: Write references and the closed manifest**
 
-The approved repository root is already the Skill directory, so do not run a scaffolder that would create a nested skill. `scripts/validate-skill.mjs` must enforce two-field YAML frontmatter, name `improving-product-ux`, description length <=1024, quoted `agents/openai.yaml` strings, the 25-64 character short description, explicit `$improving-product-ux` default prompt, and exact route paths. `SKILL.md` must normalize the request mode, collect/declare bundle gaps, load only the manifest route, call the evaluator, present Assurance and Inquiry separately, and ask authorization before any external effect. Put detailed schemas and source propositions in their single canonical files; do not duplicate them in SKILL.md.
+Write each reference once, in imperative form where procedural, and keep detailed schemas/source propositions in their canonical JSON files. `knowledge/manifest.json` must contain exact `{path,file_digest}` rows, route load order, and dependency closure; no glob, locale sorting, or duplicated reference text.
 
-Set `agents/openai.yaml` to:
+- [ ] **Step 4: Verify and commit**
 
-```yaml
-interface:
-  display_name: "Evidence-aware Product UX"
-  short_description: "Evidence-bounded guidance for digital product UX"
-  default_prompt: "Use $improving-product-ux to guide, scan, refactor, or verify this product experience."
-policy:
-  allow_implicit_invocation: true
-```
+Run: `node scripts/check-knowledge.mjs && node --test evals/tests/knowledge-manifest.test.mjs`
 
-- [ ] **Step 4: Verify knowledge digests and commit**
-
-Run: `node scripts/check-knowledge.mjs && pnpm skill:check && node --test evals/tests/skill-contract.test.mjs`
-
-Expected: PASS; changing one reference byte fails the manifest check.
+Expected: PASS; changing one knowledge or reference byte fails the manifest check.
 
 ```bash
-git add SKILL.md agents references knowledge/manifest.json scripts/check-knowledge.mjs scripts/validate-skill.mjs evals/tests/skill-contract.test.mjs
-git commit -m "feat: add evidence-aware Product UX Skill"
+git add references knowledge/manifest.json scripts/check-knowledge.mjs evals/tests/knowledge-manifest.test.mjs
+git commit -m "feat: add UX knowledge and route manifest"
 ```
 
 ### Task 8: HulianUI AlertDialog Evidence Adapter
 
 **Files:**
-- Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`, `adapters/hulianui/bridge.mjs`
+- Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`
 - Consume: `schemas/adapters/hulian-component-doc-v1.schema.json`
 - Create: `evals/tests/hulianui-adapter.test.mjs`
 - Create: relevant adapter RED/golden fixtures
 
 **Interfaces:**
-- Produces: `classifyHulianResult(result,contract)`, `mapHulianComponentDoc(result,contract): CanonicalAdapterEvidence`, `evaluateHulianMcpResult(bundle,toolResult): EvaluationResult`.
-- `bridge.mjs` maps then calls the sole `evaluate()` export; it contains no rule table. It does not call or modify HulianUI MCP and accepts captured or caller-provided tool results.
+- Produces only `classifyHulianResult(result,contract)` and `mapHulianComponentDoc(result,contract): CanonicalAdapterEvidence`.
+- The pure adapter does not import the evaluator, call MCP, or modify HulianUI; it accepts captured or caller-provided tool results.
 
 - [ ] **Step 1: Write classifier and digest failures**
 
@@ -461,7 +448,8 @@ test('mismatch dominates stale and partial', () => {
 test('canonical evidence never asserts UX outcome', () => {
   const evidence = mapHulianComponentDoc(validFixture, contract);
   assert.equal(createHash('sha256').update(jcsBytes(contract)).digest('hex'), 'f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c');
-  assert.deepEqual(evidence.prohibited_claims, ['complete-destructive-flow','user-success','ux-outcome','wcag-conformance']);
+  assert.deepEqual(Object.keys(evidence).sort(), ['component_identity','events','exports','import','props','slots','source_artifact_identity']);
+  assert.deepEqual(contract.prohibited_claims, ['ux-outcome','wcag-conformance','user-success','complete-destructive-flow']);
 });
 ```
 
@@ -550,14 +538,14 @@ git commit -m "feat: add fail-closed website regression harness"
 - Create: `evals/golden/high-risk-delete.json`
 
 **Interfaces:**
-- Produces: `evaluate(bundle,{adapterEvidence=[]}): EvaluationResult`.
+- Produces: `evaluate(bundle): EvaluationResult`; `bundle.adapter_evidence` is the only adapter-evidence channel.
 - `EvaluationResult` contains `assurance`, `inquiry`, `semantic_projection`, `semantic_digest`, and non-semantic `audit_sidecar`.
 
 - [ ] **Step 1: Write the end-to-end failing test**
 
 ```js
 test('same normalized delete bundle replays to one semantic digest', async () => {
-  const outputs = await Promise.all(Array.from({length:5}, () => evaluate(deleteBundle(), {adapterEvidence:[]})));
+  const outputs = await Promise.all(Array.from({length:5}, () => evaluate(deleteBundle())));
   assert.equal(new Set(outputs.map((x) => x.semantic_digest)).size, 1);
   assert.match(outputs[0].assurance.warning, /does not mean UX is good/i);
   assert.equal(outputs[0].inquiry.authoritative, false);
@@ -572,7 +560,7 @@ Expected: FAIL with missing evaluator entry point.
 
 - [ ] **Step 3: Implement the pipeline**
 
-Before evaluation, verify `schemas/manifest.json` and `knowledge/manifest.json`, then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and decision-policy manifest digests. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
+Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json` and `knowledge/manifest.json`, then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and decision-policy manifest digests. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -585,15 +573,17 @@ git add evaluator/index.mjs evaluator/projection.mjs evaluator/manifest.json eva
 git commit -m "feat: compose deterministic UX evaluator"
 ```
 
-### Task 11: CLI Transport and Four Request Modes
+### Task 11: CLI and HulianUI Bridge Transports
 
 **Files:**
-- Create: `scripts/ux-evaluate.mjs`
+- Create: `scripts/ux-evaluate.mjs`, `adapters/hulianui/bridge.mjs`
+- Consume: `schemas/adapters/hulian-evaluation-request-v1.schema.json`, `adapters/hulianui/adapter.mjs`
 - Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
 - Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
 
 **Interfaces:**
 - CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
+- Bridge: `evaluateHulianMcpResult(bundleBase,toolResult): EvaluationResult`; `bundleBase` is validated by `hulian-evaluation-request-v1` and forbids `adapter_evidence`. The bridge maps the tool result, constructs the sole complete bundle with one canonical adapter evidence set, then calls `evaluate(bundle)`.
 - `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
 - Produces stdout JSON only; diagnostics go to stderr.
 
@@ -602,6 +592,10 @@ git commit -m "feat: compose deterministic UX evaluator"
 ```js
 test('unknown and multiple modes are invalid_input', async () => {
   assert.equal((await runCli(['--mode','audit+verify'])).json.run_status, 'invalid_input');
+});
+
+test('bridge rejects a preset adapter-evidence channel', async () => {
+  await assert.rejects(() => evaluateHulianMcpResult({...bundleBase(),adapter_evidence:[]}, validFixture), /ADDITIONAL_PROPERTY/);
 });
 
 test('transport metadata does not change semantic digest', async () => {
@@ -615,16 +609,68 @@ test('transport metadata does not change semantic digest', async () => {
 
 Run: `node --test evals/tests/cli.test.mjs`
 
-Expected before: FAIL; after: PASS. The CLI must call `evaluate()` and contain no UX rule or recommendation table.
+Expected before: FAIL; after: PASS. The CLI and bridge must call `evaluate(bundle)` and contain no UX rule or recommendation table. For parity fixtures, the CLI/Skill complete bundle contains captured evidence E, while the bridge base omits the field and maps its tool result to byte-identical E.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/ux-evaluate.mjs evals/tests/cli.test.mjs evals/parity
-git commit -m "feat: expose UX evaluator CLI transport"
+git add scripts/ux-evaluate.mjs adapters/hulianui/bridge.mjs evals/tests/cli.test.mjs evals/parity
+git commit -m "feat: expose UX evaluator transports"
 ```
 
-### Task 12: Canonical ustar Artifact
+### Task 12: Skill Router and Product Metadata
+
+**Files:**
+- Create: `SKILL.md`, `agents/openai.yaml`, `scripts/validate-skill.mjs`
+- Create: `evals/tests/skill-contract.test.mjs`
+- Consume: `knowledge/manifest.json`, `scripts/ux-evaluate.mjs`
+
+**Interfaces:**
+- Skill invokes the existing `pnpm ux:evaluate -- --mode <mode> --input - --output json` transport and loads only the approved manifest route.
+
+- [ ] **Step 1: Write the Skill contract test**
+
+```js
+test('Skill is lean and routes to the existing CLI', async () => {
+  const skill = await readFile('SKILL.md','utf8');
+  assert.match(skill, /^---\nname: improving-product-ux\ndescription:/);
+  assert.ok(skill.split('\n').length < 500);
+  assert.match(skill, /pnpm ux:evaluate/);
+  await access('scripts/ux-evaluate.mjs');
+});
+```
+
+- [ ] **Step 2: Confirm RED**
+
+Run: `node --test evals/tests/skill-contract.test.mjs`
+
+Expected: FAIL because SKILL.md is absent; the CLI dependency already exists from Task 11.
+
+- [ ] **Step 3: Write the Skill and metadata**
+
+The approved repository root is already the Skill directory, so do not create a nested skill. `scripts/validate-skill.mjs` enforces two-field YAML frontmatter, name `improving-product-ux`, description length <=1024, quoted metadata strings, 25-64 character short description, explicit `$improving-product-ux` default prompt, and exact manifest routes. SKILL.md normalizes one request mode, declares bundle gaps, loads only its route, invokes the CLI, presents Assurance and Inquiry separately, and obtains authorization before any external effect.
+
+```yaml
+interface:
+  display_name: "Evidence-aware Product UX"
+  short_description: "Evidence-bounded guidance for digital product UX"
+  default_prompt: "Use $improving-product-ux to guide, scan, refactor, or verify this product experience."
+policy:
+  allow_implicit_invocation: true
+```
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `pnpm skill:check && node --test evals/tests/skill-contract.test.mjs`
+
+Expected: PASS; removing the CLI, changing a route, or adding unsupported frontmatter fails.
+
+```bash
+git add SKILL.md agents/openai.yaml scripts/validate-skill.mjs evals/tests/skill-contract.test.mjs
+git commit -m "feat: add evidence-aware Product UX Skill"
+```
+
+### Task 13: Canonical ustar Artifact
 
 **Files:**
 - Create: `scripts/pack-ustar.mjs`, `knowledge/artifact-manifest.json`
@@ -646,7 +692,7 @@ test('one-file ustar is byte exact', async () => {
 });
 ```
 
-`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all nine named domain schemas plus `schemas/manifest.json`, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
+`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all ten named domain schemas plus `schemas/manifest.json`, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
 
 The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
 
@@ -667,7 +713,7 @@ git add scripts/pack-ustar.mjs knowledge/artifact-manifest.json evals/artifact e
 git commit -m "feat: add canonical UX Skill artifact packer"
 ```
 
-### Task 13: Semantic Parity and Release Gate
+### Task 14: Semantic Parity and Release Gate
 
 **Files:**
 - Create: `scripts/check-release.mjs`
@@ -675,7 +721,7 @@ git commit -m "feat: add canonical UX Skill artifact packer"
 - Create: `evals/holdout-commitments.json`
 
 **Interfaces:**
-- `evals/helpers/transports.mjs` produces `evaluateThreeTransports(path)` as `{skill,cli,mcp}`: `skill` validates the SKILL route then invokes its declared CLI command, `cli` invokes the CLI directly, and `mcp` invokes `evaluateHulianMcpResult`. The helper also evaluates the bundle directly as an oracle and strips audit sidecars before byte comparison.
+- `evals/helpers/transports.mjs` produces `evaluateThreeTransports(path)` as `{skill,cli,mcp}`: `skill` validates the SKILL route then invokes its declared CLI command with complete bundle E, `cli` invokes the CLI directly with the same bundle E, and `mcp` passes a base with no adapter_evidence plus a tool result that maps to byte-identical E into `evaluateHulianMcpResult`. The helper also evaluates the bundle directly as an oracle and strips audit sidecars before byte comparison.
 - Produces: `checkParity(transports): ParityReport`, `checkRelease(inputs): ReleaseGateReport`.
 
 - [ ] **Step 1: Write release-failure tests**
@@ -703,7 +749,7 @@ Expected before: FAIL; after: PASS. Sort all reason codes canonically. Holdout s
 
 Run: `pnpm release:check`
 
-Expected for this experimental slice: `no_release` until every required vector, real-world baseline/verify pair, and current holdout generation is green. The command exits 1 for `no_release`; CI records the report artifact without relabeling it success.
+Expected for this experimental slice: `no_release` until every required vector, real-world baseline/verify pair, and current holdout generation is green. The command exits 1 for `no_release`; CI uploads the report with `if: always()` while preserving the failing gate conclusion.
 
 - [ ] **Step 4: Commit**
 
@@ -712,7 +758,7 @@ git add scripts/check-release.mjs evals/helpers/transports.mjs evals/tests/parit
 git commit -m "test: enforce UX semantic parity and release gates"
 ```
 
-### Task 14: Clean-Environment CI and Developer Handoff
+### Task 15: Clean-Environment CI and Developer Handoff
 
 **Files:**
 - Create: `.github/workflows/ci.yml`
@@ -746,7 +792,7 @@ pnpm artifact:pack -- knowledge/artifact-manifest.json ux-skill.tar
 pnpm release:check
 ```
 
-`release-report` uses `continue-on-error:true` only for the expected experimental `no_release` command, then uploads the JSON report; unit/golden/pack failures remain hard CI failures.
+`release-report` runs `pnpm release:check` without `continue-on-error`. Upload `release-gate-report.json` in the next step with `if: always()`; the original gate step exit code remains the job/workflow conclusion, so `no_release` stays red while its report is preserved.
 
 - [ ] **Step 3: Verify in two clean directories**
 
@@ -776,7 +822,7 @@ Record the implementation commit, artifact SHA-256, exact failing release gates,
 
 ## Plan Self-Review Result
 
-- Spec coverage for the approved first vertical slice is mapped to Tasks 1-14: exact mode routing, canonical validation, authority boundary, one destructive-action rule, Claim/Risk/Recommendation, shared evaluator, HulianUI adapter, Skill, artifact, public-site closure, parity, holdout/release behavior, and clean CI.
+- Spec coverage for the approved first vertical slice is mapped to Tasks 1-15: exact mode routing, canonical validation, authority boundary, one destructive-action rule, Claim/Risk/Recommendation, shared evaluator, HulianUI adapter, Skill, artifact, public-site closure, parity, holdout/release behavior, and clean CI.
 - Full production execution of every authority/research/effect capability remains outside this vertical slice and therefore must surface as fail-closed coverage gaps; this plan does not silently approximate it.
-- All referenced functions are introduced before downstream use; transports depend only on `evaluate()`.
+- All referenced functions are introduced before downstream use: knowledge precedes evaluator, the pure adapter precedes the bridge, evaluator precedes CLI/bridge, and CLI precedes Skill.
 - The plan contains no placeholder steps; test fixture/process/transport helpers and the full artifact golden are named explicitly, and no missing vector, evidence, or unavailable website can become a passing result.
