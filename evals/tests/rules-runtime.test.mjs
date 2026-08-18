@@ -9,7 +9,7 @@ const lit=(node_id,value)=>({node_id,op:'literal',value});
 const eq=(node_id,path,value)=>({node_id,op:'eq',path,value});
 const baseRule=(overrides={})=>({
  rule_id:'rule-1',rule_version:'1.0.0',release_critical:false,finding_type:'usability',
- required_dependencies:[],required_input_pointers:['/target/enabled','/target/excluded','/target/ready','/target/passes','/target/tags','/target/score'],
+ required_dependencies:[],registered_input_pointers:['/target/enabled','/target/excluded','/target/ready','/target/passes','/target/tags','/target/score'],required_input_pointers:[],
  applicability:lit('app',true),exclusion:lit('exc',false),precondition:lit('pre',true),check:lit('check',true),...overrides
 });
 const evalRule=(overrides={},input={target:{}},tools=[])=>evaluateRule(baseRule(overrides),input,tools);
@@ -185,4 +185,35 @@ test('TASK5_REVIEW_RED_RUN_PART_CLOSED_UNION',()=>{
   {terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS',release_critical:'false'}
  ];
  for(const invalid of invalidParts)assert.equal(reduceRunStatus([invalid]),'failed',JSON.stringify(invalid));
+});test('registered input pointers are a closed allowlist and required pointers are its subset',()=>{
+ const valid=baseRule({registered_input_pointers:['/target/passes'],required_input_pointers:['/target/passes'],check:eq('check','/target/passes',true)});
+ expectState(evaluateRule(valid,{target:{passes:true}},[]),{terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'});
+ const outside=baseRule({registered_input_pointers:['/target/enabled'],required_input_pointers:['/target/passes'],check:lit('check',true)});
+ expectState(evaluateRule(outside,{target:{passes:true}},[]),{terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'});
+});
+
+test('registered but nonrequired missing eq in and compare paths remain reachable U',()=>{
+ const registered=['/target/enabled','/target/tags','/target/score'];
+ for(const applicability of [
+  eq('eq-missing','/target/enabled',true),
+  {node_id:'in-missing',op:'in',path:'/target/tags',value:'admin'},
+  {node_id:'compare-missing',op:'compare',path:'/target/score',operator:'gte',value:1}
+ ]){
+  const rule=baseRule({registered_input_pointers:registered,required_input_pointers:[],applicability});
+  expectState(evaluateRule(rule,{target:{}},[]),{terminal:'completed',outcome:'unknown',reason_code:'APPLICABILITY_UNKNOWN'});
+ }
+});
+
+test('applicability and precondition outcomes precede required input completeness',()=>{
+ const missingRequired={registered_input_pointers:['/target/passes'],required_input_pointers:['/target/passes']};
+ expectState(evaluateRule(baseRule({...missingRequired,applicability:lit('app',false)}),{target:{}},[]),{terminal:'completed',outcome:'not_applicable',reason_code:'APPLICABILITY_FALSE'});
+ expectState(evaluateRule(baseRule({...missingRequired,precondition:lit('pre',false)}),{target:{}},[]),{terminal:'completed',outcome:'not_run',reason_code:'PRECONDITION_FALSE'});
+ expectState(evaluateRule(baseRule({...missingRequired,applicability:lit('app',true),precondition:lit('pre',true)}),{target:{}},[]),{terminal:'completed',outcome:'not_run',reason_code:'REQUIRED_INPUT_PARTIAL'});
+});
+
+test('unregistered AST paths and required pointers outside registry are invalid rules',()=>{
+ const unregistered=baseRule({registered_input_pointers:['/target/enabled'],required_input_pointers:[],check:eq('check','/target/passes',true)});
+ expectState(evaluateRule(unregistered,{target:{passes:true}},[]),{terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'});
+ const outside=baseRule({registered_input_pointers:['/target/enabled'],required_input_pointers:['/target/passes'],check:lit('check',true)});
+ expectState(evaluateRule(outside,{target:{passes:true}},[]),{terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'});
 });
