@@ -268,6 +268,11 @@ ReleaseRecommendation 与 DecisionRecord 分离。Inquiry 文本不能成为任�
 
 ## 10. EvaluationInputBundle 与输出权威
 
+### 10.1 FindingContextV1 唯一来源
+
+Finding identity context 只能由 `deriveFindingContext(validated EvaluationInputBundle)` 产生。v0.1 的 closed exact-six 结构是 `schema_version`、`behavior_version`、`canonical_target_locator`、`target_snapshot_digest`、`scenario_binding_ids`、`claim_key`；其中 `schema_version = finding-v1`，`scenario_binding_ids = [scenario_profile_id]`，`claim_key = null`。调用方不得在 RuleEvaluation 上自报或覆盖这些字段。
+
+
 EvaluationInputBundle 必填 schema/behavior versions、evaluation_effective_at、target snapshot、CandidateUniverse、Scenario/Journey、Source registry refs、Evidence/Study/Claim、Research state、adapter evidence、policy digests；可选 InquiryDraft。其 normalized bytes 产生 input_digest。
 
 ToolInvocationResult、RuleEvaluation、Finding、RunIssue、RunReport 分层。每条规则一条 RuleEvaluation，Finding 只表示问题。
@@ -357,6 +362,9 @@ Tool、Rule、Run terminal 后不可转换。Run reducer：invalid_input/invalid
 
 
 ## 12. Canonical validation、collections、projection 与 digests
+
+Finding emission 的唯一接口是 `emitFinding(exact RuleEvaluation, exact FindingContextV1)`。两个参数分别 closed-validate；缺失、additional、非 canonical 或自报 context 均返回 `null`。FingerprintV1 只组合已验证 context 与 RuleEvaluation 的 rule metadata；v0.1 不从 claims 推导 claim key，固定为 `null`。
+
 
 ### 12.1 CanonicalRelativePath
 

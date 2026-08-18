@@ -62,11 +62,18 @@ function ast(node,input,trace,parent_node_id=null){
  trace.push({node_id:node.node_id,parent_node_id,value});return value;
 }
 function dependencyTrace(rule,toolResults){
- const byId=new Map();for(const result of toolResults){if(!object(result)||typeof result.dependency_id!=='string'||!TOOL_STATUSES.has(result.status)||typeof result.complete!=='boolean'||byId.has(result.dependency_id))throw new Error('TOOL');byId.set(result.dependency_id,result);}
+ const byId=new Map();
+ for(const result of toolResults){if(!object(result)||!text(result.dependency_id)||!TOOL_STATUSES.has(result.status)||typeof result.complete!=='boolean'||byId.has(result.dependency_id))throw new Error('TOOL');byId.set(result.dependency_id,result);}
  const required=rule.required_dependencies.filter(item=>item.required).sort((a,b)=>compareId(a.dependency_id,b.dependency_id)),seen=new Set();
- return required.map(item=>{if(seen.has(item.dependency_id))throw new Error('DEPENDENCY');seen.add(item.dependency_id);const result=byId.get(item.dependency_id)??{dependency_id:item.dependency_id,status:'not_found',complete:false};return{dependency_id:item.dependency_id,status:result.status,complete:result.complete};});
+ return required.map(item=>{if(!text(item.dependency_id)||seen.has(item.dependency_id))throw new Error('DEPENDENCY');seen.add(item.dependency_id);const result=byId.get(item.dependency_id)??{dependency_id:item.dependency_id,status:'not_found',complete:false};return{dependency_id:item.dependency_id,status:result.status,complete:result.complete};});
 }
-function dependencyDecision(trace){for(const [status,terminal,outcome,reason_code] of TOOL_PRIORITY)if(trace.some(item=>item.status===status))return{status,terminal,outcome,reason_code};if(trace.some(item=>item.status==='partial'&&!item.complete))return{terminal:'completed',outcome:'not_run',reason_code:'REQUIRED_INPUT_PARTIAL'};if(trace.some(item=>item.status==='not_found'))return{terminal:'completed',outcome:'not_run',reason_code:'REQUIRED_INPUT_NOT_FOUND'};return null;}
+function dependencyDecision(trace){
+ const decision=(winner,terminal,outcome,reason_code)=>({winner,terminal,outcome,reason_code,run_issue:outcome==='evaluation_error'?exactIssue('/required_dependencies',winner.dependency_id):null});
+ for(const [status,terminal,outcome,reason_code] of TOOL_PRIORITY){const winner=trace.find(item=>item.status===status);if(winner)return decision(winner,terminal,outcome,reason_code);}
+ const partial=trace.find(item=>item.status==='partial'&&!item.complete);if(partial)return decision(partial,'completed','not_run','REQUIRED_INPUT_PARTIAL');
+ const notFound=trace.find(item=>item.status==='not_found');if(notFound)return decision(notFound,'completed','not_run','REQUIRED_INPUT_NOT_FOUND');
+ return null;
+}
 const combined=(left,right,rank,identity)=>[left,right].reduce((best,item)=>rank[item]>rank[best]?item:best,identity);
 
 export function evaluateRule(rule,input,toolResults){
@@ -76,7 +83,7 @@ export function evaluateRule(rule,input,toolResults){
   const valid=validateBySchema('Rule',rule);if(!valid.ok)return errorRow(rule,'invalid_rule','INVALID_RULE');const safeRule=valid.value;
   try{validateRegistry(safeRule);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   let dependency_trace;try{dependency_trace=dependencyTrace(safeRule,safeTools);}catch{return errorRow(safeRule,'invalid_input','INVALID_INPUT');}
-  const decision=dependencyDecision(dependency_trace);if(decision){const dependency_id=decision.status?dependency_trace.find(item=>item.status===decision.status)?.dependency_id??null:null;return row(safeRule,decision.terminal,decision.outcome,decision.reason_code,[],dependency_trace,decision.outcome==='evaluation_error'?{code:'RULE_EVALUATION_ERROR',instance_pointer:'/required_dependencies',dependency_id}:null);}
+  const decision=dependencyDecision(dependency_trace);if(decision)return row(safeRule,decision.terminal,decision.outcome,decision.reason_code,[],dependency_trace,decision.run_issue);
   const trace=[];let app,exclusion;try{app=ast(safeRule.applicability,safeInput,trace);exclusion=ast(safeRule.exclusion,safeInput,trace);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   const notExclusion=exclusion==='T'?'F':exclusion==='F'?'T':exclusion,effective=combined(app,notExclusion,ALL,'T');
   if(effective==='E')return row(safeRule,'completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR',trace,dependency_trace,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/applicability',dependency_id:null});
@@ -95,16 +102,17 @@ export function evaluateRule(rule,input,toolResults){
  }catch{return errorRow(rule,'invalid_input','INVALID_INPUT');}
 }
 
+export function deriveFindingContext(bundle){
+ try{const valid=validateBySchema('EvaluationInputBundle',bundle);if(!valid.ok)return null;const value=valid.value;return snapshot({schema_version:'finding-v1',behavior_version:value.behavior_version,canonical_target_locator:value.target_snapshot.canonical_locator,target_snapshot_digest:value.target_snapshot.snapshot_digest,scenario_binding_ids:[value.scenario_profile_id],claim_key:null});}catch{return null;}
+}
 const EMISSION=Object.freeze({pass:{false:[null,'NONE'],true:[null,'NONE']},not_applicable:{false:[null,'NONE'],true:[null,'NONE']},fail:{false:['rule','RULE_CHECK_FAILED'],true:['rule','RULE_CHECK_FAILED']},partial:{false:['unknown','RULE_PARTIAL'],true:['escalation','RELEASE_CRITICAL_PARTIAL']},not_run:{false:['unknown','RULE_NOT_RUN'],true:['escalation','RELEASE_CRITICAL_NOT_RUN']},unknown:{false:['unknown','RULE_UNKNOWN'],true:['escalation','RELEASE_CRITICAL_UNKNOWN']},evaluation_error:{false:[null,'NONE'],true:['escalation','RELEASE_CRITICAL_EVALUATION_ERROR']}});
-function fingerprint(rowValue,finding_type,emission_reason_code){
- for(const key of ['schema_version','behavior_version','rule_id','rule_version','canonical_target_locator','target_snapshot_digest'])if(typeof rowValue[key]!=='string')throw new Error('FINGERPRINT');
- if(!Array.isArray(rowValue.scenario_binding_ids)||rowValue.scenario_binding_ids.some(item=>typeof item!=='string'))throw new Error('FINGERPRINT');
- const scenario_binding_ids=canonicalSet(rowValue.scenario_binding_ids,item=>item);let claim_key=rowValue.claim_key;
- if(claim_key!==null){if(!object(claim_key)||Object.keys(claim_key).sort().join(',')!=='context_id,population_id,predicate_id,time_scope_id'||Object.values(claim_key).some(value=>typeof value!=='string'))throw new Error('FINGERPRINT');claim_key=snapshot(claim_key);}
- const value={schema_version:rowValue.schema_version,behavior_version:rowValue.behavior_version,rule_id:rowValue.rule_id,rule_version:rowValue.rule_version,finding_type,emission_reason_code,canonical_target_locator:rowValue.canonical_target_locator,target_snapshot_digest:rowValue.target_snapshot_digest,scenario_binding_ids,claim_key};
+function fingerprint(ruleValue,context,finding_type,emission_reason_code){
+ const value={schema_version:context.schema_version,behavior_version:context.behavior_version,rule_id:ruleValue.rule_id,rule_version:ruleValue.rule_version,finding_type,emission_reason_code,canonical_target_locator:context.canonical_target_locator,target_snapshot_digest:context.target_snapshot_digest,scenario_binding_ids:context.scenario_binding_ids,claim_key:null};
  const full=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(value)).digest('hex');return{fingerprint:value,fingerprint_full_digest:full,finding_id:`f_${full.slice(0,32)}`};
 }
-export function emitFinding(ruleEvaluation){try{const value=snapshot(ruleEvaluation);if(!object(value)||!OUTCOMES.has(value.outcome)||typeof value.release_critical!=='boolean')return null;const [kind,emission_reason_code]=EMISSION[value.outcome][String(value.release_critical)];if(kind===null)return null;const finding_type=kind==='rule'?value.finding_type:kind;if(typeof finding_type!=='string'||finding_type.length===0)return null;return{...fingerprint(value,finding_type,emission_reason_code),finding_type,emission_reason_code,rule_id:value.rule_id,rule_version:value.rule_version};}catch{return null;}}
+export function emitFinding(ruleEvaluation,context){
+ try{const value=snapshot(ruleEvaluation),safeContext=snapshot(context);if(ruleSignal(value)===null||!validFindingContext(safeContext)||value.terminal==='invalid_input'||value.terminal==='invalid_rule')return null;const [kind,emission_reason_code]=EMISSION[value.outcome][String(value.release_critical)];if(kind===null)return null;const finding_type=kind==='rule'?value.finding_type:kind;if(!text(finding_type))return null;return{...fingerprint(value,safeContext,finding_type,emission_reason_code),finding_type,emission_reason_code,rule_id:value.rule_id,rule_version:value.rule_version};}catch{return null;}
+}
 const RULE_PAIRS=Object.freeze({
  invalid_input:Object.freeze({evaluation_error:new Set(['INVALID_INPUT'])}),
  invalid_rule:Object.freeze({evaluation_error:new Set(['INVALID_RULE'])}),
@@ -123,11 +131,13 @@ const RULE_KEYS=['dependency_trace','finding_type','outcome','reason_code','rele
 const FINDING_KEYS=['emission_reason_code','finding_id','finding_type','fingerprint','fingerprint_full_digest','rule_id','rule_version'];
 const ISSUE_KEYS=['code','dependency_id','instance_pointer'];
 const FINGERPRINT_KEYS=['behavior_version','canonical_target_locator','claim_key','emission_reason_code','finding_type','rule_id','rule_version','scenario_binding_ids','schema_version','target_snapshot_digest'];
+const FINDING_CONTEXT_KEYS=['behavior_version','canonical_target_locator','claim_key','scenario_binding_ids','schema_version','target_snapshot_digest'];
 const CLAIM_KEYS=['context_id','population_id','predicate_id','time_scope_id'];
 const TRACE_KEYS=['node_id','parent_node_id','value'];
 const DEPENDENCY_KEYS=['complete','dependency_id','status'];
 const exactKeys=(value,keys)=>object(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
-const text=(value)=>typeof value==='string'&&value.length>0;
+const wellFormed=(value)=>{for(let i=0;i<value.length;i+=1){const code=value.charCodeAt(i);if(code>=0xd800&&code<=0xdbff){const next=value.charCodeAt(i+1);if(!(next>=0xdc00&&next<=0xdfff))return false;i+=1;}else if(code>=0xdc00&&code<=0xdfff)return false;}return true;};
+const text=(value)=>typeof value==='string'&&value.length>0&&wellFormed(value)&&value.normalize('NFC')===value;
 const lowerHex64=(value)=>{
  if(typeof value!=='string'||value.length!==64)return false;
  for(const char of value)if(!'0123456789abcdef'.includes(char))return false;
@@ -135,12 +145,21 @@ const lowerHex64=(value)=>{
 };
 const validIssue=(value)=>exactKeys(value,ISSUE_KEYS)&&value.code==='RULE_EVALUATION_ERROR'&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||text(value.dependency_id));
 const validTrace=(value)=>Array.isArray(value)&&value.every(item=>exactKeys(item,TRACE_KEYS)&&text(item.node_id)&&(item.parent_node_id===null||text(item.parent_node_id))&&['T','F','U','E'].includes(item.value));
-const validDependencyTrace=(value)=>Array.isArray(value)&&value.every(item=>exactKeys(item,DEPENDENCY_KEYS)&&text(item.dependency_id)&&TOOL_STATUSES.has(item.status)&&typeof item.complete==='boolean');
+function validDependencyTrace(value){
+ if(!Array.isArray(value))return false;const seen=new Set();let previous=null;
+ for(const item of value){if(!exactKeys(item,DEPENDENCY_KEYS)||!text(item.dependency_id)||!TOOL_STATUSES.has(item.status)||typeof item.complete!=='boolean'||seen.has(item.dependency_id))return false;if(previous!==null&&compareId(previous,item.dependency_id)>=0)return false;seen.add(item.dependency_id);previous=item.dependency_id;}
+ return true;
+}
+function validFindingContext(value){
+ if(!exactKeys(value,FINDING_CONTEXT_KEYS)||value.schema_version!=='finding-v1'||!text(value.behavior_version)||!text(value.canonical_target_locator)||!lowerHex64(value.target_snapshot_digest)||value.claim_key!==null)return false;
+ return Array.isArray(value.scenario_binding_ids)&&value.scenario_binding_ids.length===1&&text(value.scenario_binding_ids[0]);
+}
 function ruleSignal(value){
  if(!exactKeys(value,RULE_KEYS)||!text(value.rule_id)||!text(value.rule_version)||!text(value.finding_type)||typeof value.release_critical!=='boolean'||!validTrace(value.trace)||!validDependencyTrace(value.dependency_trace))return null;
- const outcomes=Object.hasOwn(RULE_PAIRS,value.terminal)?RULE_PAIRS[value.terminal]:null;
- if(outcomes===null||!Object.hasOwn(outcomes,value.outcome)||!outcomes[value.outcome].has(value.reason_code))return null;
+ const outcomes=Object.hasOwn(RULE_PAIRS,value.terminal)?RULE_PAIRS[value.terminal]:null;if(outcomes===null||!Object.hasOwn(outcomes,value.outcome)||!outcomes[value.outcome].has(value.reason_code))return null;
  if(value.outcome==='evaluation_error'){if(!validIssue(value.run_issue))return null;}else if(value.run_issue!==null)return null;
+ if(value.terminal==='invalid_input'||value.terminal==='invalid_rule'){if(value.trace.length!==0||value.dependency_trace.length!==0||value.run_issue.instance_pointer!==''||value.run_issue.dependency_id!==null)return null;}
+ else{const decision=dependencyDecision(value.dependency_trace);if(decision!==null){if(value.trace.length!==0||value.terminal!==decision.terminal||value.outcome!==decision.outcome||value.reason_code!==decision.reason_code)return null;if(!jcsBytes(value.run_issue).equals(jcsBytes(decision.run_issue)))return null;}else if(value.terminal==='tool_failed'||value.terminal==='cancelled'||value.reason_code==='REQUIRED_INPUT_NOT_FOUND')return null;}
  return{kind:'rule',failed:value.terminal==='invalid_input'||value.terminal==='invalid_rule'||(value.outcome==='evaluation_error'&&value.release_critical),gap:['partial','unknown','not_run','evaluation_error'].includes(value.outcome)};
 }
 function validClaimKey(value){return value===null||(exactKeys(value,CLAIM_KEYS)&&CLAIM_KEYS.every(key=>text(value[key])));}

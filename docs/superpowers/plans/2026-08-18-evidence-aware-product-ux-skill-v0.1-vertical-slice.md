@@ -310,7 +310,7 @@ git commit -m "feat: enforce destructive-action authority boundaries"
 - Create: fixtures for `AST-APP-FE-001`, `TOOL-MULTI-CANCEL-TIMEOUT-001`, `FIND-INC-001`, `EMISSION-REASON-001`
 
 **Interfaces:**
-- Produces: `evaluateRule(rule, input, toolResults): RuleEvaluation`, `emitFinding(ruleEvaluation): Finding|null`, `reduceRunStatus(parts): RunStatus`.
+- Produces: `evaluateRule(rule, input, toolResults): RuleEvaluation`, `deriveFindingContext(bundle): FindingContextV1|null`, `emitFinding(ruleEvaluation, findingContext): Finding|null`, `reduceRunStatus(parts): RunStatus`.
 
 - [ ] **Step 1: Write reducer tests**
 
@@ -322,7 +322,8 @@ test('required timeout dominates required cancellation', () => {
 });
 
 test('critical unknown emits escalation and no invented success', () => {
-  const finding = emitFinding({outcome:'unknown',release_critical:true,rule_id:'delete-safety'});
+  const context = deriveFindingContext(bundle);
+  const finding = emitFinding(ruleEvaluation, context);
   assert.equal(finding.finding_type, 'escalation');
   assert.equal(finding.emission_reason_code, 'RELEASE_CRITICAL_UNKNOWN');
 });
