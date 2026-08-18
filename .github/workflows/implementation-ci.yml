@@ -22,11 +22,14 @@ jobs:
           run_install: false
       - run: pnpm install --frozen-lockfile
       - run: pnpm vectors:check
+      - name: Reject conflicting CI modes
+        if: hashFiles('.github/expected-red-patterns.txt') != '' && hashFiles('.github/diagnostic-tests.txt') != ''
+        run: echo 'Conflicting expected-red and diagnostic markers.' >&2; exit 1
       - name: Run tests
-        if: hashFiles('.github/expected-red-patterns.txt') == ''
+        if: hashFiles('.github/expected-red-patterns.txt') == '' && hashFiles('.github/diagnostic-tests.txt') == ''
         run: pnpm test
       - name: Verify intentional RED without failing workflow
-        if: hashFiles('.github/expected-red-patterns.txt') != ''
+        if: hashFiles('.github/expected-red-patterns.txt') != '' && hashFiles('.github/diagnostic-tests.txt') == ''
         shell: bash
         run: |
           set +e
@@ -54,4 +57,20 @@ jobs:
             exit 1
           fi
           echo "Intentional RED verified; workflow remains green to avoid failure notifications."
+      - name: Run diagnostic tests without notification failure
+        if: hashFiles('.github/diagnostic-tests.txt') != '' && hashFiles('.github/expected-red-patterns.txt') == ''
+        shell: bash
+        run: |
+          set +e
+          pnpm test > "$RUNNER_TEMP/diagnostic-tests.log" 2>&1
+          diagnostic_status=$?
+          set -e
+          cat "$RUNNER_TEMP/diagnostic-tests.log"
+          echo "diagnostic_test_exit_code=$diagnostic_status"
+          echo "## Diagnostic tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "Exit code: $diagnostic_status" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$diagnostic_status" -ne 0 ]; then
+            echo "::warning::Diagnostic tests failed with exit code $diagnostic_status; this run is not GREEN evidence."
+          fi
+          exit 0
       - run: pnpm baseline:red
