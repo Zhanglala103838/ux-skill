@@ -137,5 +137,43 @@
       "verification_status": "verified",
       "tenant_binding_set_digest": "6ce3ca9927d14423613ebde2ab30bfc594e3f93c1e48a6e258f59faeb84a5a8a"
     }
+  ],
+  "evaluator_gate_key_registry": [
+    {
+      "issuer_id": "ux-skill-expired-evaluator-v1",
+      "key_version": "1",
+      "algorithm": "Ed25519",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEA+3qMXTuF6VdRTS06QK4Q7DLZzY8PClHTQ4CXCVXxMW8=",
+      "effective_at": "2026-01-01T00:00:00Z",
+      "expires_at": "2026-08-18T00:00:00Z",
+      "revoked": false
+    },
+    {
+      "issuer_id": "ux-skill-fixture-evaluator-v1",
+      "key_version": "1",
+      "algorithm": "Ed25519",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEA+3qMXTuF6VdRTS06QK4Q7DLZzY8PClHTQ4CXCVXxMW8=",
+      "effective_at": "2026-01-01T00:00:00Z",
+      "expires_at": null,
+      "revoked": false
+    },
+    {
+      "issuer_id": "ux-skill-future-evaluator-v1",
+      "key_version": "1",
+      "algorithm": "Ed25519",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEA+3qMXTuF6VdRTS06QK4Q7DLZzY8PClHTQ4CXCVXxMW8=",
+      "effective_at": "2026-08-19T00:00:00Z",
+      "expires_at": null,
+      "revoked": false
+    },
+    {
+      "issuer_id": "ux-skill-revoked-evaluator-v1",
+      "key_version": "1",
+      "algorithm": "Ed25519",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEA+3qMXTuF6VdRTS06QK4Q7DLZzY8PClHTQ4CXCVXxMW8=",
+      "effective_at": "2026-01-01T00:00:00Z",
+      "expires_at": null,
+      "revoked": true
+    }
   ]
 }

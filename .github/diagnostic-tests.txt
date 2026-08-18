@@ -1,0 +1,1 @@
+Task 4 provenance candidate: inspect diagnostic_test_exit_code before cleanup.

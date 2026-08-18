@@ -388,7 +388,11 @@
         "candidate_evaluations_digest",
         "authority_decision",
         "party_inventory",
-        "safety_or_rights_floor_assessment"
+        "safety_or_rights_floor_assessment",
+        "issuer_id",
+        "key_version",
+        "algorithm",
+        "signature_base64"
       ],
       "properties": {
         "binding_version": {
@@ -416,6 +420,23 @@
         },
         "safety_or_rights_floor_assessment": {
           "$ref": "#/$defs/FloorAssessmentBinding"
+        },
+        "issuer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "signature_base64": {
+          "type": "string",
+          "minLength": 88,
+          "maxLength": 88,
+          "pattern": "^[A-Za-z0-9+/]{86}==$"
         }
       }
     }

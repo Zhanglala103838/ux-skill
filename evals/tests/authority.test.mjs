@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createHash,generateKeyPairSync,sign} from 'node:crypto';
+import {createHash} from 'node:crypto';
 import {canonicalSet,jcsBytes} from '../../evaluator/canonical.mjs';
 import {evaluateAuthority,derivePartyInventory,solveCandidates} from '../../evaluator/authority.mjs';
 
@@ -9,6 +9,7 @@ const vectorIds=['AUTH-ROOT-001','ACT-DISJOINT-001','TENANT-UNKNOWN-001','PARTY-
 const fixtures=new Map(await Promise.all(vectorIds.map(async(id)=>[id,JSON.parse(await readFile(new URL(`../red/${id}.json`,import.meta.url),'utf8'))])));
 const registries=JSON.parse(await readFile(new URL('../../knowledge/registries.json',import.meta.url),'utf8'));
 const policies=JSON.parse(await readFile(new URL('../../knowledge/decision-policies.json',import.meta.url),'utf8'));
+const provenanceSignatureGolden=JSON.parse(await readFile(new URL('../golden/evaluator-gate-signatures.json',import.meta.url),'utf8'));
 const actor=(subject_id,namespace_uri='https://identity.example')=>({namespace_uri,issuer_id:'ux-skill',subject_id,kind:'human'});
 const verifiedProof=()=>({proof_id:'proof-1',effect_scope_digest:'e'.repeat(64),resource_scope_digest:'d'.repeat(64),data_source_ids:['directory'],snapshot_digest:'c'.repeat(64),snapshot_version:'v1',verification_status:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
 const boundGraph=(affected_party_ids)=>({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids,effect_scope_digest:'e'.repeat(64),resource_scope_digest:'d'.repeat(64),data_source_ids:['directory'],snapshot_digest:'c'.repeat(64),snapshot_version:'v1',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
@@ -210,21 +211,6 @@ test("acting edge scope time and caller verified proof are fail closed",()=>{
 const dimension=(party_or_cohort_id,criterion,tier,value,floor_result="T")=>({party_or_cohort_id,criterion,tier,value,floor_result});
 const solution=(solution_id,soft_dimensions,hard_constraints=[{id:"hard",result:"T"}])=>({solution_id,hard_constraints,soft_dimensions});
 const gateDigest=(domain,value)=>createHash("sha256").update(domain,"utf8").update(jcsBytes(value)).digest("hex");
-const provenanceSignatureDomain='ux-skill:evaluator-gate-binding-signature:v1';
-const provenanceKeyPair=generateKeyPairSync('ed25519');
-const provenanceSignatures=new Map();
-const recordProvenanceSignature=(unsignedBinding)=>{
- const signedBody={...unsignedBinding,issuer_id:'ux-skill-fixture-evaluator-v1',key_version:'1',algorithm:'Ed25519'};
- const bodyBytes=jcsBytes(signedBody);
- const bodyDigest=createHash('sha256').update(bodyBytes).digest('hex');
- const signingBytes=Buffer.concat([Buffer.from(provenanceSignatureDomain,'utf8'),bodyBytes]);
- provenanceSignatures.set(bodyDigest,sign(null,signingBytes,provenanceKeyPair.privateKey).toString('base64'));
-};
-process.on('exit',()=>{
- const manifest={algorithm:'Ed25519',signature_domain:provenanceSignatureDomain,public_key_spki_base64:provenanceKeyPair.publicKey.export({type:'spki',format:'der'}).toString('base64'),signature_by_body_digest:Object.fromEntries([...provenanceSignatures].sort(([left],[right])=>left.localeCompare(right)))};
- console.log('TASK4_PROVENANCE_SIGNING_MANIFEST_BASE64='+Buffer.from(JSON.stringify(manifest),'utf8').toString('base64'));
-});
-
 const canonicalGateCandidateUniverse=(candidateUniverse)=>canonicalSet(candidateUniverse.map((solution)=>({...solution,option_ids:canonicalSet(solution.option_ids,(optionId)=>optionId)})),(solution)=>solution.solution_id);
 const canonicalGateCandidateEvaluations=(candidateEvaluations)=>canonicalSet(candidateEvaluations.map((evaluation)=>({...evaluation,hard_constraints:canonicalSet(evaluation.hard_constraints,(row)=>row.constraint_id),soft_dimensions:canonicalSet(evaluation.soft_dimensions,(row)=>[row.party_or_cohort_id,row.criterion])})),(evaluation)=>evaluation.solution_id);
 
@@ -242,9 +228,11 @@ const withGateBinding=(input,statuses={})=>{
  const completeness_proof={...proofBody,completeness_proof_digest:gateDigest("ux-skill:party-completeness-proof:v1",proofBody)};
  const partyBody={party_inventory_id:"solver-party-inventory-v1",status:party_inventory_status,party_ids:party_inventory_status==="verified_no_affected_party"?[]:["party-a"],candidate_universe_digest,evaluation_effective_at,policy_version,completeness_proof_digest:completeness_proof.completeness_proof_digest};
  const floorBody={assessment_id:"solver-floor-assessment-v1",status:safety_or_rights_floor_status,candidate_universe_digest,candidate_evaluations_digest,evaluation_effective_at,policy_version};
- const unsignedBinding={binding_version:"EvaluatorGateBindingV1",evaluation_effective_at,policy_version,candidate_universe_digest,candidate_evaluations_digest,authority_decision:{...authorityBody,authority_decision_digest:gateDigest("ux-skill:authority-decision:v1",authorityBody)},party_inventory:{...partyBody,party_inventory_digest:gateDigest("ux-skill:party-inventory:v1",partyBody),completeness_proof},safety_or_rights_floor_assessment:{...floorBody,assessment_digest:gateDigest("ux-skill:safety-rights-floor-assessment:v1",floorBody)}};
- recordProvenanceSignature(unsignedBinding);
- return {...input,evaluator_gate_binding:unsignedBinding};
+ const signedBody={binding_version:"EvaluatorGateBindingV1",issuer_id:"ux-skill-fixture-evaluator-v1",key_version:"1",algorithm:"Ed25519",evaluation_effective_at,policy_version,candidate_universe_digest,candidate_evaluations_digest,authority_decision:{...authorityBody,authority_decision_digest:gateDigest("ux-skill:authority-decision:v1",authorityBody)},party_inventory:{...partyBody,party_inventory_digest:gateDigest("ux-skill:party-inventory:v1",partyBody),completeness_proof},safety_or_rights_floor_assessment:{...floorBody,assessment_digest:gateDigest("ux-skill:safety-rights-floor-assessment:v1",floorBody)}};
+ const bodyDigest=createHash("sha256").update(jcsBytes(signedBody)).digest("hex");
+ const signature_base64=provenanceSignatureGolden.signature_by_body_digest[bodyDigest];
+ if(typeof signature_base64!=="string")throw new Error("PROVENANCE_SIGNATURE_GOLDEN_MISSING:"+bodyDigest);
+ return {...input,evaluator_gate_binding:{...signedBody,signature_base64}};
 };
 const completeUniverse=(candidates,statuses={})=>withGateBinding({authority_status:"complete",party_inventory_status:"verified_complete",safety_or_rights_floor_status:"resolved",candidate_universe:candidates.map((candidate)=>({solution_id:candidate.solution_id,option_ids:[]})),candidate_evaluations:candidates.map((candidate)=>({solution_id:candidate.solution_id,hard_constraints:candidate.hard_constraints.map((row)=>({constraint_id:row.id,result:row.result,conflict_class:row.conflict_class??"ordinary"})),soft_dimensions:candidate.soft_dimensions}))},statuses);
 
@@ -395,6 +383,7 @@ import * as authorityModule from '../../evaluator/authority.mjs';
 test('TASK4_PROVENANCE_RED_CALLER_FORGERY rejects caller-minted self-hash gate evidence',()=>{
  const only=closedSolution('forged',['option-safe'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]);
  const forged=withGateBinding(closedSolverInput({candidate_universe:[only.solution],candidate_evaluations:[only.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'}));
+ forged.evaluator_gate_binding.signature_base64=Buffer.alloc(64).toString('base64');
  assert.deepEqual(solveCandidates(forged),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['forged'],next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'},'TASK4_PROVENANCE_RED_CALLER_FORGERY');
 });
 
@@ -417,6 +406,45 @@ test('TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION hashes tenant bindings as c
  const forward=authorityModule.tenantBindingSetDigest(tenants,bindings);
  const permuted=authorityModule.tenantBindingSetDigest([...tenants].reverse(),[...bindings].reverse());
  assert.equal(forward,permuted,'TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION');
+});
+
+
+test('EvaluatorGateBindingV1 requires a closed canonical signature field',()=>{
+ const valid=twoSafeNonDominatedCandidates();
+ const missing=clone(valid); delete missing.evaluator_gate_binding.signature_base64;
+ assert.deepEqual(solveCandidates(missing),invalidCandidateResult());
+ const malformed=clone(valid); malformed.evaluator_gate_binding.signature_base64='AA==';
+ assert.deepEqual(solveCandidates(malformed),invalidCandidateResult());
+ function invalidCandidateResult(){return {selection_status:'invalid_input',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_input',release_recommendation:'escalation',reason_code:'CANDIDATE_INPUT_INVALID'};}
+});
+
+test('EvaluatorGateBindingV1 rejects untrusted revoked expired and future issuer keys',()=>{
+ const valid=twoSafeNonDominatedCandidates();
+ for(const issuer_id of ['unknown-evaluator','ux-skill-revoked-evaluator-v1','ux-skill-expired-evaluator-v1','ux-skill-future-evaluator-v1']){
+  const value=clone(valid); value.evaluator_gate_binding.issuer_id=issuer_id;
+  assert.equal(solveCandidates(value).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED',issuer_id);
+ }
+ const version=clone(valid); version.evaluator_gate_binding.key_version='unknown';
+ assert.equal(solveCandidates(version).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
+});
+
+test('EvaluatorGateBindingV1 signature binds policy time body candidates evaluations and signature bytes',()=>{
+ const valid=twoSafeNonDominatedCandidates();
+ const mutations=[
+  (value)=>{value.evaluator_gate_binding.policy_version='tampered-policy';},
+  (value)=>{value.evaluator_gate_binding.evaluation_effective_at='2026-08-18T00:00:01Z';},
+  (value)=>{value.evaluator_gate_binding.authority_decision.status='unknown';},
+  (value)=>{value.candidate_universe[0].option_ids.push('tampered-option');},
+  (value)=>{value.candidate_evaluations[0].soft_dimensions[0].value+=1;},
+  (value)=>{value.evaluator_gate_binding.signature_base64=Buffer.alloc(64).toString('base64');}
+ ];
+ for(const mutate of mutations){const value=clone(valid);mutate(value);assert.equal(solveCandidates(value).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');}
+});
+
+test('EvaluatorGateBindingV1 valid signatures preserve safe ties and unique selection',()=>{
+ assert.equal(solveCandidates(twoSafeNonDominatedCandidates()).reason_code,'SOFT_PARETO_TIE');
+ const unique=completeUniverse([solution('signed-unique',[dimension('party-a','quality',0,1)])]);
+ assert.deepEqual(solveCandidates(unique),{selection_status:'selected',selected_solution_id:'signed-unique',feasible_solution_ids:['signed-unique'],next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'});
 });
 
 test('EvaluatorGateBindingV1 preserves safe tie and fails closed on missing mismatch or digest tamper',()=>{

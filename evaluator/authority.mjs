@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
+import {createHash,createPublicKey,verify as verifySignature} from 'node:crypto';
 import {canonicalSet,jcsBytes} from './canonical.mjs';
 import {validateBySchema} from './validation.mjs';
 
@@ -50,8 +50,21 @@ const solverGateRequired=(feasible_solution_ids)=>({selection_status:'undecided'
 const validateEvaluatorGateBinding=(universe)=>{
  try{
   const binding=universe.evaluator_gate_binding;
-  const bindingKeys=['binding_version','evaluation_effective_at','policy_version','candidate_universe_digest','candidate_evaluations_digest','authority_decision','party_inventory','safety_or_rights_floor_assessment'];
-  if(!exactKeys(binding,bindingKeys)||binding.binding_version!=='EvaluatorGateBindingV1'||instant(binding.evaluation_effective_at)===null||typeof binding.policy_version!=='string'||binding.policy_version.length===0)return null;
+  const bindingKeys=['binding_version','issuer_id','key_version','algorithm','evaluation_effective_at','policy_version','candidate_universe_digest','candidate_evaluations_digest','authority_decision','party_inventory','safety_or_rights_floor_assessment','signature_base64'];
+  if(!exactKeys(binding,bindingKeys)||binding.binding_version!=='EvaluatorGateBindingV1'||binding.algorithm!=='Ed25519'||instant(binding.evaluation_effective_at)===null||typeof binding.issuer_id!=='string'||binding.issuer_id.length===0||typeof binding.key_version!=='string'||binding.key_version.length===0||typeof binding.policy_version!=='string'||binding.policy_version.length===0||typeof binding.signature_base64!=='string')return null;
+  const keyRow=registries.evaluator_gate_key_registry?.find((row)=>row.issuer_id===binding.issuer_id&&row.key_version===binding.key_version&&row.algorithm===binding.algorithm);
+  const keyKeys=['issuer_id','key_version','algorithm','public_key_spki_base64','effective_at','expires_at','revoked'];
+  if(!exactKeys(keyRow,keyKeys)||keyRow.revoked!==false||typeof keyRow.public_key_spki_base64!=='string')return null;
+  const keyAt=instant(binding.evaluation_effective_at),keyStart=instant(keyRow.effective_at),keyEnd=keyRow.expires_at===null?Infinity:instant(keyRow.expires_at);
+  if(keyAt===null||keyStart===null||keyEnd===null||keyStart>keyAt||keyEnd<=keyAt)return null;
+  const signature=Buffer.from(binding.signature_base64,'base64');
+  const publicKeyBytes=Buffer.from(keyRow.public_key_spki_base64,'base64');
+  if(signature.length!==64||signature.toString('base64')!==binding.signature_base64||publicKeyBytes.toString('base64')!==keyRow.public_key_spki_base64)return null;
+  const publicKey=createPublicKey({key:publicKeyBytes,format:'der',type:'spki'});
+  if(publicKey.asymmetricKeyType!=='ed25519')return null;
+  const {signature_base64,...signedBody}=binding;
+  const signingBytes=Buffer.concat([Buffer.from('ux-skill:evaluator-gate-binding-signature:v1','utf8'),jcsBytes(signedBody)]);
+  if(!verifySignature(null,signingBytes,publicKey,signature))return null;
   const candidateUniverse=canonicalCandidateUniverseForGate(universe.candidate_universe);
   const candidateEvaluations=canonicalCandidateEvaluationsForGate(universe.candidate_evaluations);
   const universeDigest=solverArtifactDigest('ux-skill:candidate-universe:v1',candidateUniverse);
