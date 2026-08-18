@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：第三轮对抗评审后修订，等待第四轮聚焦评审  
-规格版本：0.4  
+状态：第四轮对抗评审后修订，等待第五轮残余阻塞评审  
+规格版本：0.5  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -49,49 +49,47 @@ UX 包括人在实际使用、预期使用、拒绝使用、中途放弃和使�
 不提供法律、安全、医学、伦理或行业认证；不替代用户研究、专业审查或最终组织决策；不覆盖工业产品、实体空间、纯品牌艺术的完整方法。特定辖区规则只有在 SourceAssertion 适用且存在采纳/法域依据时才生效。
 
 
+
 ## 3. 来源、规范断言与采纳
 
-### 3.1 核心对象
+### 3.1 不可变来源链
 
-SourceRecord 保存 publisher、canonical_uri、title、edition/version、publication_status、effective_at、expires_at、retrieved_at、content_digest 和 fragment classification。
+SourceRecord 标识发布者、canonical URI、版本/status/effective/expiry 和完整内容 digest。
 
-SourceAssertion 保存：
+SourceFragment 是唯一可被断言引用的来源单位：
 
 ~~~yaml
-assertion_id: string
+fragment_id: string
 source_record_id: string
-locator: string
-relation: defines | requires | recommends | supports | motivates | exemplifies
-authority_status: normative | adopted_policy | empirical | expert_synthesis | practitioner
-claim_scope: string
-normative_scope:
-  object: string
-  unit_of_conformance: string | null
-  aggregation_scope: string | null
-  conformance_level: string | null
-  technology: string | null
-  jurisdiction: string | null
-applicability_condition: condition_ast
-verification_requirements:
-  required_evidence_kinds: [string]
-  observation_conditions: [string]
-  complete_process_required: boolean
-  equivalent_alternative_test: string
-superseded_by: assertion_id | null
+exact_locator: string
+fragment_kind: normative | informative | empirical_result | expert_opinion | example
+fragment_digest: sha256
+proposition:
+  subject: string
+  predicate: string
+  object: object
+  scope: object
 ~~~
 
-PolicyAdoptionRecord 保存 adopter、decision_authority、decision_artifact_digest、assertion_refs、scope、effective/expiry、revoked_at。adopted_policy 只能引用有效记录，不能用“团队平时这样做”自由文本提升权威。
+SourceAssertion 必须引用 fragment_id，保存 relation=defines/requires/recommends/supports/motivates/exemplifies、applicability、verification requirements、unit/aggregation of conformance、等价替代测试和 partial supersession map。
 
-### 3.2 结论门槛
+authority_status 不由作者自由填写。evaluator 派生 effective_authority：
 
-normative Claim 必须逐条引用 SourceAssertion。Finding 使用：
+1. normative fragment + 适用法律/标准身份 → normative；
+2. 任意 fragment + 有效 PolicyAdoptionRecord 且 adoption proposition/scope 精确覆盖 → adopted_policy；
+3. empirical_result → empirical；
+4. expert_opinion/informative → expert_synthesis；
+5. example → example_only。
 
-- non_conformance：适用标准/政策的明确符合性要求未满足；
-- violation：仅当适用法律、强制政策或明确禁止性义务允许该术语时使用；
-- risk/heuristic/opportunity/unknown/escalation：其他情形。
+PolicyAdoptionRecord 双向引用 assertion_id，并绑定 adopter identity、decision authority、artifact digest、adopted proposition/scope、effective interval、revocation 和 version。缺记录、过期、撤回或 scope 不覆盖时不能派生 adopted_policy。
 
-产生 non_conformance/violation 必须同时验证来源身份和片段分类、适用范围、采纳或法域、验证方法、完整页面/过程范围、等价实现、更新关系及冲突裁决。APG 示例、Understanding 文档、经验方法或局部组件检测不得被提升为普遍义务。
+### 3.2 冲突与 Finding 类型
 
+SourceConflictResolutionTrace 保存所有 applicable assertions、jurisdiction/scope、partial supersession、effective authority、冲突 proposition、有效 override 和 unresolved set。未解决冲突只能 unknown/escalation。
+
+non_conformance 仅用于适用规范/政策的符合性要求；violation 仅用于适用法律、强制政策或明确禁止义务允许的术语。两者要求 normative/adopted authority、结构 proposition 与 Finding Claim 精确蕴含、verification requirements 已满足、完整过程/页面范围和等价替代已检查。
+
+APG 示例、Understanding 文档、heuristic、局部组件或自动扫描不能产生规范结论。规范性来源的身份、分类与 digest 由版本化 source registry 提供，不能由一次运行输入自报。
 
 ## 4. 分析单元、情境镜头与双轨输出
 
@@ -102,370 +100,328 @@ CrossCuttingLensRegistry 为每个 lens 声明触发条件、所需上下文、�
 Assurance track 回答：目前有什么可评价义务、事实、风险和未知。Inquiry track 回答：目标结果是什么、有哪些竞争解释、关键取舍和未知、如何寻找反证。规则库只能覆盖已编码风险，不能取代 situated inquiry、参与式设计和生命周期迭代。
 
 
-## 5. 主体、场景、资源与授权
 
-### 5.1 Typed references
+## 5. 主体、租户、授权与执行封套
 
-ActorRef.kind 为 human、service、agent、organization、group、anonymous。TenantRef 与 ResourceRef 不共用 union；ResourceRef 必须包含 resource_type、tenant_binding 和 version。
+### 5.1 Canonical identity 与代理链
 
-TenantBinding 表达 host、acting、target、billing、data_controller、data_processor 等 relationship。ResourceParty 表达 owner、subject、controller、custodian、beneficiary。PartyImpact 可引用具体 actor、cohort 或 unknown_party，并记录 relation、impact_channel、count_interval、vulnerability、notice、consent、appeal 和 redress。
+ActorIdentity tuple 固定为 (namespace_uri, issuer_id, subject_id, kind)，所有字符串 NFC，URI 按 registry profile 规范化；只有四元组 byte-equal 才相等。kind 为 human/service/agent/organization/group/anonymous。控制关系另由 ControlPrincipalEdge 表达，不能用 ActorRef 不同推断职责分离。
 
-### 5.2 ActingContext
+ActingContext 使用有序 ActingEdge[1..n] 从 authenticated_principal 连到 effective_actor。每跳保存 from/to、basis ref、action/resource/tenant/purpose scope、[effective, expiry)、version。任何 identity 变化必须有有效 basis；链首尾、连续性、scope 收窄与 digest 均由 validator 检查。AuthorizationDecision 必须绑定 acting_chain_digest。
+
+### 5.2 多租户与资源 join
+
+TenantBinding relationship 为 host/acting/target/billing/data_controller/data_processor。ActionPolicyRegistry 对每个 canonical action + resource_type 固定 required_tenant_relationships 与 all/any 规则；v0.1 只允许 all。Grant.tenant_scope 必须覆盖全部 required bindings。缺失、冲突、unknown 或额外跨租户 effect 均 deny/escalate，不能选择 acting 或 target 之一。Decision 绑定完整 tenant_binding_set_digest。
+
+ResourceParty 与 PartyImpact 形成闭包。PartyInventory 保存 status=verified_complete/known_incomplete/unknown、coverage_basis、exclusions。高影响场景只有 verified_complete 才可 allow；空数组必须由 verified_complete + no_affected_party assertion 解释。
+
+### 5.3 GrantValidity
+
+对 grant g、时间 t、ExecutionEnvelope e：
+
+Valid(g,t,e) 当且仅当：
+
+- status=active 且 effective_at <= t < expires_at；
+- revoked_at=null 且当前 revocation_epoch/version 与 authority snapshot 相同；
+- issuer 在 t 对 e 具有 grant 权限；
+- e 的 action/resource/tenant/purpose 均为 g scope 子集；
+- non_delegable=false 才允许 child；
+- delegation_depth 未超上限；
+- parent=null，或 Valid(parent,t,e) 且 child scopes 是 parent scopes 子集。
+
+任何 ancestor 无效即全链无效。Grant chain 的 id/version/epoch 按根到叶排序进入 grant_chain_digest。离线默认 queue_only；只有 ActionPolicy 显式 offline_effect_allowed 且 risk floor 允许才可产生 effect，v0.1 不启用该例外。
+
+### 5.4 ExecutionEnvelope
+
+所有审批、授权和副作用只绑定同一个不可变 ExecutionEnvelope：
 
 ~~~yaml
-acting_context_id: string
-authenticated_principal: actor_ref
-initiator_chain: [actor_ref]
-effective_actor: actor_ref
-represented_parties: [actor_ref]
-representation_basis: grant_or_policy_ref | null
+envelope_id: string
+action: string
+payload_digest: sha256
+effect_predicate: object
+precondition_digest: sha256
+postcondition_digest: sha256
+resource_version_set: [object]
+tenant_binding_set_digest: sha256
 purpose: string
-reason_or_ticket_ref: string | null
-session_id: string
-started_at: datetime
-ended_at: datetime | null
-break_glass: boolean
+acting_chain_digest: sha256
+grant_chain_digest: sha256
+journey_run_id: string
+step_id: string
+channel: string
+audience: [actor_identity]
 ~~~
 
-impersonation、AI 代理、服务账号和人类批准不能压成单个 principal。
+任何字段变化产生新 envelope_id，需要重新审批和授权。AI 建议只能创建 ActionIntent；人类批准 ApprovalArtifact；effect executor 只能消费 envelope，不能重新生成默认参数或二次模型输出。
 
-### 5.3 AuthorityGrant 与 AuthorizationDecision
+### 5.5 Approval 与原子 effect
 
-AuthorityGrant 保存 issuer、grantee、parent_grant_id、action/resource/purpose scope、tenant scope、conditions、status、effective_at、expires_at、revoked_at、revocation_epoch、version、delegation_depth、non_delegable。
+ApprovalArtifact 包含逐笔 ApprovalDecision：approver ActingContext、AuthorizationDecision、signed envelope digest、decision、time、expiry。ApprovalPolicy 固定 eligible roles、quorum、separation_domain=authenticated_human/control_principal/organization_role、single_use。高风险中 control principal unknown 视为未分离。
 
-AuthorizationDecision 保存：
+状态 proposed→approved→consumed/expired/revoked。approved→consumed、GrantValidity 重验、resource versions、fencing token、idempotency record 和 effect commit 是一个 composite guard；任一失败无副作用。外部 effect 使用 transactional outbox + fencing。稳定 reason codes 区分 quorum、SoD、envelope mismatch、stale version、revoked grant、already consumed。
 
-- decision_id、checked_at、trusted_clock_source；
-- grant/authority/resource/tenant version；
-- canonical effect digest 与 purpose；
-- online/offline mode、freshness deadline；
-- allow/deny/unknown、reason codes；
-- fencing token 或 atomic condition reference。
+### 5.6 Lineage invalidation
 
-有效区间固定为 [effective_at, expires_at)。高风险离线动作只能排队，联网同步时重新授权，不能先产生副作用。副作用 transition 必须用同一事务条件或 fencing/CAS 保证 check 与 effect 原子一致。
-
-### 5.4 ActionIntent 与 ApprovalArtifact
-
-ActionIntent 绑定 canonical action、payload digest、resources、tenant、purpose、maker 和版本。ApprovalArtifact 绑定 intent digest、approver set、quorum、separation-of-duties predicate、批准时间、expiry、single_use 和 consumed 状态。payload、主体、租户、资源、目的或 authority 变化都使批准失效。AI 建议、人类批准、授权执行是三个状态。
-
-### 5.5 ScenarioInstance 与 lineage
-
-ScenarioInstance 组合 acting_context、tenant_bindings、resources、resource_parties、authority_grants、goal、task(intent/action/object/lifecycle)、primary_channel、environment、risk_context、beneficiaries 和 party_impacts。
-
-ScenarioLineage 是不可变事件：event_id、occurred/observed_at、caused_by、from/to scenario digest、typed change set、snapshot refs、invariant evaluation refs。reauthentication/approval 为 required、not_required 或 unknown，并带 rationale。验证无环、连续 digest、顺序和分支/合并规则。
-
-### 5.6 Facets
-
-FacetRegistry/Definition/Assignment 是核心对象，声明值域、基数、canonical JSON Pointer、derived_from、unknown/null 和 provenance。Profile 仅产生 informational profile_candidates；不得参与适用性、严重度、优先级或发布建议。跨对象不变量由版本化 builtin invariant_id 执行，不假称基础 AST 支持任意量化。
+ScenarioLineage 的 reauth/reapproval 不是输入结论，由 InvalidationMatrix 派生。以下任一 change 必须 invalidated：identity/acting edge、tenant binding、resource/version、purpose、action/payload/effect、Grant chain、risk class、channel/audience capability。合并只继承所有父分支共同且 envelope digest 完全相同的工件；否则 invalidated。事件使用 parent digests、单调 sequence 和 rollback protection。
 
 
-## 6. JourneyDefinition 与 JourneyRun
+## 6. JourneyDefinition、JourneyRun 与 capability
 
-JourneyDefinition 是预期状态图；JourneyRun 是一次实际运行记录。
+JourneyDefinition 定义 Step/Transition；JourneyRun 记录实际有序事件。每步引用 Scenario/ActingContext、channel、tenant/resource、purpose、action/effect class、pre/postcondition。副作用 transition 必须引用 ExecutionEnvelope 与 AuthorizationDecision。
 
-每个 StepDefinition 必须引用 acting_context/scenario、actor、channel/touchpoint、tenant/resource set、purpose、action/effect class、pre/postconditions。TransitionDefinition 包含 context_delta、authorization_checkpoint、consent checkpoint、typed carried state、timeout、retry、cancel、recovery、escalation 和 idempotency policy。
+carried state 分 data 与 authority_bearing_capability。capability 强制绑定 run_id、step_id、acting_chain_digest、session_id、channel/audience、tenant_binding_set_digest、resource/version、purpose、envelope_digest、nonce、expiry 和 replay status；复制到不同上下文即 invalid。retry、resume、recovery、channel/context delta 和 effect 前重新 checkpoint。idempotency 命中不等于授权成功。
 
-carried state 绑定 registry key、subject、tenant、resource、purpose、classification、integrity digest、source、version、freshness/expiry、consent/authority provenance。
+Retry/Idempotency/Timeout/Recovery 均为 typed policy。TerminalOutcome 具有 evaluator 可求值的 postcondition、PartyImpact safety condition 和 evidence requirements。JourneyRun 保存实际 context snapshots、input/output/effect digest、Decision、Approval consumption、Evidence 和 terminal。
 
-策略必须是结构化对象：
-
-- RetryPolicy：max_attempts、backoff、retryable reason codes、terminal behavior；
-- IdempotencyPolicy：key derivation、tenant、operation/payload digest、retention；
-- TimeoutPolicy：clock、start/end event、duration、on_timeout；
-- RecoveryPolicy：entry condition、preserved state、reauthorization、terminal guarantee。
-
-TerminalOutcome 除 success/safe_exit/cancelled/failed/escalated 外还必须有可求值 postcondition、受影响方安全条件和证据要求。
-
-JourneyRun 记录有序事件、时间、实际 acting context/snapshot、input/output digest、AuthorizationDecision、Evidence links 和实际 terminal outcome。验证悬空引用、不可达、无终态、无限重试、非法携带、重复副作用、过期授权、context replay 和假 success。
+validator 拒绝悬空引用、不可达、无终态、无限重试、非法 state/capability carry、nonce replay、过期 Decision、context change 未重验、重复副作用和无证据 success。
 
 
-## 7. 适用性、约束可行性与偏好
+## 7. Option、HardConstraint 与唯一求解
 
 ### 7.1 三阶段
 
-A. Applicability：只读取 EvaluationInputBundle 中的场景、旅程定义、环境、法域和 SourceAssertion，输出 applicable/not_applicable/unknown。  
-B. Hard feasibility：评价候选 Option 是否满足适用 hard constraints。  
-C. Soft selection：只在 feasible options 中比较，不能覆盖 hard constraints。
+Applicability 只读取场景、旅程、环境、法域和 SourceAssertion。Hard feasibility 只对 applicable hard constraints 求解。Soft selection 只在 feasible solutions 上运行。
 
-### 7.2 可计算约束模型
+### 7.2 求解单位
 
-Option 保存 option_id、decision variables、expected effects、affected parties、reversibility 和 evidence refs。HardConstraint 保存 predicate、作用 option/party/resource、source assertion、priority class 和 failure action。
+求解变量固定为 Solution = canonical set<Option>。Option id 集合按 UTF-8 byte order 排序。HardConstraint predicate 作用于 Solution、party、resource 或 effect；hard 永不因 priority 放松，只有通过 SourceConflictResolutionTrace 验证的 override 才使 constraint ineffective。
 
-关系拆分：
+OverrideGraph 仅 overrides 子图为 DAG；cannot_override 是拒绝 override edge 的 guard。requires_together/incompatible_with 是无向 hyperedge。算法依次计算 applicable constraints、override closure、requires closure、incompatibility、每个 candidate Solution 的 T/F/U/E。
 
-- OverrideGraph：有向 overrides/cannot_override；只有 overrides 子图必须是 DAG；
-- CompatibilityHypergraph：无向 incompatible_with/requires_together；
-- 不合法环、边组合或未知适用性返回 invalid_rule/unknown，不自行选胜者。
+零 feasible solution 固定为 hard_unsat：高风险/法律/权利冲突 → escalation；其他 mandatory constraint violation → block；绝不选择一个违规 Solution。输出全部 inclusion-minimal unsat cores，内部按 constraint id 排序，core 集合按 JCS bytes 排序。
 
-feasibility 输出每个 option 的 satisfied/violated/unknown constraints、unsat core 和 ConstraintResolutionTrace。法律、权利、生命安全或无唯一可行解的高风险冲突必须 escalation。
+### 7.3 Soft tie
 
-### 7.3 Soft selection
+SoftPreference 维度固定为 canonical (affected_party_identity_or_cohort, criterion)。禁止跨 party 隐式聚合效用。先 safety/rights floor，再按 policy 中 lexicographic tier，tier 内 Pareto dominance。
 
-SoftPreference 保存 owner/affected party、criterion、direction、evidence、priority tier。先用 safety/rights floor，再用版本化 lexicographic tiers；同 tier 采用 Pareto dominance。没有唯一非支配解时输出 alternatives 和 undecided/ask/escalate，不得用隐藏权重任意挑选。
+多个非支配 Solution 时：
 
-ResolutionTrace 是核心对象，包含规范化候选、AST 节点、关系边、闭包、unsat core、排除原因、剩余方案、tie 状态和 reason codes。
+1. 触及 rights/safety floor、PartyInventory 非 complete、存在 unknown party 或无有权 decision owner → escalation；
+2. 否则 → ask_decision_owner，并输出全部 alternatives；
+3. tie 状态的 ReleaseRecommendation 必须 undecided，不能 allow/allow_with_conditions。
 
-
-## 8. Evidence、Study 与 ClaimAssessment
-
-### 8.1 EvidenceCollection
-
-Evidence 不能脱离收集边界。EvidenceCollection 保存 sampling frame、recruitment/source query、response/attrition、inclusion/exclusion、transformations、raw artifact digests、collector/tool、coverage limits、ResearchProtocol/consent refs 和 inventory completeness。
-
-单条 Evidence 保存 kind、modality、provenance record、collected_at、population、context、method、quality dimensions、target digest。provenance 与 quality 不使用不可解析的自由字符串。
-
-### 8.2 StudyDesign
-
-需要评价关联、预测或因果时，使用 StudyDesign：
-
-~~~yaml
-study_id: string
-sampling_design: object
-assignment:
-  mechanism: randomized | quasi_experimental | observational | self_selected | unknown
-  unit: string
-temporal_design: parallel | crossover | longitudinal | historical_control | cross_sectional
-comparator: object | null
-intervention_fidelity: object | null
-confounding_control: object | null
-missingness_and_attrition: object
-measurement_model: object
-analysis_unit: string
-estimand: string | null
-effect_estimate: object | null
-uncertainty: object | null
-identification_assumptions: [string]
-~~~
-
-assignment 是研究证据事实，不由 Claim 作者声明强度。
-
-### 8.3 Claim
-
-Claim 使用结构 predicate，而不是只靠 statement：
-
-- subject、predicate、object/outcome；
-- population、context、time_window、scope_limit；
-- claim_type：descriptive、normative、associational、causal、predictive、affective、recommendation_rationale；
-- human_readable_statement 只能渲染 predicate，不得表达更强语义。
-
-causal 还要求 treatment、comparator、unit、estimand 和 StudyDesign ref。AffectiveClaim 必须含 basis=self_report/observed_signal/model_inference。
-
-self_report 保存 reporter、elicitation method、measure/verbatim reference、time/context；signal 保存 channel、model/version、validation population、uncertainty。inference_target allowlist 只允许 observed_interaction_signal；不得升级为 emotion、diagnosis、vulnerability、personality 或 intent。
-
-### 8.4 ClaimEvidenceLink 与 ClaimAssessment
-
-ClaimEvidenceLink relation 为 supports、contradicts、inconclusive、limits，保存 directness、population/context/outcome/time match 和 rationale。
-
-ClaimAssessment 由 evaluator 生成：
-
-- considered evidence、excluded evidence 及 reason；
-- counterevidence search status；
-- internal validity、directness、precision、transportability；
-- identification assumptions 与失败项；
-- admissible_conclusion：normative/descriptive/associational/causal/predictive/reported_experience/observed_signal/unresolved；
-- derived evidence grade 与 uncertainty。
-
-作者不得自由填写 strong。self_selection、历史 comparator、严重 attrition、未控混杂或测量不一致不能得到 causal。只导入正证而 inventory 不完整时，Assessment 必须显示 evidence_selection_unknown。
-
-### 8.5 下游用途门禁
-
-仅凭 observed_signal/model_inference 不得作不利决定、资格判断、差别定价、脆弱性定向或自动干预。涉及工作、教育、健康、保险、信贷或特定辖区禁止场景时，必须经过适用 SourceAssertion 与 hard feasibility；未知时 escalation。
+ResolutionTrace 保存 normalized solutions、AST/constraint 结果、closures、全部 unsat cores、Pareto matrix、tie branch 和 reason codes。
 
 
-## 9. RiskAssessment 与 Recommendation
+## 8. Evidence、Study、Signal 与 ClaimAssessment
 
-### 9.1 RiskAssessment
+### 8.1 证据发现与依赖
 
-Finding 必须内嵌或引用结构化 RiskAssessment：
+EvidenceSearchSelectionRecord 保存 search domain、query/source frame、time、inclusion/exclusion、deduplication、deviations、raw inventory digest 和 completeness_basis。completeness_status 为 verified/attested/unknown；作者声明只能 attested，只有可重放检索与 inventory 对账才能 verified。
 
-~~~yaml
-harm_magnitude: negligible | minor | serious | severe | catastrophic | unknown
-likelihood: rare | unlikely | possible | likely | almost_certain | unknown
-exposure: isolated | occasional | frequent | systemic | unknown
-affected_party_count: { lower: integer | null, upper: integer | null }
-reversibility: reversible | costly | irreversible | unknown
-detectability_before_harm: high | medium | low | unknown
-evidence_confidence: low | medium | high | unknown
-factor_evidence_refs: [string]
-policy_version: string
-aggregation_trace: [string]
-~~~
+Evidence 保存 upstream_dataset/study refs、derived_from、participant/sample overlap 和 dependency_cluster_id。ClaimAssessment 先按 dependency cluster 聚合，不能把同一日志的 dashboard/CSV/周报当三份独立支持。
 
-版本化 decision table 生成 severity、risk_priority 和 ReleaseRecommendation。高影响/不可逆且关键因子 unknown 时不得自动 allow；evaluation_error 或必需评价 not_run 时不得宣称安全。总分不能覆盖 tail risk 或少数群体完全排除。
+### 8.2 Study records
 
-### 9.2 Recommendation
+StudyDesign 记录预计划 sampling、assignment、time order、comparator、estimand、outcome、confounders、missingness、measurement、multiplicity/stopping 和 sensitivity plan。
 
-Recommendation 是核心对象，不是 Finding 中随手附加的文案：
+StudyExecutionRecord 记录实际分配、招募、干预 fidelity、污染、attrition、measurement、时间和 raw digest。AnalysisPlan 绑定 pre_registration digest、planned estimand/outcome/analysis；AnalysisExecution 记录实际分析、deviations、effect/uncertainty 和 sensitivity results。
 
-- recommendation_id、action/option ref；
-- intended_outcome_claims、rationale ClaimAssessment refs；
-- strength：explore、test、conditional_advice、strong_advice、required；
-- evidence_grade；
-- reversibility、cost、possible harms、contraindications、alternatives；
-- mechanism、uncertainty；
-- decision_owner；
-- validation_plan、success/failure metrics、stop rule、rollback；
-- applicability condition。
+IdentificationAssumption 为结构对象：assumption_id、kind、status=verified/rejected/unknown、evidence refs、test/method、reason code。不能用字符串“已控制混杂”。
 
-证据天花板不变量：
+### 8.3 Claim families
 
-1. required 只来自适用的强制规范断言；
-2. 因果收益语言只来自 admissible_conclusion=causal；
-3. 弱证据只能产生 explore/test；
-4. 重大或不可逆后果且关键证据未知时，不得 strong_advice/required/allow；
-5. Finding 的问题证据不会自动证明 Recommendation 有效。
+Epistemic claim_type 仅 normative、descriptive、associational、causal、predictive、reported_experience、observed_signal。recommendation_rationale 改为 claim_role。
 
-ReleaseRecommendation 为 allow、allow_with_conditions、block、escalate、undecided，并引用 policy、RiskAssessment、RuleEvaluations、decision_owner。最终组织决定另存 DecisionRecord；Skill 不冒充最终授权人。
+Claim 使用结构 predicate、population、context、time、scope。human text 只能渲染 predicate。
+
+- causal 必须引用 StudyDesign/Execution/Analysis 与 estimand；
+- predictive 必须绑定 training/validation lineage、external/independent validation、calibration、discrimination、baseline、subgroup uncertainty、deployment population/time 和 drift；
+- reported_experience 绑定 reporter、elicitation、measure/verbatim ref、time/context；
+- observed_signal 绑定 channel、model/version、validation population、uncertainty；不得命名为 emotion/diagnosis/vulnerability/personality/intent。
+
+### 8.4 ClaimAssessment v1
+
+每个必需检查返回 verified/rejected/unknown。规则固定：
+
+- 任一 input/schema/provenance critical error → unresolved；
+- normative：只有第 3 节 effective authority + proposition entailment + verification 全 verified 才 normative；
+- causal：temporal order、comparator/identification strategy、全部 critical assumptions、planned-vs-observed alignment、missingness/attrition handling、measurement validity、sensitivity 均 verified 才 causal；任一 rejected 降为 associational 或 descriptive，任一 unknown 为 unresolved；
+- predictive：独立验证、calibration、baseline、target population、drift 和 subgroup harm 均 verified 才 predictive，否则 descriptive/unresolved；
+- reported/observed 不得互相升级。
+
+EvidenceGrade dimensions 为 validity、directness、precision、transportability，各取 insufficient/limited/adequate/high；总体 grade 是关键 rationale 中最低维度。contradictory evidence 未解决时最高 limited；selection completeness 非 verified 时最高 limited；critical rejected 时 insufficient。全部结果带 policy_version/reason codes，作者不能填写。
+
+### 8.5 SensitiveInferenceUseAssessment
+
+DownstreamUseDecision 遍历 ActionIntent/Recommendation 的完整 rationale closure，记录 materially_relies_on，不使用“sole basis”。资格、定价、就业、教育、健康、保险、信贷、脆弱性定向和操纵性干预均为 sensitive purpose。
+
+observed signal、reported experience 和由其推导的信息都检查 purpose、consent、authority、法域和 hard constraints。有效禁止性 SourceAssertion 命中 → block；适用性 unknown → escalation；不能通过加入无关证据绕过。
 
 
-## 10. EvaluationInputBundle、运行结果与双轨产物
+## 9. RiskAssessment、RecommendationAssessment 与决定
 
-### 10.1 Canonical input
+RiskAssessment 的七个分量使用固定 enum，并引用因子证据。RiskDecisionPolicy v1 规则：
 
-EvaluationInputBundle 是 evaluator 唯一输入：
+1. catastrophic/severe + likelihood/exposure unknown，或 irreversible + 任一关键因子 unknown → risk_priority=investigate_immediately，ReleaseRecommendation 不得 allow；
+2. release-critical RuleEvaluation 为 evaluation_error/not_run/unknown → escalate；
+3. applicable mandatory constraint fail → block；
+4. hard_unsat → 按第 7 节 block/escalate；
+5. 只有全部 release-critical RuleEvaluation 为 pass/not_applicable、无 high-tail unknown、研究/授权状态有效，才允许 allow/allow_with_conditions。
 
-~~~yaml
-schema_version: string
-request_mode: guide | scan | refactor | verify
-target_snapshot: object
-scenario_instances: [object]
-journey_definitions: [object]
-journey_runs: [object]
-source_assertions: [object]
-evidence_inventory: [object]
-research_state: [object]
-adapter_evidence: [object]
-policy_context: object
-versions: object
-~~~
+Recommendation 本身是 proposed action；RecommendationAssessment 由 evaluator 派生 strength ceiling：
 
-所有数组声明 ordered-list 或 canonical-set；canonical-set 在 JCS 前按稳定 key 排序去重。
-
-### 10.2 执行对象
-
-- ToolInvocationResult：tool identity、request/response digest、started/ended、success/partial/not_found/invalid_request/auth_error/timeout/server_error、usable evidence、limitations；
-- RuleEvaluation：每条已加载规则恰有一条，保存 execution_state、applicability、preconditions、evaluation_outcome、reason codes、trace；
-- Finding：只表示需要报告的问题，不为 pass 发 Finding；
-- RunIssue：输入、规则、知识、工具、适配器或运行故障；
-- RunReport：边界、精确版本/digest、全部 RuleEvaluations、Findings、RunIssues、Inquiry artifacts 和聚合结果。
-
-固定 Finding emission：
-
-| RuleEvaluation | Finding |
+| 条件 | 最高 strength |
 |---|---|
-| pass、not_applicable | 不发 |
-| fail | 按 rule finding_type 发 |
-| partial、unknown、not_run 且 release-critical | unknown 或 escalation |
-| evaluation_error 且影响边界 | RunIssue；release-critical 时另发 escalation |
+| 适用 requires assertion 精确蕴含 action predicate，等价替代已处理 | required |
+| 关键 outcome ClaimAssessment=causal 且 grade adequate/high，风险可逆且无未决重大反证 | strong_advice |
+| 关键 Claim 为 normative/descriptive/associational/predictive 且 grade adequate，或因果 grade limited | conditional_advice |
+| grade limited、关键反证未决或迁移性未知 | explore |
+| grade insufficient/unresolved | 不形成行动建议，只形成 ResearchQuestion |
 
-### 10.3 Finding
+test 不是可执行建议，改为 TestProposal。TestProposal 必须先通过 hard feasibility、RiskAssessment、ResearchAuthorization 和 stop/rollback；否则只能保留 ResearchQuestion。
 
-Finding 保存 deterministic finding_id/fingerprint、rule/version、target locator/digest、scenario bindings、claim assessments、evidence relations、source assertions、RiskAssessment、Recommendation refs、severity/priority、ResolutionTrace ref 和 evaluator/input digest。
+required 还必须证明 SourceAssertion proposition 与 action predicate 精确匹配；若义务只规定结果而不规定实现，具体组件/模式最高 conditional_advice。RecommendationAssessment 保存最弱关键 rationale、反证、risk ceiling、derived grade/strength、policy version 和 reason codes。
 
-fingerprint preimage 使用 domain separator ux-skill:finding:v1，并包含 schema/behavior/rule version、canonical target locator、target digest、scenario digest、rule id 和结构化 claim key。所有 set 字段排序去重；message 不进入 fingerprint。finding_id 从 fingerprint 派生。
-
-### 10.4 Inquiry track
-
-UXHypothesis 保存 competing_explanations、supporting/contradicting evidence、scope、falsifier 和 status。ResearchQuestion 保存 decision need、unknown、answerability、least risky method。DesignRationale 保存目标结果、options、trade-offs、affected parties、constraint trace、selected/undecided 和 validation path。
-
-guide/refactor 至少输出目标结果、一个竞争解释或明确说明为何没有、关键未知、替代方案与验证/反证路径。RunReport 必须含 coverage_and_gaps，并显示“0 Finding 不等于 UX 良好”。
+ReleaseRecommendation 是 evaluator 建议，DecisionRecord 才是有权限责任人的最终决定。两者必须分别记录，Skill 不替组织拍板。
 
 
-## 11. Total evaluator 语义
+## 10. EvaluationInputBundle、Assurance 与 Inquiry
+
+EvaluationInputBundle 是 deterministic evaluator 的唯一输入，包含 target snapshot、Scenario/Journey、Source、Evidence/Study/Claim、Research state、adapter evidence、policy versions，以及可选 InquiryDraft。
+
+### 10.1 运行产物
+
+ToolInvocationResult、RuleEvaluation、Finding、RunIssue、RunReport 分层。每条加载规则恰有一条 RuleEvaluation；Finding 只表示需报告的问题；RunIssue 表示系统/输入故障。
+
+唯一 Finding emission：
+
+| evaluation_outcome | release-critical | emission |
+|---|---:|---|
+| pass / not_applicable | 任意 | none |
+| fail | 任意 | rule.finding_type |
+| partial / not_run / unknown | false | unknown |
+| partial / not_run / unknown | true | escalation |
+| evaluation_error | false | RunIssue only |
+| evaluation_error | true | RunIssue + escalation |
+
+finding_type 和 emission_reason_code 进入 fingerprint preimage。
+
+### 10.2 Inquiry 非权威综合器
+
+开放式 Inquiry 不由 deterministic evaluator 生成。人或 LLM synthesizer 产生 InquiryDraft，记录 author/model、prompt/template digest、source refs、affected-party input、representation gaps、confidence/use limit。它作为 EvaluationInputBundle 输入；evaluator 只：
+
+- schema/引用验证；
+- 检查 epistemic 与 sensitive-use 越界；
+- 生成 deterministic validation result、coverage gaps 和 scaffold；
+- 不把 Inquiry 文本用于 release authority，除非其中结构 Claim 已单独通过 ClaimAssessment。
+
+UXHypothesis 保存竞争解释、反证、falsifier；ResearchQuestion 保存 decision need、unknown、least-risk method；DesignRationale 保存 options、trade-offs、affected parties、constraint trace 和 validation path。
+
+parity/golden 只固定 InquiryValidation、引用、gap/scaffold 和禁用结论，不固定开放式自然语言内容。相同 InquiryDraft bundle 仍必须得到相同验证结果。
+
+### 10.3 各模式最低 Inquiry 输出
+
+- guide/refactor：目标结果、竞争解释或 not_available reason、关键未知、替代方案、反证/验证路径；
+- scan/verify：coverage gap、对 material/zero Finding 的竞争解释或 not_available、受影响方未知、所需反证和最小风险下一步。
+
+无参与者证据时只能标 expert_hypothesis，不能声称 user need/reported experience。0 Finding 警示是 RunReport 固定字段。
+
+
+## 11. Total evaluator、状态机与 identity
 
 ### 11.1 AST v1
 
-AST 使用 JSON tagged union，每个节点有 node_id、op 和固定字段。路径来自版本化 RFC 6901 registry。literal 类型域为 boolean/string/finite number/null；禁止 NaN、Infinity、对象/数组比较、coercion、脚本、正则和动态遍历。
+AST 为 JSON tagged union，node_id 唯一。结果 T/F/U/E。missing：exists=F，其余 U；existing null：exists=T、eq(null,null)=T。非法规则→invalid_rule，非法输入→invalid_input，registry runtime type conflict→E。
 
-允许 literal、exists、eq、in（typed literal 是否属于 path 指向的 scalar array）、compare、all、any、not、builtin_invariant。builtin_invariant 只能引用已注册纯函数及版本。
+求值 eager，按 node_id UTF-8 byte order 记录所有子节点。all：E > F > U > T；any：E > T > U > F；not 映射 T/F/U/E→F/T/U/E。empty all=T、empty any=F。
 
-### 11.2 T/F/U/E
+唯一 applicability 算法：
 
-节点结果为 true、false、unknown、error。missing 除 exists 外为 U；null 存在，eq(null,null)=T；静态规则形状/类型错为 invalid_rule；输入不符合 schema 为 invalid_input；运行值类型与 registry 冲突为 E。
+1. eager 求 applicability 和 exclusion；
+2. effective = applicability AND NOT exclusion，使用上述 E 优先级；
+3. effective E→evaluation_error，F→not_applicable，U→unknown，T→继续；
+4. 只有 effective T 才评价 preconditions；precondition F/U→not_run，E→evaluation_error。
 
-求值固定 eager，以稳定 node_id 顺序访问全部节点并记录 trace；不因短路隐藏 E。聚合优先级：
+删除任何根据原始 applicability 单独提前映射的实现。
 
-- all：任一 E→E；否则任一 F→F；否则任一 U→U；否则 T；
-- any：任一 E→E；否则任一 T→T；否则任一 U→U；否则 F；
-- not：T/F/U/E 分别为 F/T/U/E；
-- empty all=T，empty any=F。
+### 11.2 状态机
 
-effective_applicability = applicability AND NOT exclusion。applicability F→not_applicable；U→unknown；E→evaluation_error。precondition F/U→not_run（reason 不同）；E→evaluation_error。
+Tool：scheduled→running→success/partial/not_found/invalid_request/auth_error/timeout/server_error/cancelled。  
+Rule：scheduled→running→completed/tool_failed/invalid_input/invalid_rule/cancelled；terminal 后不可转移。evaluation_outcome 由 terminal state、applicability、precondition 和 check result 唯一派生。  
+Run：created→validating→normalizing→evaluating→completed/failed/cancelled。
 
-### 11.3 状态机与聚合
+RunStatus reducer 固定优先级：invalid_input/invalid_rule → failed；release-critical evaluation_error → failed；block → completed_blocked；escalation → completed_escalated；存在 noncritical partial/unknown/not_run → completed_with_gaps；否则 completed_clear。独立规则不因无依赖工具失败而停止。required_inputs 明确依赖。
 
-Tool、Rule、Run 分别有状态机和稳定 reason code registry。execution_state 为 scheduled/running/completed/tool_failed/invalid_input/invalid_rule/cancelled；evaluation_outcome 为 pass/fail/partial/not_run/not_applicable/unknown/evaluation_error。
+### 11.3 Fingerprint 与 semantic digest
 
-Run aggregate 优先级：invalid_input/invalid_rule > release-critical evaluation_error > release-critical fail/block > escalation > partial/unknown/not_run > completed。非依赖工具失败不阻止独立规则完成；依赖关系由 Rule.required_inputs 声明。任何 required dependency 失败不能聚合为 pass。
+finding fingerprint preimage 是 JCS object，domain ux-skill:finding:v1，字段固定：schema/behavior/rule version、finding_type、emission_reason_code、canonical target locator、target digest、canonical scenario_bindings set、rule id、structured claim key。SHA-256 小写 64 hex；finding_id = "f_" + 前 32 hex。相同 truncated id/full fingerprint 冲突为 fatal。
 
-### 11.4 确定输出
+semantic projection 使用独立 JSON Schema 白名单，只包含 versions/digests、RunStatus、RuleEvaluations、Findings、RunIssues、Risk/Recommendation assessments、Resolution traces、InquiryValidation/gaps。排除 transport audit、wall-clock run timestamps、localized message、开放 Inquiry text；业务 effective_at/expiry 和证据时间不得排除。
 
-共享 evaluator 是唯一权威：Skill wrapper、CLI、CI 和 MCP 只生产/传递 EvaluationInputBundle。semantic parity projection 排除本地化 message 和时间等非语义字段，其余 Finding、RuleEvaluation、trace、risk、recommendation 和 digest 必须 byte-equal。
-
-
-## 12. Schema、语义验证与版本
-
-JSON Schema dialect 固定 2020-12，启用 format-assertion vocabulary。每个嵌套对象显式 additionalProperties:false；禁止重复 JSON key、非 I-JSON 数值和未规范 Unicode 输入。
-
-核心 schema 至少包括：
-
-- ActorRef、TenantRef/Binding、ResourceRef/Party、PartyImpact、ActingContext；
-- AuthorityGrant、AuthorizationDecision、ActionIntent、ApprovalArtifact；
-- ScenarioInstance/Lineage、FacetRegistry/Definition/Assignment；
-- JourneyDefinition/Run 及 typed policies；
-- SourceRecord/Assertion、PolicyAdoptionRecord；
-- Evidence/Collection、StudyDesign、Claim、ClaimEvidenceLink/Assessment；
-- Option、HardConstraint、SoftPreference、ResolutionTrace；
-- RiskAssessment、Recommendation、ReleaseRecommendation、DecisionRecord；
-- ResearchProtocol/Activity/EthicsReviewDecision；
-- EvaluationInputBundle、ToolInvocationResult、RuleEvaluation、Finding、RunIssue/Report；
-- UXHypothesis、ResearchQuestion、DesignRationale；
-- Rule、AdapterHandshake、ArtifactManifest、CompatibilityMatrix。
-
-schema validation 后运行版本化 semantic validators，检查唯一 ID、引用、图可达性、授权链、approval digest、cardinality、invariants 和状态转换，并输出稳定排序的 error codes。
-
-所有顶层对象携带 schema_version。manifest 另列 knowledge_behavior、evaluator、rule、adapter、artifact_format、skill 版本和精确 producer/consumer rows。未知 major fail closed，禁止静默降级。任何改变匹配、ClaimAssessment、风险、建议或 Finding 身份的变更提升行为版本并完整 recertify。
+semantic_digest = SHA-256(UTF8("ux-skill:semantic:v1") || UTF8(JCS(projection_without_semantic_digest)))，输出小写 hex。
 
 
-## 13. HulianUI adapter normalization
+## 12. Schema、canonical collections 与验证 pipeline
 
-HulianUI 是第一个证据/实现映射适配器，不是 UX 结论权威。
+JSON Schema 固定 2020-12 + format-assertion。所有嵌套对象 additionalProperties:false。字符串必须是 UTF-8 NFC；不做 NFKC。重复 JSON key、lone surrogate、非有限数值、未知 major 均 invalid_input。
 
-AdapterHandshake 记录 server/tool 精确版本、input/output schema digest、data source mode、snapshot/freshness、project root、adapter/evaluator/knowledge digest。project_root 必须显式规范化并与 target_snapshot 相同，禁止 cwd fallback。
+Validation pipeline 固定：
 
-Adapter 只做：
+1. parse/I-JSON；
+2. NFC check；
+3. schema validation；
+4. collection normalization；
+5. reference/graph/identity/authorization semantic validation；
+6. policy evaluation。
 
-1. 将 local registry、captured fixture 或 MCP 响应规范化为 EvaluationInputBundle.adapter_evidence；
-2. 保存每个 ToolInvocationResult；
-3. 将组件/模式文档标为 implementation candidate，并声明可支持/不可支持的 Claim。
+不 fail-fast；收集本阶段全部错误，但后阶段因 prerequisite 缺失只发一个 SUPPRESSED_BY_STAGE reason。NormalizedError tuple 为 (stage, code, instance_pointer, schema_or_invariant_id, params_jcs)，按该 tuple UTF-8/JCS byte order 排序。
 
-状态映射固定：
+CollectionRegistry 对 EvaluationInputBundle 每个数组声明 collection_kind、key_pointer 和 duplicate policy。v0.1 所有实体集合均 canonical-set，以其 id 字段为 key；journey events、acting edges、approval decisions、trace nodes 为 ordered-list 并带 sequence。相同 key + 相同 JCS 折叠；相同 key + 不同 JCS → DUPLICATE_ID_CONFLICT。canonical-set 按 key UTF-8 bytes 排序。
 
-- success：仅声明的 evidence 可用；
-- partial：逐项标 usable/missing，依赖缺项的规则 not_run/partial；
-- not_found：不能作为不存在或不需要的证据；
-- invalid_request/auth_error/timeout/server_error：tool_failed/RunIssue；
-- 多工具结果按 required_inputs 分别传播，不全局吞并。
+input_digest = SHA-256(UTF8("ux-skill:input:v1") || UTF8(JCS(normalized bundle without input_digest)))。
 
-Parity 分两层：相同 captured response 经 local/MCP normalization 得到 byte-equal bundle；相同 bundle 经 Skill/CLI/MCP 入口得到 byte-equal semantic projection。MCP 增加证据时先比较规范化后的同一 bundle，不能要求不同输入产生相同 Finding。
+核心 schema 清单除 v0.4 对象外，新增 SourceFragment/ConflictTrace、ControlPrincipalEdge、ActingEdge、PartyInventory、ActionPolicy、ExecutionEnvelope、ApprovalDecision/Policy、InvalidationMatrix、StudyExecutionRecord、AnalysisPlan/Execution、EvidenceSearchSelectionRecord、IdentificationAssumption、SignalClaim、SensitiveInferenceUseAssessment、RecommendationAssessment、ResearchAuthorizationDecision、ParticipantConsent/Assent/RepresentativeConsent/Withdrawal、InquiryDraft/Validation 和 CrossCuttingLensRegistry。
 
 
-## 14. 可复现离线制品
+## 13. HulianUI adapter normalization profile
 
-知识发布为不可变 GitHub Release asset，运行时不联网。JSON 使用 RFC 8785 JCS；数组的 set/list 语义在 schema 中预先定义。
+HulianUI 仅提供 evidence/candidate mapping。Adapter 分两份产物：
 
-三个 domain-separated digest：
+- CanonicalAdapterEvidence：进入 EvaluationInputBundle；
+- TransportAuditSidecar：保存 local/MCP transport、absolute path、request/response、时间和 server instance，不进入 parity projection。
 
-- knowledge_digest = SHA-256("ux-skill:knowledge:v1" || JCS(knowledge payload index))；
-- manifest_digest = SHA-256("ux-skill:manifest:v1" || JCS(internal manifest without digest fields))；
-- artifact_digest = SHA-256("ux-skill:artifact:v1" || final archive bytes)。
+CanonicalCapabilityIdentity = (provider_namespace, tool_name, contract_version, input_schema_digest, output_schema_digest)。local fixture 与 MCP 若此 tuple 不同就不是同一能力，不能比较 parity。
 
-内部 manifest 永不包含 artifact_digest，避免自引用。Release 保存与归档内字节相同的 manifest，以及独立 artifact.sha256；SHA sidecar 不声称与内部 manifest 相同。
+字段归一固定：
 
-Reference packer 固定实现和 runtime/library 版本。ustar 规则固定路径规范化、拒绝长路径/链接、是否含目录项、排序、mode、uid/gid、name、mtime、numeric encoding、padding 和 EOF blocks；gzip 固定 header bytes、FLG/XFL/OS、无 filename/comment/extra、mtime=0、level 9 和具体 DEFLATE 实现。
+- missing 保持 missing，显式 null 保持 null；
+- entity/result 集合按 CollectionRegistry；
+- 时间只保留证据业务时间，transport time 进入 sidecar；
+- target locator 使用 workspace-relative POSIX path：UTF-8 NFC、/ separator、禁止 absolute、.、..；解析 realpath 后必须在显式 project_root 内，symlink 越界拒绝；case 保留；
+- project_root 自身不进入 canonical bundle，以 workspace_id + target snapshot digest 代替；
+- status 映射 success→usable declared evidence，partial→逐项 usable/missing，not_found→absence_unknown，invalid_request/auth_error/timeout/server_error→Tool terminal + RunIssue。
 
-发布一个 golden artifact 及固定预期 SHA。两套干净容器必须既 byte-equal 又匹配 golden SHA。非法路径、symlink、重复 key、非 I-JSON 或不兼容 major 均 fail closed。tag/asset 不覆盖；撤回发布新版本并声明 supersedes/revokes。
+每种 HulianUI tool contract 在 adapter registry 中固定 input/output field mapping、allowed evidence kind、required args、partial semantics、prohibited Claims。依赖缺项的 Rule not_run/partial，独立 Rule 可继续。
 
+Adapter parity 固定同一 captured logical response 的 local/MCP CanonicalAdapterEvidence byte-equal；transport sidecar 预期不同。Evaluator parity 固定相同 normalized bundle 的 semantic projection byte-equal。
+
+
+## 14. Canonical ustar v1 离线制品
+
+v0.5 取消 gzip，发布未压缩 .tar，消除 DEFLATE 差异。Reference format id 为 ux-ustar-v1。
+
+输入只允许 regular file，不写目录项。路径为 relative UTF-8 NFC POSIX path，禁止空、absolute、.、..、反斜线、control char，且编码后 <=100 bytes；不使用 prefix/long-name/PAX/link/xattr。
+
+每个 512-byte ustar header 固定：
+
+- name[100]：UTF-8 bytes + NUL padding；
+- mode[8]：ASCII 0000644 + NUL；
+- uid[8]、gid[8]：ASCII 0000000 + NUL；
+- size[12]：11 位 ASCII octal + NUL；
+- mtime[12]：ASCII 00000000000 + NUL；
+- checksum[8]：计算时全为空格；结果为 6 位 octal + NUL + space，按 unsigned byte sum；
+- typeflag=ASCII 0；
+- linkname 全 NUL；
+- magic=ustar + NUL，version=00；
+- uname/gname/devmajor/devminor/prefix/padding 全 NUL。
+
+文件按 path UTF-8 bytes 升序；内容原字节写入并以 NUL 补齐至 512；末尾恰好两个全零 block，不追加其他 block。拒绝 size 超 11 位 octal。reference packer 直接按此算法写 bytes，不调用系统 tar。
+
+internal manifest 不含 artifact digest。knowledge/manifest digest 使用 JCS/domain-separated SHA-256。artifact_digest = SHA-256(UTF8("ux-skill:artifact:v1") || raw tar bytes)，小写 hex；Release 的 artifact.sha256 独立保存该值。
+
+ART-ONEFILE-001 在 normative vector 中冻结完整 base64 archive、长度和 digest。两个干净环境必须 byte-equal 且匹配该固定值；不是只验证能解包。
 
 ## 15. Skill 渐进披露
 
@@ -532,118 +488,107 @@ ux-skill/
 不添加会重复进入 Skill 上下文的 README/quick reference/长 changelog。详细 schema、来源和适配器契约只存在一处，由 SKILL.md 渐进加载。
 
 
-## 17. Research authorization 与安全失败
 
-### 17.1 核心研究对象
+## 17. Research authorization、consent 与停止
 
-ResearchProtocol 结构化保存研究/质量改进分类、decision need、为何需要人类、最小数据、风险概率/程度、脆弱性、招募权力关系、补偿、同意理解、撤回与非报复、隐私/保留/访问、distress/adverse-event stop、支持转介、deception/debrief、适用政策。
+ResearchProtocol、ResearchActivity、EthicsReviewDecision 和 ResearchAuthorizationDecision 分离。
 
-ResearchActivity 保存 protocol id/version/digest、实际招募/收集/干预、时间、负责人、数据用途和状态。
+ResearchAuthorizationDecision 是 operational gate，必须引用：
 
-EthicsReviewDecision 保存 reviewer identity/authority、独立性与利益冲突、适用 SourceAssertions、protocol digest、approve/conditional/reject、conditions、scope、effective/expiry、revoked_at。
+- 当前 protocol id/version/digest；
+- 有权限 EthicsReviewDecision，或适用制度授权主体作出的 exempt/waiver decision；
+- organization recruitment/data/channel AuthorizationDecision；
+- purpose/data scope、participants/cohort、effective/expiry 和 conditions。
 
-research_action_state 为 proposed、blocked、approved、active、stopped、completed。它与 RuleEvaluation outcome 分离。
+无有效 ResearchAuthorizationDecision 默认 blocked，不能因为“低风险”自行进入 approved。状态唯一转换：
 
-### 17.2 Stop gate
+proposed → blocked/approved；approved → active 仅当 authorization、operational authority、required consent artifacts 全有效；active → stopped/completed；revocation、expiry、protocol digest change、distress/adverse event、withdrawal applicable condition 触发 stopped。stopped/completed 不可回到 active。
 
-以下任一条件成立即 blocked：
+ParticipantConsent/Assent/RepresentativeConsent 绑定 participant identity、protocol digest、information version、elicitation/comprehension method、signed/recorded artifact、time、scope、withdrawal channel。没有 consent 时只有有效 waiver 才能 active。WithdrawalArtifact 立即阻止后续收集/干预，并触发按 protocol/policy 决定保留、删除或不可撤回已聚合数据。
 
-- 必填保护信息 unknown/missing；
-- review decision 不匹配当前 protocol digest、范围、期限或已撤回；
-- 涉及未成年人、脆弱性、创伤、危机、胁迫权力、欺骗、不可逆干预、高敏数据而缺有权限独立审核；
-- distress/adverse event stop 被触发；
-- consent/waiver/exempt 判定没有适用制度授权。
-
-Evidence、Recommendation、RunReport 必须引用 protocol/activity/review。Agent 不自行宣告伦理豁免，不将某一法域制度推广为全球义务。
-
-### 17.3 Fail honestly
-
-输入、规则、知识、工具、适配器或证据错误进入 RunIssue 和状态机；不得输出空结果假装无问题，不得把 not_run/unknown/evaluation_error 算 pass，也不得用组件合规、自动扫描或专家直觉声称完整 UX 成功。
+涉及脆弱性、创伤、危机、欺骗、不可逆干预或高敏数据必须有独立适格审核和 stop/referral。Agent 不自行判定 exempt/waiver，也不把 eCFR、EU AI Act 等特定制度当全球默认义务；它们只有通过第 3 节适用性才约束。
 
 
-## 18. RED、golden vectors 与发布验证
+## 18. Normative RED/golden 与 holdout
 
-### 18.1 RED 先于实现
+### 18.1 Vector contract
 
-实现前冻结 suite、runner、rubric、input 和 expected digest，并在无 Skill/无 evaluator 基线中观察预声明失败。GREEN 只能通过实现关闭失败，不得改 expected、runner 或 rubric。每次行为变更重新 RED→GREEN→recertify。
+每个 vector 固定 behavior_version、input_jcs/input_digest、expected normalized errors、Tool results、RuleEvaluations、Findings/RunIssues、RunStatus、semantic projection/digest、trace digest；artifact vector另有 raw bytes/base64/length/artifact digest。同一 behavior version 内不可修改；行为变化创建新 vector id，旧 vector永久保留。
 
-### 18.2 必需 golden vector families
+最低唯一预期：
 
-每个 vector 固定输入 JCS、预期状态、Finding/Inquiry semantic projection、trace、reason code 和 digest：
-
-| Family | 必含反例与唯一预期 |
+| vector | 唯一预期 |
 |---|---|
-| AST | missing/null/type error、F AND E、T OR E、empty all/any、exclusion U、precondition U |
-| actors/tenants | anonymous 官网、provider impersonation、跨租户资源、未知受影响 cohort |
-| authority | expires_at 边界、撤权 race、离线同步、fencing 失败 |
-| approval | maker 自批、quorum 不足、批准 H1 执行 H2、AI 建议到执行 |
-| journey | 跨端 token replay、无限 retry、取消/恢复、假 success |
-| claims | self-selection 伪因果、历史 comparator、attrition、情绪信号越权 |
-| recommendation | 弱证据要求强上线、不可逆 unknown、规范 required |
-| constraints | incompatible、requires+together 冲突、override chain/cycle、soft tie |
-| states | pass + missing evidence + failed dependent tool + independent rule |
-| adapter | success/partial/not_found/auth/timeout/server_error normalization |
-| fingerprint | set 重排、message 变化、target bytes 变化 |
-| artifact | golden archive/header、long path、symlink、重复 key、非 I-JSON |
-| research | protocol 改动后旧批准、waiver 无权限、distress stop |
+| AST-APP-FE-001 | applicability F + exclusion E → evaluation_error |
+| FIND-INC-001 | release-critical unknown → escalation；noncritical → unknown |
+| BUNDLE-DUP-001 | 同 id 不同 JCS → DUPLICATE_ID_CONFLICT |
+| STATE-DEP-TIMEOUT-001 | 依赖 rule evaluation_error+escalation，独立 rule pass，run failed |
+| ACT-IMPERSONATE-001 | 任一 ActingEdge basis missing → deny/escalation |
+| TENANT-JOIN-001 | required target/controller scope 任一缺失 → deny |
+| GRANT-PARENT-REVOKED-001 | ancestor revoked → deny |
+| ENVELOPE-H1-H2-001 | approval/authorization/effect digest 不同 → no effect + escalation |
+| APPROVAL-RACE-001 | 两 worker 仅一笔 atomic consume/effect |
+| CAP-REPLAY-001 | channel/session/nonce 变化 → reject |
+| PARTY-UNKNOWN-001 | high impact + inventory unknown → escalation |
+| HARD-UNSAT-001 | zero feasible → no selection + all minimal cores + block/escalate |
+| SOFT-TIE-001 | tie → undecided + ask/escalate table |
+| CLAIM-FAKE-RCT-001 | claimed randomized but execution mismatch → unresolved |
+| EVIDENCE-DUP-001 | same dependency cluster 不增加 grade |
+| SIGNAL-MATERIAL-001 | sensitive action materially relies on signal → block/escalate |
+| REC-WEAK-001 | insufficient grade → ResearchQuestion only |
+| RESEARCH-NO-AUTH-001 | complete low-risk protocol but no authorization → blocked |
+| PROJ-VOLATILE-001 | transport time/message excluded；business expiry retained |
+| VALID-UNICODE-001 | NFC 通过，非 NFC → UNICODE_NOT_NFC |
+| ADAPTER-TRANSPORT-001 | canonical evidence equal，audit sidecar different |
+| ART-ONEFILE-001 | exact raw ustar bytes/length/digest |
 
-至少 32 个 canonical cases，以上 family 不得用数量相同但语义更弱的普通案例替代。每个公开案例 5 次 fresh-context 运行；运行 Agent 不看到 gold 或作者讨论。
+实现前先运行无 evaluator/无 Skill baseline，记录这些预期失败；GREEN 不得改 vector。
 
-### 18.3 Parity 与确定性
+### 18.2 Holdout
 
-- 同一 captured response 的 local/MCP adapter bundle byte-equal；
-- 同一 bundle 的 Skill/CLI/MCP semantic projection 100% byte-equal；
-- set 数组随机重排 100 次保持 digest；
-- 两个干净容器构建匹配固定 golden artifact SHA；
-- 两个符合 profile 的 JSON validator 输出相同 normalized error codes。
+custodian 使用私有 secret 对 canonical case bytes 计算 HMAC-SHA-256；repo 只存 commitment、strata 和 generation id。每个 preregistered artifact digest 对每一 generation 只允许一次查询。返回仅含 overall gate pass/fail 和预注册的 aggregate metrics，不返回 case/stratum id、错误文本或新指标。
 
-### 18.4 Private holdout
+第二次查询固定 QUERY_BUDGET_EXHAUSTED。任何 case-level access、secret 泄漏或基于结果调整都污染 generation；下一 artifact 必须使用新 generation。behavior version 改变必换 generation。
 
-至少 16 个分层盲例由独立 custodian 管理。公开仓库仅存 keyed commitment/HMAC 和 strata，不存低熵题面普通 hash。候选 artifact digest 先登记；每候选有严格 query budget，只返回最少聚合结果。case-level 暴露、重复查询或任何基于结果的调整都会污染并轮换该集。行为版本变化使用新盲例，不能反复消耗同一 holdout。
+### 18.3 发布门槛
 
-### 18.5 试验与稳定门槛
+Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每例 5 次 fresh-context。Skill/CLI/MCP semantic parity 100%，adapter canonical evidence parity 100%，prohibited claims/recommendations 0，release-critical failure 误 pass 0，golden bytes 全匹配。
 
-试验发布要求：全部 RED 关闭、schema/semantic validation 100%、prohibited claims/recommendations 0、release-critical tool failure 误 pass 0、全部 parity/golden bytes 通过。
-
-稳定发布另需独立专家按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty、precision/recall/escalation/severity agreement；固定 high-risk 集观察漏报为 0，并报告样本边界和残余风险；至少三个真实项目，其中一个非 HulianUI。稳定不是永久认证，行为变化立即撤销并重评。
+稳定阶段再要求独立专家/用户代表按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty，以及三个真实项目（至少一个非 HulianUI）。只报告观察结果、样本边界和残余风险，不宣称永不漏报。
 
 
-## 19. v0.1 试验发布验收
+## 19. v0.1 试验验收
 
 必须同时满足：
 
-1. 第 12 节全部核心对象已有 schema、版本和语义 validator；
-2. 四种 request_mode 与用户别名有唯一映射；
-3. Profile、组件库和 adapter 不参与 UX 结论权威；
-4. acting/representation chain、多租户资源、Grant lifecycle、AuthorizationDecision、approval payload 和 PartyImpact 可执行；
-5. JourneyDefinition/Run、typed policies、terminal evidence 和权限 checkpoint 可验证；
-6. Option/constraint/override/compatibility/soft tie 有唯一 ResolutionTrace；
-7. StudyDesign/ClaimAssessment 能降级伪因果，Affective downstream gate 可执行；
-8. RiskAssessment、Recommendation evidence ceiling、ReleaseRecommendation/DecisionRecord 分离；
-9. ResearchProtocol/Activity/ReviewDecision stop gate 可执行；
-10. Tool/Rule/Run 状态和 Finding emission 表唯一；
-11. AST 对所有合法输入为 total function，对非法输入有稳定错误；
-12. fingerprint、semantic projection、adapter bundle 和 artifact 有 golden bytes；
-13. Assurance 与 Inquiry 两轨都有结构化产物，0 Finding 不冒充 UX 成功；
-14. RED、holdout、parity、真实项目达到第 18 节门槛；
-15. 本机资料目录无项目写入；
-16. 用户明确批准最终规格后才写 implementation plan。
+1. 第 12 节所有核心对象有 schema、canonical collection 和 semantic validator；
+2. SourceFragment→Assertion→Adoption→Conflict trace 唯一；
+3. ActingEdge、tenant join、递归 GrantValidity、ExecutionEnvelope、原子 Approval/effect、lineage invalidation 唯一；
+4. Journey capability 防 replay，PartyInventory 完整性和 hard/soft 求解唯一；
+5. Study execution/analysis、Evidence dependency、ClaimAssessment、SensitiveUse、RecommendationAssessment 唯一；
+6. Research 默认 blocked、授权/consent/withdrawal 状态机可执行；
+7. Inquiry 是非权威 draft，deterministic evaluator 只校验，不将开放文本纳入 release authority/parity；
+8. applicability、Finding emission、Tool/Rule/Run state 和 RunStatus reducer 无多解；
+9. NFC、collections、errors、input/finding/semantic digest、projection 均有 golden；
+10. HulianUI canonical evidence 与 transport sidecar 分离；
+11. ART-ONEFILE-001 匹配 canonical ustar bytes；
+12. 第 18 节 RED/golden/holdout/真实项目门槛通过；
+13. Profile、组件库、自动扫描和 0 Finding 不冒充 UX 成功；
+14. 本机资料目录无项目写入；
+15. 用户批准最终规格后才写 implementation plan。
 
 
 ## 20. 当前阶段与下一关口
 
-当前仍是设计，不是实现。
+当前仍只做设计。
 
-1. 提交 v0.4 到 design/v0；
-2. 自检 placeholder、模式别名、对象引用、状态词表和章节矛盾；
-3. 第四轮采用全新上下文的聚焦评审，只审三类闭环：
-   - Claim/Study/Recommendation/Research 与 Inquiry track；
-   - Actor/Tenant/Authority/Approval/Journey/Constraint；
-   - AST/State/Fingerprint/Adapter/Artifact/Golden/Holdout；
-4. 评审只有 GO，或 CONDITIONAL GO 且无核心 schema/语义阻塞，才交用户做最终规格审阅；
-5. 用户批准后才调用 writing-plans；
-6. 首个实施纵切仍只选一个高风险 Admin 审批场景、一条 advisory 规则、一组 ClaimAssessment、一个共享 evaluator、一个 HulianUI candidate mapping、一个 Finding/Inquiry 输出和一个 golden artifact；
-7. 不在首纵切扩展第二个场景族、稳定发布或修改 HulianUI MCP。
+1. 提交 v0.5 到 design/v0；
+2. 自检所有 MUST/唯一表是否存在对应 schema/vector，消除“固定但未给值”；
+3. 第五轮使用全新上下文，只允许评审残余核心歧义，不重复建议已冻结内容；
+4. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户最终审阅；
+5. 用户明确批准后才调用 writing-plans；
+6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation 和 ART-ONEFILE-001；
+7. 首纵切不修改 HulianUI MCP、不扩第二场景、不宣称 stable。
 
 ## 21. 初始权威来源
 
@@ -668,8 +613,9 @@ Evidence、Recommendation、RunReport 必须引用 protocol/activity/review。Ag
 - W3C APG Introduction (informative status): https://www.w3.org/WAI/ARIA/apg/about/introduction/
 - W3C WCAG 2.2 Conformance Requirements: https://www.w3.org/TR/WCAG22/#conformance
 - OHRP 45 CFR 46 guidance: https://www.hhs.gov/ohrp/regulations-and-policy/guidance/faq/45-cfr-46/index.html
+- eCFR 45 CFR 46.109, IRB review: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-A/part-46/subpart-A/section-46.109
+- eCFR 45 CFR 46.116, informed consent: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-A/part-46/subpart-A/section-46.116
 - Regulation (EU) 2024/1689 official text: https://eur-lex.europa.eu/eli/reg/2024/1689/oj
 - RFC 8785 JSON Canonicalization Scheme: https://www.rfc-editor.org/rfc/rfc8785.html
-- RFC 1952 GZIP File Format: https://www.rfc-editor.org/rfc/rfc1952.html
 
 经典著作只作为综合知识输入，不复制受版权保护正文。首批包括 Jesse James Garrett、Don Norman、Steve Krug、Giles Colborne、Marty Cagan 及本地提供的产品设计资料。
