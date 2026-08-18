@@ -125,19 +125,25 @@ function evaluateGrant(context){
  if(starts>at)return {status:'block',reason_code:'GRANT_NOT_EFFECTIVE'};
  if(expires<=at)return {status:'block',reason_code:'GRANT_EXPIRED'};
  if(!scopeCovers(grant.scope,context))return {status:'block',reason_code:'GRANT_SCOPE_NOT_COVERED'};
- return gap('GRANT_VALIDITY_UNKNOWN','grant-chain-verification-v1');
+ return null;
 }
 
 function validateApprovalCapabilityShapes(context){
  const approval=context.approval;
  const approvalKeys=['approval_decision_id','sequence','approver_context_digest','approver_authority_ref','envelope_digest','decision','effective_at','expires_at','consumed'];
  if(!exactKeys(approval,approvalKeys))return gap('APPROVAL_PREREQUISITE_UNKNOWN','approval-envelope-binding-v1');
+ const envelope=context.execution_envelope;
+ if(!isRecord(envelope)||typeof envelope.envelope_digest!=='string'||approval.envelope_digest!==envelope.envelope_digest)return gap('APPROVAL_PREREQUISITE_UNKNOWN','approval-envelope-binding-v1');
  const capability=context.capability;
  const capabilityKeys=['capability_id','capability_digest','body','authenticator','ledger_ref'];
  if(!exactKeys(capability,capabilityKeys))return gap('CAPABILITY_UNKNOWN','capability-contract-v1');
+ const capabilityBodyKeys=['run_id','step_id','acting_chain_digest','session_id','channel','audience','tenant_set_digest','resource_versions','authorization_purpose','envelope_digest','nonce','expires_at','issuer_id','key_version','capability_use'];
+ if(!exactKeys(capability.body,capabilityBodyKeys))return gap('CAPABILITY_UNKNOWN','capability-contract-v1');
+ if(capability.body.envelope_digest!==envelope.envelope_digest)return gap('CAPABILITY_UNKNOWN','capability-envelope-binding-v1');
  const ledger=context.capability_ledger_entry;
  const ledgerKeys=['capability_digest','status','consumed_at','consumption_effect_digest'];
  if(!exactKeys(ledger,ledgerKeys))return gap('CAPABILITY_LEDGER_UNAVAILABLE','capability-ledger-proof-v1');
+ if(ledger.capability_digest!==capability.capability_digest)return gap('CAPABILITY_UNKNOWN','capability-ledger-proof-v1');
  return null;
 }
 
@@ -157,7 +163,7 @@ export function evaluateAuthority(context){
  for(const requirement of policies.required_runtime_features)if(!isRecord(context.authority_features)||!Object.hasOwn(context.authority_features,requirement.feature))return gap('AUTHORITY_COVERAGE_GAP',requirement.coverage_gap_id);
  const grant=evaluateGrant(context); if(grant)return grant;
  const shapes=validateApprovalCapabilityShapes(context); if(shapes)return shapes;
- return gap('AUTHORITY_COVERAGE_GAP',policies.required_runtime_features[0].coverage_gap_id);
+ return gap('GRANT_VALIDITY_UNKNOWN','grant-chain-verification-v1');
 }
 
 const setSubset=(left,right)=>left.every((value)=>right.includes(value));
