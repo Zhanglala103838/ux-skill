@@ -284,7 +284,7 @@ const tieDecision=(universe,feasible_solution_ids)=>{
  return {selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:decision.next_action,release_recommendation:decision.release_recommendation,reason_code};
 };
 const selectionGate=(universe,feasible_solution_ids)=>{
- if(universe.authority_status!=='complete'||!['verified_complete','verified_no_affected_party'].includes(universe.party_inventory_status)||['unresolved','triggered'].includes(universe.safety_or_rights_floor_status))return tieDecision(universe,feasible_solution_ids);
+ if(universe.authority_status!=='complete'||!['verified_complete','verified_no_affected_party'].includes(universe.party_inventory_status)||['unresolved','triggered'].includes(universe.safety_or_rights_floor_status))return tieDecision(derivedGate,feasible_solution_ids);
  return {selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'};
 };
 
@@ -334,7 +334,8 @@ export function solveCandidates(universeInput){
  if(feasible.some((candidate)=>candidate.soft_dimensions.some((row)=>row.floor_result==='U')))return {selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:'escalate_safety_or_rights',release_recommendation:'escalation',reason_code:'SOFT_FLOOR_UNKNOWN'};
  let eligible=feasible.filter((candidate)=>candidate.soft_dimensions.every((row)=>row.floor_result==='T'));
  if(eligible.length===0)return {selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:'escalate_safety_or_rights',release_recommendation:'escalation',reason_code:'SOFT_FLOOR_UNSAT'};
- const gate=selectionGate(universe,feasible_solution_ids); if(gate)return gate;
+ const derivedGate=validateEvaluatorGateBinding(universe);
+ const gate=selectionGate(derivedGate,feasible_solution_ids); if(gate)return gate;
  if(eligible.length===1)return {selection_status:'selected',selected_solution_id:eligible[0].solution_id,feasible_solution_ids,next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'};
  const signature=(candidate)=>canonicalSet(candidate.soft_dimensions.map((row)=>({key:dimensionKey(row),tier:row.tier})),(row)=>row.key);
  const expected=jcsBytes(signature(eligible[0]));
@@ -347,8 +348,8 @@ export function solveCandidates(universeInput){
   const pareto=eligible.filter((candidate)=>!eligible.some((other)=>other!==candidate&&dominates(maps.get(other.solution_id),maps.get(candidate.solution_id),keys)));
   if(pareto.length===1)return {selection_status:'selected',selected_solution_id:pareto[0].solution_id,feasible_solution_ids,next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'};
   const firstVector=keys.map((key)=>maps.get(pareto[0].solution_id).get(key));
-  if(pareto.some((candidate)=>!jcsBytes(keys.map((key)=>maps.get(candidate.solution_id).get(key))).equals(jcsBytes(firstVector))))return tieDecision(universe,feasible_solution_ids);
+  if(pareto.some((candidate)=>!jcsBytes(keys.map((key)=>maps.get(candidate.solution_id).get(key))).equals(jcsBytes(firstVector))))return tieDecision(derivedGate,feasible_solution_ids);
   eligible=pareto;
  }
- return tieDecision(universe,feasible_solution_ids);
+ return tieDecision(derivedGate,feasible_solution_ids);
 }
