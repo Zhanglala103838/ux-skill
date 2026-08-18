@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：第七轮闭合评审后修订，等待第八轮对抗评审  
-规格版本：0.8  
+状态：第八轮闭合评审后修订，等待第九轮对抗评审  
+规格版本：0.9  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -110,7 +110,7 @@ ActionPolicyRegistry 为 action+resource_type 列 required tenant relationships�
 
 Decision 绑定 canonical tenant_binding_set_digest。
 
-PartyInventory.status 由 evaluator 从 resource/effect/party graph 闭包派生，输入不能自报。任何可能影响人的 effect，只有 verified_complete 或 verified no_affected_party 才可 allow；known_incomplete/unknown 固定 escalation，不区分“高/中影响”。
+PartyInventory.status 由 evaluator 从 resource/effect/party graph 闭包派生，输入不能自报。PartyEffectGraphCompletenessProof 是 authority-bearing 工件，绑定 effect/resource scope、authoritative data sources/coverage、snapshot digest/version、[effective,expiry)、closure algorithm id/version 和 verification status。只有 proof=verified、全部 refs 闭合且 closure 完成才派生 verified_complete 或 verified_no_affected_party；proof 缺失、过期、引用不闭合或不可判定固定 unknown→escalation。任何可能影响人的 effect 只有上述两种状态可 allow。
 
 ### 5.3 GrantValidity
 
@@ -118,7 +118,7 @@ Grant 只能由 AuthorityRootRecord 或递归有效 parent 授予。Valid(g,t,e)
 
 ### 5.4 Canonical ExecutionEnvelope
 
-Envelope body 包含 action、payload/effect/pre/postcondition digest、resource versions、tenant set digest、authorization_purpose、acting/grant chain digest、party_inventory_digest、party_effect_graph_snapshot_digest/version、journey run/step、channel/audience，以及可选 research_guard_digest。
+Envelope body 包含 action、payload/effect/pre/postcondition digest、resource versions、tenant set digest、authorization_purpose、acting/grant chain digest、party_inventory_digest、party_effect_graph_snapshot_digest/version、party_graph_completeness_proof_digest、time_authority_policy_digest、journey run/step、channel/audience，以及可选 research_guard_digest。
 
 envelope_digest = SHA-256(UTF8("ux-skill:execution-envelope:v1") || UTF8(JCS(body)))，小写 64 hex；envelope_id="e_"+前32 hex。调用者提供值必须复算一致。Approval、Authorization、capability、idempotency 和 effect event 只能引用 full envelope_digest。
 
@@ -128,9 +128,9 @@ envelope_digest = SHA-256(UTF8("ux-skill:execution-envelope:v1") || UTF8(JCS(bod
 
 ApprovalDecision 绑定 approver context/authority、full envelope digest、time/expiry。Policy 固定 roles/quorum/SoD domain/single-use。quorum 只统计 distinct eligible approver ActorIdentity；同一主体的多条 Decision 最多一票。Policy 要求 control separation 时再按最终 control-principal 等价类去重。已证实 quorum 不足固定 block；identity/control closure unknown 固定 escalation。
 
-effect commit 必须在 commit 瞬时读取 commit_effective_at：只来自 AuthorityRootRegistry 信任的单调 time authority，不得由调用者、缓存时间或 execution lease 回填，且 commit_effective_at>=evaluation_effective_at。execution lease 只授权区间/guard snapshot，不能证明当前时间；其 expiry 也用 commit_effective_at 验证。approved→consumed 时以 commit_effective_at 重新求 Approval eligibility、ActorIdentity/control closure、required SoD、distinct quorum，并重验 Grant、capability、resource versions、party/effect graph、重新派生 PartyInventory、research guard、fencing、idempotency，与 effect commit 构成 composite guard；任一失败零副作用。历史 EvaluationInputBundle 不能直接执行 effect。
+TimeAuthorityPolicy 精确绑定一个 authority ActorIdentity、key/version、clock/monotonic profile 和有效区间；其 digest 进入 envelope。effect commit 必须在 commit 瞬时从该唯一 authority 读取一条经认证、nonce/sequence 未重放的 commit_effective_at，不得由调用者、其他可信 authority、缓存时间或 execution lease 回填，且 commit_effective_at>=evaluation_effective_at。该读数缺失、多值、冲突或 policy 无效固定 no effect+escalation。execution lease 只授权区间/guard snapshot，不能证明当前时间；其 expiry 也用 commit_effective_at 验证。approved→consumed 时以 commit_effective_at 重新求 Approval eligibility、ActorIdentity/control closure、required SoD、distinct quorum，并重验 Grant、capability、resource versions、party/effect graph、重新派生 PartyInventory、research guard、fencing、idempotency，与 effect commit 构成 composite guard；任一失败零副作用。历史 EvaluationInputBundle 不能直接执行 effect。
 
-Invalidation 是单调 tombstone。任一后代路径发生 identity/control、tenant、resource/version、authorization_purpose、payload/effect、grant、party_inventory 或 party/effect graph snapshot、risk、channel/audience change，旧 Approval/Decision 永不复活，即使值改回；merge 取所有父分支有效工件交集后应用 tombstone dominance。
+Invalidation 是单调 tombstone。任一后代路径发生 identity/control、tenant、resource/version、authorization_purpose、payload/effect、grant、party_inventory 或 party/effect graph snapshot/completeness proof、time authority policy、risk、channel/audience change，旧 Approval/Decision 永不复活，即使值改回；merge 取所有父分支有效工件交集后应用 tombstone dominance。
 
 ExternalEffectConnector 必填 receiver_contract=receiver_id、supports_idempotency/fencing、key=envelope_digest、ack/effect-query semantics。支持 receiver-side contract 才可自动 retry。否则 response unknown 固定 effect_unknown+escalation，不重试、不宣称 atomic。发送前重验 composite guard，或消费有明确 expiry 的 execution lease。
 
@@ -206,7 +206,17 @@ rationale closure 标记 materially_relies_on。敏感 purpose 包括资格、�
 
 ## 9. Risk、Recommendation ceiling 与 reducer
 
-RiskDecisionPolicy v1：mandatory fail/hard unsat 直接采用第 7 节已由风险/权利条件唯一决定的 block 或 escalation；release-critical evaluation_error/not_run/unknown→escalation；catastrophic/severe 且 likelihood/exposure unknown，或 irreversible 且关键因子 unknown→investigate_immediately；仅全部 critical pass/not_applicable 且无 tail unknown 才可 allow/allow_with_conditions。
+RiskDecisionPolicy v1：mandatory fail/hard unsat 直接采用第 7 节已由风险/权利条件唯一决定的 block 或 escalation；release-critical evaluation_error/not_run/unknown→escalation；catastrophic/severe 且 likelihood/exposure unknown，或 irreversible 且关键因子 unknown→investigate_immediately。
+
+ResidualConditionSet 是 canonical-set<Condition>，Condition 必填 predicate、owner、deadline、verification method、status=verified_executable|unknown|rejected_or_infeasible。ReleaseRecommendation 总表：
+
+| 前提 | 唯一结果 |
+|---|---|
+| 任一 block rule | block |
+| 任一 escalation/investigate 或 condition=unknown | escalation |
+| condition=rejected_or_infeasible | block |
+| 全部 critical pass/not_applicable、无 tail unknown、condition set 为空 | allow |
+| 同上且 condition set 非空并全部 verified_executable | allow_with_conditions |
 
 RecommendationAssessment 使用有序 strength：none < explore < conditional_advice < strong_advice < required。
 
@@ -410,13 +420,13 @@ adapter_contract_digest（JCS SHA-256）固定为 f297ea75545ceefa627a4d977d528e
 
 来源固定：hulianui/hulian commit c2a76dabf5801f275ddf4aca16b9e63ce2d4d372；@hulianui/mcp 0.10.0；UI artifact 0.52.0；llms-props SHA-256 729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5。
 
-MCP 没有 outputSchema，adapter 必须用自有 hulian-component-doc-v1 schema 验证 structuredContent。状态唯一：
+MCP 没有 outputSchema，adapter 必须用自有 hulian-component-doc-v1 schema 验证 structuredContent。状态 classifier 按下列顺序首个命中，后序分支必须排除前序：
 
-1. isError=false，恰一 component，slug/name/category 匹配，missing 不存在或空，versionSkew=null，stale 不为 true，fallbacks 空，artifact version/digest 匹配 → success；
-2. isError=false 且存在 missing/versionSkew/stale/fallback → partial；
-3. source version/digest 不匹配 pinned row → incompatible_source + tool_failed；
+1. structuredContent 可解析但 source artifact version/digest 不匹配 pinned row → incompatible_source + tool_failed；
+2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且存在 missing/versionSkew/stale/fallback → partial；
+3. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，missing 不存在或空、versionSkew=null、stale 不为 true、fallbacks 空 → success；
 4. isError=true、无 structuredContent、首个 text 以“没有名为”开头 → not_found；
-5. 其他 isError/schema failure → server_error/tool_failed。
+5. 其他 isError/schema/identity failure → server_error/tool_failed。
 
 CanonicalAdapterEvidence 只保留 component identity、import、exports、props、events、slots、source artifact identity。exports 是 canonical-set<string>，key=字符串值；props/events/slots 各自是 canonical-set，key=(owner,name,kind)，均按第 12.3 节排序/去重，且不跨 props/slots 合并。字段 required 缺失保持 unknown，不能推断 optional。Transport text、origin、TTL、request time 进入 audit sidecar。
 
@@ -509,7 +519,7 @@ evaluator 必须为每个 participant 派生 ParticipantPermissionRequirement：
 
 ResearchActivity 状态：proposed→blocked/approved；approved→active 仅当 authorization、operational authority、全部 ParticipantPermissionRequirement=verified 且所需 permission artifacts 全有效；active→stopped/completed。revocation、expiry、protocol change、distress/adverse event、applicable withdrawal 触发 monotonic stopped。
 
-所有研究收集/干预的 ExecutionEnvelope 必填 research_guard_digest，覆盖 activity/protocol、ResearchAuthorization、Ethics/waiver、operational Authorization、participant consent set、withdrawal epoch 和 stop epoch。effect composite guard 在 commit 时原子重验这些 version/status；任一变化零副作用并返回 RESEARCH_GUARD_STALE/BLOCKED。外部 connector 同样携带该 digest。
+所有研究收集/干预的 ExecutionEnvelope 必填 research_guard_digest，覆盖 activity/protocol、ResearchAuthorization、Ethics/waiver、operational Authorization、participant consent set、withdrawal epoch 和 stop epoch。effect composite guard 在 commit 时原子重验这些 version/status；任一变化零副作用并返回 RESEARCH_GUARD_STALE/BLOCKED。外部研究 effect 的 commit 定义为 receiver-side state transition，不是本地 outbox commit；receiver 必须在同一原子操作中向 authoritative guard ledger 验证 research_guard_digest 与 withdrawal/stop fencing epoch。receiver 不支持该契约、ledger unreachable 或 epoch mismatch 固定 no effect+escalation。
 
 Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收集数据的 retention/deletion DecisionRecord。Agent 不自行判 exempt/waiver，不把特定法域制度当全球默认义务。
 
@@ -549,8 +559,11 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | APPROVAL-DUP-VOTE-001 | 同一 approver 的两条 Decision 在 quorum=2 时只计一票 → block |
 | SOD-COMMIT-CHANGE-001 | evaluation 时 separated、commit 前 control closure 变为 shared principal → commit 重算 not_separated + no effect/block |
 | PARTY-COMMIT-CHANGE-001 | commit 前 party/effect graph 新增 affected party → 旧 inventory invalidated，重新派生 incomplete/unknown + no effect/escalation |
+| PARTY-COMPLETENESS-PROOF-001 | finite graph snapshot 无 verified completeness proof → PartyInventory=unknown + escalation |
 | EFFECT-ACK-LOST-001 | receiver 已执行但 ack 丢失；fresh recover capability 对同 envelope_digest 查询/重发不重复 effect；无法证明则 unknown_effect + escalation |
-| EFFECT-LEASE-NOT-TIME-001 | lease=[10:00,10:20) 不能提供 current time；commit 必须读取 trusted time authority，读不到 → no effect/escalation |
+| EFFECT-LEASE-NOT-TIME-001 | lease=[10:00,10:20) 不能提供 current time；commit 必须读取 policy-selected time authority，读不到 → no effect/escalation |
+| EFFECT-TIME-AUTH-CONFLICT-001 | 两个可信 time readings 但不符合 envelope time_authority_policy 唯一选择 → no effect/escalation |
+| RESEARCH-RECEIVER-WITHDRAW-001 | outbox 后 withdrawal epoch 增加；receiver 原子 fence 拒绝旧 research_guard → no external intervention |
 | CAP-REPLAY-001 | channel/session/nonce 变化 → block |
 | CAP-FORGE-001 | payload 可解析但签名/MAC 错误或 ledger 不存在 → block |
 | CAP-USE-PURPOSE-001 | authorization_purpose=account_deletion 与 capability_use=execute/recover 分字段进入 digest，不发生同名冲突 |
@@ -581,6 +594,8 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | REC-REDUCER-001 | 多个 ceiling 同时命中时只取 strength ordering 的 min；hard block 产生 no recommendation |
 | REC-UNRESOLVED-LIMITED-001 | conclusion=unresolved+overall=limited → evidence 表首行 none |
 | REC-REVERSIBILITY-U-MANDATORY-001 | reversibility=unknown+exact mandatory action → reversibility 表首个命中 explore |
+| RELEASE-NO-CONDITION-001 | 所有 gate clear 且 ResidualConditionSet 空 → allow |
+| RELEASE-VERIFIED-CONDITION-001 | 所有 gate clear 且非空 conditions 全 verified_executable → allow_with_conditions |
 | RESEARCH-NO-AUTH-001 | complete low-risk protocol but no authorization → blocked |
 | RESEARCH-MINOR-ASSENT-001 | requirement=assent_and_representative、仅 representative consent valid、无 waiver → blocked |
 | RESEARCH-WITHDRAW-RACE-001 | withdrawal 与 effect 并发；research_guard_digest 原子复验失败 → no effect |
@@ -595,10 +610,12 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | ADAPTER-TRANSPORT-001 | canonical evidence equal，audit sidecar different |
 | ADAPTER-HULIAN-ALERT-001 | 固定 HulianUI JCS row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims |
 | ADAPTER-EXPORTS-ORDER-001 | provider exports 逆序输入 → canonical-set<string> 排序/去重后的唯一 bytes |
+| ADAPTER-MISMATCH-PARTIAL-001 | artifact mismatch+stale=true 同时存在 → first-match incompatible_source/tool_failed |
 | SEMANTIC-MEMBER-DIGEST-001 | 固定 projected member 的 before/after digest 只用 semantic-member domain golden |
 | REGRESSION-DELTA-DERIVED-001 | 移除一个 Finding 时 run_status/input_digest/semantic_digest 按第 18.5 derived closure 复算，oracle 不报未声明差异 |
 | REGRESSION-BUNDLE-DRIFT-001 | 未在 bundle_delta_allowlist 的 adapter evidence 变化 → REGRESSION_UNEXPLAINED，不能被 input_digest derived closure 吞掉 |
-| REGRESSION-NEGCONTROL-001 | negative control 缺失 → recommendation 不提高；超阈值 → identification 不得 verified + retain/revise/rollback |
+| REGRESSION-NEGCONTROL-001 | negative control 缺失 → gate=missing/not_increase；超阈值 → gate=failed、identification rejected、decision_required |
+| DELTA-REPLACE-NORMAL-001 | 同 locator d0→d1 只编码一个 replace；remove+add 非正规输入 |
 | ART-ONEFILE-001 | exact uncompressed ustar raw bytes/base64/length/digest |
 
 实现前先运行无 evaluator/无 Skill baseline，保存失败的 machine-readable 输出；GREEN 不得改 vector、expected 或 oracle。错误信息文字不参与 oracle，error code、JSON Pointer、collection order 和 digest 参与。
@@ -658,9 +675,9 @@ intervention hypothesis 永远不是 evidence。black_box_site 默认 read-only�
 3. **Intervention**：仅对允许修改的派生副本记录 changeset digest 与 canonical bundle_delta_allowlist；black-box 目标只可制作独立原型，不伪称修改原站。
 4. **Verify**：同 behavior_version、同任务、同 seed、同 actor/party inventory 和等价环境复测主 intervention，并执行每个预注册 negative control；结果全部作为 Evidence/StudyExecution/AnalysisExecution 进入 candidate bundle 和 ClaimAssessment。
 5. **Compare**：先校验 normalized bundle diff，再输出 semantic projection diff、task measure diff、negative-control diff、visual/runtime evidence diff、新增/消失 Finding 及证据链。
-6. **Decision**：只有所有 negative control 已执行且均在预注册 threshold 内、主 measure 达标、无新 release-critical Finding、guardrail 未退化且 effect ledger 干净时，RecommendationAssessment 才可提高。negative control 缺失时禁止提高；超阈值时 identification check 不得 verified，并固定 retain、revise 或 rollback。
+6. **Decision**：只有所有 negative control 已执行且均在预注册 threshold 内、主 measure 达标、无新 release-critical Finding、guardrail 未退化且 effect ledger 干净时，RecommendationAssessment 才可提高。negative control 缺失时 gate=missing、recommendation_delta=not_increase；超阈值时 gate=failed、identification_check=rejected、recommendation_delta=not_increase、intervention_disposition=decision_required。retain/revise/rollback 仅作为 DecisionOwner 的 canonical alternatives，evaluator 不自选。
 
-SemanticDelta-v1 additionalProperties=false，包含 operations canonical-set；每项 operation 只能是 add|remove|replace，并使用 (collection_name,key_jcs) 定位 set member，singleton 只能使用 registry 枚举的 top-level field，不允许 array index 或任意 JSON Pointer。remove 必填 before_digest；add 必填 after_digest；replace 两者都必填。key_jcs 与 digest 使用第 12 节算法。
+CanonicalDeltaOperationV1 additionalProperties=false。locator 是 tagged union：set_member={collection_name,key_jcs}；singleton={field_name}，field_name 只能来自 registry，禁止 array index/任意 JSON Pointer。operation-set 的唯一 key=JCS(locator)，每个 locator 恰一项。正规形唯一：before only→remove(before_digest)；after only→add(after_digest)；两侧存在且 digest 不同→replace(before_digest,after_digest)；digest 相同→无 operation。SemanticDelta-v1 与 intervention manifest.bundle_delta_allowlist 都只允许此 canonical-set normal form；actual 与 preregistered operations 按 canonical bytes 精确比较。semantic member digest 用 semantic-member row，bundle member digest 用 input-member row。
 
 oracle 首先按 InputCollectionRegistry 对 baseline/candidate normalized bundle 作 (collection,key_jcs) diff；每项必须被 intervention manifest.bundle_delta_allowlist 精确覆盖，member digest 只用 input-member row，否则 REGRESSION_UNEXPLAINED。通过后才比较 SemanticProjection 非派生字段并计算唯一 derived closure：input_digest 由 candidate bundle 复算；run_status 由 candidate RuleEvaluation/Finding/RunIssue/decision 复算；所有对象内在 id/digest 随其 owner entry 一起变化；semantic_digest 从比较中排除后按 candidate projection 复算。behavior_version 与 evaluator_digest 必须 byte-equal。除 operations 与该 derived closure 外的变化固定 REGRESSION_UNEXPLAINED。
 
@@ -679,7 +696,7 @@ Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每�
 
 1. 第 12 节所有核心对象有 schema、canonical collection 和 semantic validator；
 2. FragmentPropositionAssessment、SourceFragment→Assertion→Adoption→Conflict trace 与统一 evaluation_effective_at 唯一；
-3. AuthorityRoot、ActingContext 连续端点/scope、evaluation/commit 双时点 control/SoD、tenant、递归 GrantValidity、含 PartyInventory/graph 的 ExecutionEnvelope、distinct quorum、time-authority-only commit_effective_at、原子 effect、receiver idempotency 与 invalidation 唯一；
+3. AuthorityRoot、ActingContext、双时点 control/SoD、tenant、Grant、PartyEffectGraphCompletenessProof、time-authority-policy-bound ExecutionEnvelope、distinct quorum、receiver-side research fence、原子 effect 与 invalidation 唯一；
 4. Journey capability 的 authorization_purpose/capability_use、签名/ledger/防 replay，evaluator-derived PartyInventory 和 E>U>determinate hard/soft CandidateUniverse 求解唯一；
 5. Study execution/analysis、Evidence dependency、closed ClaimAssessmentPolicy、SensitiveUse 默认矩阵和穷尽 Recommendation ceiling/reducer 可执行；
 6. Research 默认 blocked，ParticipantPermissionRequirement、authorization/consent/assent/representative/waiver/withdrawal 与 research_guard_digest 在 effect guard 中原子复验；
@@ -688,7 +705,7 @@ Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每�
 9. NFC、CanonicalRelativePath、normative errors、UTF8(JCS(key)) collection order、semantic projection/trace、evaluator/finding DigestRegistry 均有 golden；
 10. HulianUI 首行固定 contract、request、artifact digest、exports/props/events/slots normalization 和 prohibited claims；canonical evidence 与 transport sidecar 分离；
 11. ART-ONEFILE-001 匹配 canonical uncompressed ustar bytes；
-12. 第 18 节全部 RED/golden/holdout 门槛通过，bundle allowlist、SemanticDelta-v1/derived closure 与 negative-control gate 唯一，真实回归达到 18.6 最低组合并生成可复放 evidence；
+12. 第 18 节全部 RED/golden/holdout 门槛通过，CanonicalDeltaOperationV1、bundle allowlist、derived closure、negative-control/DecisionOwner gate 唯一，真实回归达到 18.6 最低组合并生成可复放 evidence；
 13. Profile、组件库、自动扫描、第三方品牌与 0 Finding 均不冒充 UX 成功；
 14. 本机资料目录无项目写入；
 15. 用户批准最终规格后才写 implementation plan。
@@ -698,9 +715,9 @@ Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每�
 
 当前仍只做设计。
 
-1. 提交 v0.8 到 design/v0；
+1. 提交 v0.9 到 design/v0；
 2. 自检所有 MUST/唯一表是否存在对应 schema/vector，消除“固定但未给值”；
-3. 第八轮使用三个全新对抗上下文复核第七轮 10 个最小反例与执行/回归闭包；只接受能导致核心输出分叉或不安全动作的 blocker；
+3. 第九轮使用三个全新对抗上下文复核第八轮 7 个最小反例；只接受能导致核心输出分叉或不安全动作的 blocker；
 4. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户最终审阅；
 5. 用户明确批准后才调用 writing-plans；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
