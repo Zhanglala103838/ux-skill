@@ -1,6 +1,6 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：v0.13 第十二轮 blocker 修订候选，等待复核  
+状态：v0.13 第十二轮第二次 blocker 修订候选，等待复核  
 规格版本：0.13  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
@@ -633,7 +633,10 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | REGRESSION-NEGCONTROL-001 | negative control 缺失 → gate=missing/not_increase；超阈值 → gate=failed、identification rejected、decision_required |
 | REGRESSION-NEGCONTROL-ABS-001 | observed_delta=-0.1、transform=absolute、upper=0.05 inclusive → gate=failed |
 | RW-BRAND-NOT-AUTHORITY-001 | 仅给出“Apple 是知名品牌/设计标杆”，没有 case evidence → 不生成 SourceAssertion、ClaimAssessment 提升、正向 Finding 或 Recommendation |
-| RW-SNAPSHOT-DRIFT-001 | SnapshotClosureManifest 任一 captured response/observation bytes digest 不符，或 replay 出现未登记 network event → target_unavailable+RunIssue+no_release；不得改读 live page、沿用旧结论或把漂移判作 UX 回归 |
+| RW-SNAPSHOT-DRIFT-001 | SnapshotClosureManifest 任一 captured response header/body/observation bytes digest 不符，或 replay 出现未登记 network event → target_unavailable+RunIssue+no_release；不得改读 live page、沿用旧结论或把漂移判作 UX 回归 |
+| RW-SNAPSHOT-HEADERS-001 | 固定 HTML/script bodies；capture header 含 CSP script-src 'none'；replay 必须从 header CAS 恢复同一 CanonicalResponseHeaders，遗漏/改写 CSP → target_unavailable+no_release，不能产生第二个 DOM/Finding |
+| RW-REPLAY-PROFILE-001 | 同一 Apple step 的 desktop keyboard/no-preference、desktop keyboard/reduce、mobile touch/no-preference 三个 exact replay_profile_id 不可由 ordinal 或执行顺序互换；缺失/错引 → REF_MISSING 或 INVARIANT_REPLAY_PROFILE_COVERAGE |
+| RW-SNAPSHOT-SCHEMA-CLOSED-001 | redirect hop 或 observation item 加 note 属性 → 唯一 normalized error=ADDITIONAL_PROPERTY；未知字段不得进入 closure digest |
 | RW-BLACKBOX-EFFECT-001 | task_script 试图登录、加入购物车、提交表单、调用真实 API 或进入 checkout → prohibited_effect+no effect+completed_blocked |
 | RW-ROTATION-SELECT-001 | exact ids 按 UTF8(JCS(id)) 排序为 [RW-DOCS-STRIPE-001,RW-WEBSITE-IKEA-001]；generation_sequence=0/1 唯一选择 STRIPE/IKEA，输入次序不改变选择 |
 | RW-ROTATION-DIGEST-001 | generation_commitment=64 个 0、generation_id=gen-000、sequence=0、portfolio=real-world-portfolio-v1 的第 18.3 节正规形 preimage 唯一产生 manifest_digest=e01f97c0db9a39b9bd3f61c187ce9892a962a953328eb3cdac67658974a3bfcd |
@@ -665,11 +668,15 @@ RealWorldRegressionCase 必须含：
 - preregistered hypotheses、至少一个 disconfirming/negative-control intervention、success/guardrail measures、SemanticDelta-v1 和 forbidden claims；
 - replay_oracle=semantic-delta-v1、environment digest、outbound-effect sink、cleanup contract。
 
-black_box_site 必须提供 SnapshotClosureManifest，不能只固定首页。SnapshotClosureManifest additionalProperties=false，必填 closure_version=snapshot-closure-v1、entry_url、task_script_digest、capture_environment_digest、captured_at、locale、viewport_profile、authenticated=false、network_records、observation_records、outbound_effect_ledger_digest、completeness_status=complete|incomplete、manifest_digest。manifest_digest 只用第 12.5 节 snapshot-closure row。
+black_box_site 必须提供 SnapshotClosureManifest，不能只固定首页。SnapshotClosureManifest additionalProperties=false，必填 closure_version=snapshot-closure-v1、entry_url、task_script_digest、capture_environment_digest、captured_at、replay_profiles、network_records、observation_records、outbound_effect_ledger_digest、completeness_status=complete|incomplete、manifest_digest。manifest_digest 只用第 12.5 节 snapshot-closure row。
 
-network_records 是 ordered-list，sequence 从 0 连续；每项 additionalProperties=false，必填 sequence、task_step_id、request_method=GET|HEAD、request_url、redirect_chain、final_url、network_kind=document|script|style|image|font|xhr|fetch|sse|websocket_frame|other、disposition=captured|blocked_by_policy、response_status|null、content_type|null、response_header_digest|null、raw_body_digest|null、content_addressed_artifact_locator|null。captured 必须有 status/header/body/artifact 且 locator 取回 bytes 与 digest 相同；blocked_by_policy 的四项必须全为 null。redirect_chain 是 ordered-list，逐 hop 固定 status、url、location。任何非 GET/HEAD 请求、未登记 request/redirect/response/SSE/WebSocket frame、取不回 bytes、digest mismatch 或浏览器读取 live network 都使 completeness_status=incomplete。
+ReplayProfile additionalProperties=false，所有字段必填：replay_profile_id、viewport_width_css_px、viewport_height_css_px、device_scale_factor、input_modality=keyboard|pointer|touch、prefers_reduced_motion=reduce|no-preference、prefers_contrast=no-preference|more|less|custom、color_scheme=light|dark、locale、timezone、assistive_technology_id、browser_engine_digest。replay_profiles 是以 replay_profile_id 为 key 的 canonical-set。task_script 的每个 step 必填 step_id 与 required_replay_profile_ids canonical-set；每个 id 必须引用 manifest profile。Apple case v0.1 固定三项：apple-desktop-keyboard-standard=(1440,900,2,keyboard,no-preference)、apple-desktop-keyboard-reduced=(1440,900,2,keyboard,reduce)、apple-mobile-touch-standard=(390,844,3,touch,no-preference)；三者其余字段固定为 zh-CN、Asia/Shanghai、no-preference contrast、light、assistive_technology_id=none 及同一 pinned browser_engine_digest。
 
-observation_records 是 canonical-set，key=[task_step_id,evidence_kind,viewport_profile,ordinal]；evidence_kind=screenshot|dom_snapshot|accessibility_tree|interaction_trace|performance_trace|content_extract，每项固定 content digest 和 content-addressed locator。每个 task step、每个预注册 viewport/input condition 的所需 observation 必须存在。replay 只从 closure 返回 captured bytes 或重现 blocked_by_policy，不执行 live network；任何 miss 固定 target_unavailable+RunIssue+no_release。这样冻结的是任务可达的页面、子资源、重定向和动态响应闭包，不是声称第三方站点永久不变。
+CanonicalResponseHeaders additionalProperties=false，只含 headers ordered-list；每个 header item additionalProperties=false，必填从 0 连续的 sequence、name_lower_ascii、value_bytes_base64。重复 header 保留捕获顺序，名称转 ASCII lowercase，值不转码；artifact bytes=UTF8(JCS(CanonicalResponseHeaders))，header_digest=SHA-256(artifact bytes)，content_addressed_header_artifact_locator 必须取回完全相同 bytes。访问/许可策略可使 header artifact 非公开，但 evaluator 必须获授权取回；无法取回或校验即 target_unavailable。replay 必须按 captured status 与全部 header items 恢复，不能忽略 CSP、Location、Content-Language、Set-Cookie 等会改变行为的字段。
+
+network_records 是 canonical-set，key=[replay_profile_id,sequence]，每个 profile 内 sequence 从 0 连续。每个 network item additionalProperties=false，必填 replay_profile_id、sequence、task_step_id、request_method=GET|HEAD、request_url、redirect_chain、final_url、network_kind=document|script|style|image|font|xhr|fetch|other、disposition=captured|blocked_by_policy、response_status|null、header_digest|null、content_addressed_header_artifact_locator|null、raw_body_digest|null、content_addressed_body_artifact_locator|null。captured 的 status/header/body/digest/两个 locator 均非 null 且两个 locator 取回 bytes 必须匹配 digest；blocked_by_policy 的六项必须全为 null。redirect_chain 是 ordered-list，每个 hop additionalProperties=false，必填连续 sequence、status、url、location、header_digest、content_addressed_header_artifact_locator，并按同一 CanonicalResponseHeaders 规则取回和恢复。任何非 GET/HEAD 请求、SSE/WebSocket、未登记 request/redirect/response、取不回 header/body bytes、digest mismatch 或浏览器读取 live network 都使 completeness_status=incomplete。
+
+observation_records 是 canonical-set；每个 item additionalProperties=false，所有字段必填，key=[replay_profile_id,task_step_id,evidence_kind,ordinal]；evidence_kind=screenshot|dom_snapshot|accessibility_tree|interaction_trace|performance_trace|content_extract，每项固定 replay_profile_id、task_step_id、evidence_kind、ordinal、artifact_digest、content_addressed_artifact_locator。每个 task step 与每个 required_replay_profile_id 的预注册所需 observation 必须存在，否则 INVARIANT_REPLAY_PROFILE_COVERAGE。replay 只从 closure 返回 captured header/body bytes或重现 blocked_by_policy，不执行 live network；任何 miss 固定 target_unavailable+RunIssue+no_release。这样冻结的是固定 task/seed/profile 实际触达的页面、子资源、重定向和动态响应闭包，不是所有潜在分支，也不声称第三方站点永久不变。
 
 pinned_repository 固定 owner/repo、commit、license、build/run recipe digest、seed digest；branch 名只能作说明，不能作 ref。
 
@@ -702,7 +709,7 @@ intervention hypothesis 永远不是 evidence。black_box_site 默认 read-only�
 | case_id / 场景 / role | 固定目标 | 无副作用任务 | 预注册 UX 假设 | 证据与回归边界 |
 |---|---|---|---|---|
 | RW-WEBSITE-GOVUK-001 / 公共服务官网 / fixed_anchor / public-service-information | https://www.gov.uk/register-to-vote；captured_at=2026-08-18T04:49:40Z；HTML SHA-256=411fa11837c5ba87f7aed35903ca7fa5d0a47048709930448466394d69393a3c | 判断用途、资格分支、所需材料、预计耗时、线上入口与纸质/求助替代；不进入提交 | 信息架构可能帮助用户在开始前形成正确预期；是否对不同资格人群同样成立必须转 Inquiry | black-box page/content only；不得声称完整登记旅程、代码事实或用户成功 |
-| RW-WEBSITE-APPLE-001 / 品牌与产品决策官网 / fixed_anchor / brand-marketing-website | https://www.apple.com.cn/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=f853dfb57dd9305aa5656f604e91f96974b152a3d2fa88dc3ed763eaec07ecfb | 从首页找到 iPhone 产品族，说明至少两个可观察的选择因素，找到比较、购买与支持路径；以 desktop/mobile、keyboard、reduced-motion 条件复放；停在 checkout/login/form 前 | 渐进叙事、导航和产品比较入口可能帮助形成购买选择；动效、信息密度和路径命名也可能造成理解或操作成本，必须由任务证据判定 | black-box page/content+read-only runtime；Apple 声誉不是证据；不得声称真实购买成功、总体满意、源码事实或 WCAG conformant |
+| RW-WEBSITE-APPLE-001 / 品牌与产品决策官网 / fixed_anchor / brand-marketing-website | https://www.apple.com.cn/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=f853dfb57dd9305aa5656f604e91f96974b152a3d2fa88dc3ed763eaec07ecfb | 从首页找到 iPhone 产品族，说明至少两个可观察的选择因素，找到比较、购买与支持路径；以 apple-desktop-keyboard-standard、apple-desktop-keyboard-reduced、apple-mobile-touch-standard 三个 exact replay_profile_id 复放；停在 checkout/login/form 前 | 渐进叙事、导航和产品比较入口可能帮助形成购买选择；动效、信息密度和路径命名也可能造成理解或操作成本，必须由任务证据判定 | black-box page/content+read-only runtime；Apple 声誉不是证据；不得声称真实购买成功、总体满意、源码事实或 WCAG conformant |
 | RW-ADMIN-APPSMITH-001 / Admin 与内部工具 / fixed_anchor / admin-internal-tool | appsmithorg/appsmith@03266b555b5451e91614840ec5b2577538bd8e6e，Apache-2.0 | 在固定 seed 的隔离实例创建内部 CRUD 页面、连接 sample datasource、配置表格与表单、预览并恢复一次输入错误；禁用外发连接 | 数据绑定与编辑/预览上下文切换可能影响可发现性、错误恢复和效率 | code+isolated runtime；初次 baseline 不改 upstream；候选干预只在派生副本 |
 | RW-TRANSACTION-CAL-001 / 消费者交易流程 / fixed_anchor / consumer-transaction | calcom/cal.diy@176037d0afbe572f870a3c702985e7cd83fe6c0c，MIT | 在固定时区/日历 seed 选择 30 分钟时段、识别时区、处理时段冲突并取消；邮件/日历写入只到 fake sink | 时区可见性和冲突恢复可能降低误订与回退成本；需任务证据验证 | code+isolated runtime；零真实邀请、零真实日历/支付 effect |
 | RW-HULIAN-DELETE-001 / HulianUI 迁移目标 / fixed_anchor / admin-internal-tool | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v1；row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
@@ -763,9 +770,9 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 当前仍只做设计。
 
 1. 提交 v0.13 真实站点回归扩展到 design/v0；
-2. 自检所有 MUST/唯一表与 97 个 vectors；
+2. 自检所有 MUST/唯一表与 100 个 vectors；
 3. 第十一轮已完成：release/holdout 与 adapter 评审 GO；综合评审的 SelectionDecision/ReleaseRecommendation 命名冲突已闭合；
-4. 第十二轮首次复核发现 snapshot closure 与 scenario-family/rotation identity blocker；本候选已补 closure manifest、exact registry/digest 和 golden vectors，等待重验；
+4. 第十二轮前两次复核发现 snapshot closure、scenario-family/rotation identity、header replay、profile identity 与 nested-schema blocker；本候选已补闭合 schema、header CAS、exact ReplayProfile/registry/digest 和对应 golden vectors，等待重验；
 5. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户审阅并进入 implementation plan；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
 7. 首纵切不修改 HulianUI MCP、不写第三方 upstream、不扩第二个实现 adapter、不宣称 stable。
