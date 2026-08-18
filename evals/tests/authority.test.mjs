@@ -11,7 +11,7 @@ const actor=(subject_id,namespace_uri='https://identity.example')=>({namespace_u
 const verifiedProof=()=>({proof_id:'proof-1',effect_scope_digest:'e'.repeat(64),resource_scope_digest:'r'.repeat(64),data_source_ids:['directory'],snapshot_digest:'s'.repeat(64),snapshot_version:'v1',verification_status:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
 const boundGraph=(affected_party_ids)=>({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids,effect_scope_digest:'e'.repeat(64),resource_scope_digest:'r'.repeat(64),data_source_ids:['directory'],snapshot_digest:'s'.repeat(64),snapshot_version:'v1',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
 const highRiskDelete=({partyProof='verified'}={})=>({action:'delete',resource_type:'admin_account',risk:'high',authorization_purpose:'account_deletion',evaluation_effective_at:'2026-08-18T00:00:00Z',authenticated_principal:actor('admin'),effective_actor:actor('admin'),authority_root_id:'ux-skill-local-admin-root-v1',authority_root_membership:'verified',acting_edges:[],tenant_bindings:{status:'verified',required:['target','controller'],covered:['target','controller'],extra_effects:[]},party_graph:boundGraph(['party-a']),party_proof:partyProof==='verified'?verifiedProof():null,grant:{status:'active',scope_coverage:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',revoked:false},approval:{status:'verified'},capability:{status:'verified',ledger_status:'unused'},authority_features:{execution_envelope:'verified',time_authority:'verified',commit_revalidation:'verified'}});
-const twoSafeNonDominatedCandidates=()=>({authority_status:'complete',party_inventory_status:'verified_complete',touches_safety_or_rights_floor:false,candidates:[{solution_id:'a',hard_constraints:[{id:'h',result:'T'}],soft_scores:{quality:1,speed:0}},{solution_id:'b',hard_constraints:[{id:'h',result:'T'}],soft_scores:{quality:0,speed:1}}]});
+const twoSafeNonDominatedCandidates=()=>({authority_status:'complete',party_inventory_status:'verified_complete',candidates:[{solution_id:'a',hard_constraints:[{id:'h',result:'T'}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:0,floor_result:'T'}]},{solution_id:'b',hard_constraints:[{id:'h',result:'T'}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:1,floor_result:'T'}]}]});
 const clone=(value)=>structuredClone(value);
 
 test('unknown party closure escalates a high-risk delete', () => {
@@ -47,7 +47,7 @@ test('all six fixed authority vectors are executable and contract-linked',()=>{
 
 test('closed registries and policies are the runtime authority tables',()=>{
  assert.equal(registries.registry_version,'authority-registries-v1');
- assert.deepEqual(registries.authority_root_registry.map((row)=>row.authority_root_id),['ux-skill-local-admin-root-v1']);
+ assert.deepEqual(registries.authority_root_registry.map((row)=>row.authority_root_id),['ux-skill-expired-admin-root-v1','ux-skill-local-admin-root-v1','ux-skill-revoked-admin-root-v1']);
  assert.deepEqual(registries.action_policy_registry[0].required_tenant_relationships,['target','controller']);
  assert.deepEqual(policies.hard_constraint_result_table,{E:'evaluation_error',F:'infeasible',T:'feasible',U:'indeterminate'});
  assert.deepEqual(policies.authority_decision_statuses,['block','continue','escalation','invalid_input']);
@@ -110,7 +110,7 @@ test('approval, capability, and Task 3 authority prerequisites fail closed',()=>
 });
 
 test('hard solver follows E then U then feasible then zero-feasible priority',()=>{
- const candidate=(solution_id,result,conflict_class='ordinary')=>({solution_id,hard_constraints:[{id:`h-${solution_id}`,result,conflict_class}],soft_scores:{quality:1}});
+ const candidate=(solution_id,result,conflict_class='ordinary')=>({solution_id,hard_constraints:[{id:`h-${solution_id}`,result,conflict_class}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]});
  assert.deepEqual(solveCandidates({candidates:[candidate('a','E')],authority_status:'complete',party_inventory_status:'verified_complete'}),{selection_status:'evaluation_error',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_evaluation_error',release_recommendation:'escalation',reason_code:'HARD_CONSTRAINT_EVALUATION_ERROR'});
  assert.deepEqual(solveCandidates({candidates:[candidate('a','T'),candidate('b','U')],authority_status:'complete',party_inventory_status:'verified_complete'}),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['a'],next_action:'escalate_hard_constraint',release_recommendation:'escalation',reason_code:'HARD_CONSTRAINT_UNKNOWN'});
  const ordinary=solveCandidates({candidates:[candidate('a','F')],authority_status:'complete',party_inventory_status:'verified_complete'});
@@ -129,7 +129,7 @@ test('soft ties escalate when authority, party closure, or a safety floor is inc
 
 test('candidate and score ordering are deterministic',()=>{
  const first=twoSafeNonDominatedCandidates();
- const second=clone(first); second.candidates.reverse(); second.candidates[0].soft_scores={speed:1,quality:0}; second.candidates[1].soft_scores={speed:0,quality:1};
+ const second=clone(first); second.candidates.reverse(); for(const candidate of second.candidates) candidate.soft_dimensions.reverse();
  assert.deepEqual(solveCandidates(first),solveCandidates(second));
 });
 
