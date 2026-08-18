@@ -193,7 +193,6 @@ const normalizeEvaluationInput=(value,schemaRows,out)=>{
  for(const [field,key] of [['scenario_profiles','scenario_profile_id'],['candidate_universe','solution_id'],['journeys','journey_id'],['evidence','evidence_id'],['studies','study_id'],['claims','claim_id'],['adapter_evidence','adapter_evidence_id']])normalizeSet(value,field,(row)=>isPlainObject(row)?row[key]:undefined,key,`/${field}`,invariant,out);
  normalizeSet(value,'source_registry_refs',(item)=>item,null,'/source_registry_refs',invariant,out);
  if(Array.isArray(value.candidate_universe))value.candidate_universe.forEach((row,index)=>{if(isPlainObject(row))normalizeSet(row,'option_ids',(item)=>item,null,`/candidate_universe/${index}/option_ids`,invariant,out);});
- if(Array.isArray(value.journeys))value.journeys.forEach((row,index)=>{if(isPlainObject(row))normalizeSet(row,'step_ids',(item)=>item,null,`/journeys/${index}/step_ids`,invariant,out);});
  if(Array.isArray(value.claims))value.claims.forEach((row,index)=>{if(isPlainObject(row)&&!schemaErrorAt(schemaRows,`/claims/${index}/evidence_refs`))normalizeSet(row,'evidence_refs',(item)=>item,null,`/claims/${index}/evidence_refs`,invariant,out);});
  const scenarioInvalid=schemaErrorAt(schemaRows,'/scenario_profile_id');
  const scenarioRegistryInvalid=schemaErrorAt(schemaRows,'/scenario_profiles')||!Array.isArray(value.scenario_profiles);
