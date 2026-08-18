@@ -141,10 +141,44 @@ export const assertNfc = (value) => {
   return value;
 };
 
+const shieldCanonicalizerToJsonProbe = (value) => {
+  if (value === null || typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      value[index] = shieldCanonicalizerToJsonProbe(value[index]);
+    }
+    return value;
+  }
+
+  for (const key of Object.keys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    value[key] = shieldCanonicalizerToJsonProbe(descriptor.value);
+  }
+
+  const toJsonDescriptor = Object.getOwnPropertyDescriptor(value, 'toJSON');
+  if (!toJsonDescriptor || toJsonDescriptor.value === null) return value;
+
+  // json-canonicalize@2.0.0 bypasses JCS sorting when its initial
+  // object.toJSON probe is non-null. Hide only that pinned upstream probe;
+  // the later sorted-property read returns the snapshotted JSON data field.
+  let hideInitialProbe = true;
+  return new Proxy(value, {
+    get(target, property, receiver) {
+      if (property === 'toJSON' && hideInitialProbe) {
+        hideInitialProbe = false;
+        return null;
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+};
+
 export const jcsBytes = (value) => {
   const snapshot = safeSnapshot(value);
   validateNfc(snapshot);
-  return Buffer.from(canonicalize(snapshot), 'utf8');
+  const canonicalizerInput = shieldCanonicalizerToJsonProbe(snapshot);
+  return Buffer.from(canonicalize(canonicalizerInput), 'utf8');
 };
 
 export const canonicalSet = (items, keyOf) => {
