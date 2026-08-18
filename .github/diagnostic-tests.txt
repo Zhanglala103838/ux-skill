@@ -1,0 +1,1 @@
+Task 4 security candidate: inspect diagnostic_test_exit_code before cleanup.

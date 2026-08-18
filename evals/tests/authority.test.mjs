@@ -115,7 +115,7 @@ test('hard solver follows E then U then feasible then zero-feasible priority',()
  assert.equal(ordinary.release_recommendation,'block'); assert.deepEqual(ordinary.unsat_cores,[['h-a']]);
  const rights=solveCandidates(completeUniverse([candidate('a','F','rights')]));
  assert.equal(rights.release_recommendation,'escalation'); assert.equal(rights.reason_code,'HARD_CONSTRAINT_HIGH_RISK_UNSAT');
- assert.equal(solveCandidates(completeUniverse([candidate('b','F'),candidate('a','T')])).selected_solution_id,'a');
+ assert.equal(solveCandidates(completeUniverse([candidate('b','F'),candidate('a','T')])).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
 });
 
 test('soft ties escalate when authority, party closure, or a safety floor is incomplete',()=>{
@@ -215,8 +215,9 @@ test("soft safety and rights floors run before preference selection",()=>{
   solution("unsafe",[dimension("party-a","safety",0,100,"F")]),
   solution("safe",[dimension("party-a","safety",0,0,"T")])
  ]));
- assert.equal(result.selection_status,"selected");
- assert.equal(result.selected_solution_id,"safe");
+ assert.equal(result.selection_status,"undecided");
+ assert.equal(result.selected_solution_id,null);
+ assert.equal(result.release_recommendation,"escalation");
  const unknown=solveCandidates(completeUniverse([solution("u",[dimension("cohort-a","rights",0,1,"U")])]));
  assert.equal(unknown.selection_status,"undecided");
  assert.equal(unknown.release_recommendation,"escalation");
@@ -227,8 +228,9 @@ test("lexicographic tiers dominate lower tiers before Pareto comparison",()=>{
   solution("tier-zero-winner",[dimension("party-a","quality",0,2),dimension("party-a","speed",1,0)]),
   solution("lower-tier-winner",[dimension("party-a","quality",0,1),dimension("party-a","speed",1,100)])
  ]));
- assert.equal(result.selection_status,"selected");
- assert.equal(result.selected_solution_id,"tier-zero-winner");
+ assert.equal(result.selection_status,"undecided");
+ assert.equal(result.selected_solution_id,null);
+ assert.equal(result.reason_code,"SOLVER_GATE_EVIDENCE_REQUIRED");
 });
 
 test("Pareto comparison is party and cohort keyed with no cross-party aggregation",()=>{
@@ -293,7 +295,7 @@ const closedSolution=(solution_id,option_ids,hard_constraints,soft_dimensions)=>
 test('TASK4_RED_SOLVER_CLOSED_CONTRACT schema-aligned CandidateUniverse and matrices are one production input',()=>{
  const only=closedSolution('only',['option-safe'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]);
  const input=closedSolverInput({candidate_universe:[only.solution],candidate_evaluations:[only.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'});
- assert.deepEqual(solveCandidates(input),{selection_status:'selected',selected_solution_id:'only',feasible_solution_ids:['only'],next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'},'TASK4_RED_SOLVER_CLOSED_CONTRACT');
+ assert.deepEqual(solveCandidates(input),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['only'],next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'},'TASK4_RED_SOLVER_CLOSED_CONTRACT');
 });
 
 test('TASK4_RED_AUTHORITY_PRECEDENCE gates every unique and dominant selection path',()=>{

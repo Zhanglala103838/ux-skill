@@ -13,7 +13,7 @@
   },
   {
     "path": "schemas/core/candidate-solver-input.schema.json",
-    "file_digest": "3f67b8cbc981583939e082eb0ade17f0427a369d5a59054085957bf6b13fdeb4"
+    "file_digest": "962ba99a5c465f3fc64ed07e7c78b8e75904f43ba6f8c297dfc7cfe2fd6d6906"
   },
   {
     "path": "schemas/core/claims.schema.json",
