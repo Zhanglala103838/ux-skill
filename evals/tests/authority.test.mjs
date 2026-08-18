@@ -288,3 +288,59 @@ test("grant approval capability and envelope bindings each fail closed in isolat
  const party=fullContractDelete(); party.party_proof={verification_status:"verified",effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z"};
  assert.deepEqual(evaluateAuthority(party),{status:"escalation",reason_code:"PARTY_INVENTORY_UNKNOWN"});
 });
+
+const closedSolverInput=({candidate_universe,candidate_evaluations,authority_status,party_inventory_status,safety_or_rights_floor_status})=>({candidate_universe,candidate_evaluations,authority_status,party_inventory_status,safety_or_rights_floor_status});
+const closedSolution=(solution_id,option_ids,hard_constraints,soft_dimensions)=>({solution:{solution_id,option_ids},evaluation:{solution_id,hard_constraints,soft_dimensions}});
+
+test('TASK4_RED_SOLVER_CLOSED_CONTRACT schema-aligned CandidateUniverse and matrices are one production input',()=>{
+ const only=closedSolution('only',['option-safe'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]);
+ const input=closedSolverInput({candidate_universe:[only.solution],candidate_evaluations:[only.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'});
+ assert.deepEqual(solveCandidates(input),{selection_status:'selected',selected_solution_id:'only',feasible_solution_ids:['only'],next_action:'proceed',release_recommendation:'continue',reason_code:'UNIQUE_PARETO_SOLUTION'},'TASK4_RED_SOLVER_CLOSED_CONTRACT');
+});
+
+test('TASK4_RED_AUTHORITY_PRECEDENCE gates every unique and dominant selection path',()=>{
+ const a=closedSolution('a',['option-a'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:10,floor_result:'T'}]);
+ const b=closedSolution('b',['option-b'],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:0,floor_result:'T'}]);
+ const uniqueBase={candidate_universe:[a.solution],candidate_evaluations:[a.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'};
+ const dominantBase={candidate_universe:[a.solution,b.solution],candidate_evaluations:[a.evaluation,b.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'};
+ const cases=[{...uniqueBase,authority_status:'unknown'},{...dominantBase,party_inventory_status:'unknown'},{...uniqueBase,safety_or_rights_floor_status:'unresolved'},{...dominantBase,safety_or_rights_floor_status:'triggered'}];
+ const actual=cases.map((input)=>{const result=solveCandidates(input); return [result.selection_status,result.selected_solution_id,result.release_recommendation];});
+ assert.deepEqual(actual,Array(4).fill(['undecided',null,'escalation']),'TASK4_RED_AUTHORITY_PRECEDENCE');
+ const missing=clone(uniqueBase); delete missing.authority_status;
+ assert.deepEqual(solveCandidates(missing),{selection_status:'invalid_input',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_input',release_recommendation:'escalation',reason_code:'CANDIDATE_INPUT_INVALID'},'TASK4_RED_AUTHORITY_PRECEDENCE');
+});
+
+test('TASK4_RED_MINIMAL_UNSAT_CORES returns exact inclusion-minimal hitting sets',()=>{
+ const a=closedSolution('a',[],[{constraint_id:'x',result:'F',conflict_class:'ordinary'},{constraint_id:'y',result:'F',conflict_class:'ordinary'},{constraint_id:'z',result:'T',conflict_class:'ordinary'}],[]);
+ const b=closedSolution('b',[],[{constraint_id:'x',result:'F',conflict_class:'ordinary'},{constraint_id:'y',result:'T',conflict_class:'ordinary'},{constraint_id:'z',result:'F',conflict_class:'ordinary'}],[]);
+ const input=closedSolverInput({candidate_universe:[b.solution,a.solution],candidate_evaluations:[b.evaluation,a.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'});
+ assert.deepEqual(solveCandidates(input).unsat_cores,[['x'],['y','z']],'TASK4_RED_MINIMAL_UNSAT_CORES');
+});
+
+test('TASK4_RED_LEXICOGRAPHIC_PARETO keeps a plural higher-tier Pareto set undecided',()=>{
+ const a=closedSolution('a',[],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:10,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'comfort',tier:1,value:0,floor_result:'T'}]);
+ const b=closedSolution('b',[],[{constraint_id:'h',result:'T',conflict_class:'ordinary'}],[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:10,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'comfort',tier:1,value:100,floor_result:'T'}]);
+ const input=closedSolverInput({candidate_universe:[a.solution,b.solution],candidate_evaluations:[a.evaluation,b.evaluation],authority_status:'complete',party_inventory_status:'verified_complete',safety_or_rights_floor_status:'resolved'});
+ const result=solveCandidates(input);
+ assert.deepEqual([result.selection_status,result.selected_solution_id,result.next_action,result.release_recommendation],['undecided',null,'ask_decision_owner','undecided'],'TASK4_RED_LEXICOGRAPHIC_PARETO');
+});
+
+test('TASK4_RED_TOTAL_FAIL_CLOSED public reducers never throw or consume hostile object graphs',()=>{
+ const capture=(operation)=>{try{return operation();}catch(error){return {threw:error?.code??error?.message};}};
+ const nonNfc=highRiskDelete(); nonNfc.authenticated_principal=actor('e\u0301'); nonNfc.effective_actor=actor('b'); nonNfc.acting_edges=[{from:nonNfc.authenticated_principal,to:nonNfc.effective_actor,validity:'verified'}];
+ const lone=completeUniverse([solution('a',[dimension('\uD800','quality',0,1)])]);
+ const inherited=Object.create(highRiskDelete());
+ const shared=highRiskDelete(); shared.effective_actor=shared.authenticated_principal;
+ const actual=[capture(()=>evaluateAuthority(nonNfc)),capture(()=>solveCandidates(lone)),capture(()=>evaluateAuthority(new Date(0))),capture(()=>evaluateAuthority(inherited)),capture(()=>evaluateAuthority(shared)),capture(()=>derivePartyInventory(boundGraph([]),new Date(0),'2026-08-18T00:00:00Z'))];
+ const expected=[invalidAuthorityResult(),invalidCandidateResult(),invalidAuthorityResult(),invalidAuthorityResult(),invalidAuthorityResult(),{status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_INVALID'}];
+ assert.deepEqual(actual,expected,'TASK4_RED_TOTAL_FAIL_CLOSED');
+ function invalidAuthorityResult(){return {status:'invalid_input',reason_code:'AUTHORITY_INPUT_INVALID'};}
+ function invalidCandidateResult(){return {selection_status:'invalid_input',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_input',release_recommendation:'escalation',reason_code:'CANDIDATE_INPUT_INVALID'};}
+});
+
+test('TASK4_RED_TENANT_PROOF_AND_SCOPE rejects caller assertions and includes tenant ids in scope',()=>{
+ const asserted=highRiskDelete(); asserted.tenant_ids=['tenant-a'];
+ assert.deepEqual(evaluateAuthority(asserted),{status:'escalation',reason_code:'TENANT_COVERAGE_UNKNOWN',coverage_gap_id:'tenant-join-proof-v1'},'TASK4_RED_TENANT_PROOF_AND_SCOPE');
+ const outOfScope=highRiskDelete(); outOfScope.tenant_ids=['tenant-b'];
+ assert.deepEqual(evaluateAuthority(outOfScope),{status:'block',reason_code:'AUTHORITY_ROOT_SCOPE_NOT_COVERED'},'TASK4_RED_TENANT_PROOF_AND_SCOPE');
+});
