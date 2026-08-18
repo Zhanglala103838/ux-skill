@@ -10,7 +10,7 @@ const schemaPaths=[
  '../schemas/evaluator/rule.schema.json','../schemas/evaluator/semantic-projection.schema.json'
 ];
 const schemas=await Promise.all(schemaPaths.map(async(path)=>JSON.parse(await readFile(new URL(path,import.meta.url),'utf8'))));
-const ajv=new Ajv2020({allErrors:true,strict:true,validateFormats:true,verbose:false,messages:false,unicodeRegExp:true});
+const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,verbose:false,messages:false,unicodeRegExp:true});
 addFormats(ajv);
 ajv.addFormat('canonical-relative-path',{type:'string',validate(value){try{assertCanonicalRelativePath(value);return true;}catch{return false;}}});
 for(const schema of schemas)ajv.addSchema(schema);
@@ -106,8 +106,8 @@ const collectionErrors=(value,schemaErrors)=>{
 };
 export const validateInput=(value)=>{
  const base=validateBySchema('EvaluationInputBundle',value);
- if(base.ok)return{ok:true,value:base.value};
- if(base.errors.some((e)=>e.stage==='parse'||e.stage==='nfc'))return base;
- const errors=sorted([...base.errors,...collectionErrors(value,base.errors)]);
- return{ok:false,errors};
+ if(!base.ok&&base.errors.some((e)=>e.stage==='parse'||e.stage==='nfc'))return base;
+ const schemaErrors=base.ok?[]:base.errors;
+ const errors=sorted([...schemaErrors,...collectionErrors(value,schemaErrors)]);
+ return errors.length?{ok:false,errors}:{ok:true,value};
 };
