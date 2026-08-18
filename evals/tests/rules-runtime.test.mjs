@@ -216,4 +216,13 @@ test('unregistered AST paths and required pointers outside registry are invalid 
  expectState(evaluateRule(unregistered,{target:{passes:true}},[]),{terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'});
  const outside=baseRule({registered_input_pointers:['/target/enabled'],required_input_pointers:['/target/passes'],check:lit('check',true)});
  expectState(evaluateRule(outside,{target:{passes:true}},[]),{terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'});
+});test('TASK5_FINAL_RED_RUN_ISSUE_CODE_DOMAIN',()=>{
+ const issue=(code)=>({code,instance_pointer:'/check',dependency_id:null});
+ for(const code of ['CHECK_PASS','RULE_CHECK_FAILED','FINDING_REASON_INVALID'])assert.equal(reduceRunStatus([issue(code)]),'failed',code);
+ const validIssue=issue('RULE_EVALUATION_ERROR');
+ assert.equal(reduceRunStatus([validIssue]),'completed_clear');
+ const noncritical={terminal:'completed',outcome:'evaluation_error',reason_code:'CHECK_EVALUATION_ERROR',release_critical:false};
+ assert.equal(reduceRunStatus([validIssue,noncritical]),'completed_with_gaps');
+ const critical={...noncritical,release_critical:true};
+ assert.equal(reduceRunStatus([validIssue,critical]),'failed');
 });
