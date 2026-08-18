@@ -1,3 +1,4 @@
+import { types as utilTypes } from 'node:util';
 import { canonicalize } from 'json-canonicalize';
 
 const fail = (code) => {
@@ -24,7 +25,23 @@ const assertScalarString = (value) => {
   if (!isUnicodeScalarString(value)) fail('IJSON_INVALID_UNICODE_SCALAR');
 };
 
-const validateArray = (value, active) => {
+const safeArrayForEach = function (callback) {
+  for (let index = 0; index < this.length; index += 1) {
+    callback(this[index], index, this);
+  }
+};
+
+const createSafeArray = () => {
+  const value = [];
+  Object.setPrototypeOf(value, null);
+  Object.defineProperties(value, {
+    toJSON: { value: undefined, enumerable: false },
+    forEach: { value: safeArrayForEach, enumerable: false },
+  });
+  return value;
+};
+
+const snapshotArray = (value, active) => {
   if (Object.getPrototypeOf(value) !== Array.prototype) fail('IJSON_NON_PLAIN_OBJECT');
 
   const ownKeys = Reflect.ownKeys(value);
@@ -37,19 +54,22 @@ const validateArray = (value, active) => {
     }
   }
 
+  const snapshot = createSafeArray();
   for (let index = 0; index < value.length; index += 1) {
     if (!Object.hasOwn(value, index)) fail('IJSON_SPARSE_ARRAY');
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
       fail('IJSON_NON_JSON_PROPERTY');
     }
-    validateIJson(value[index], active);
+    snapshot[index] = snapshotIJson(descriptor.value, active);
   }
+  return snapshot;
 };
 
-const validateObject = (value, active) => {
+const snapshotObject = (value, active) => {
   if (Object.getPrototypeOf(value) !== Object.prototype) fail('IJSON_NON_PLAIN_OBJECT');
 
+  const snapshot = Object.create(null);
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== 'string') fail('IJSON_NON_JSON_PROPERTY');
     assertScalarString(key);
@@ -57,38 +77,43 @@ const validateObject = (value, active) => {
     if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
       fail('IJSON_NON_JSON_PROPERTY');
     }
-    validateIJson(descriptor.value, active);
+    snapshot[key] = snapshotIJson(descriptor.value, active);
   }
+  return snapshot;
 };
 
-const validateIJson = (value, active) => {
-  if (value === null || typeof value === 'boolean') return;
+const snapshotIJson = (value, active) => {
+  if (value === null || typeof value === 'boolean') return value;
 
   if (typeof value === 'string') {
     assertScalarString(value);
-    return;
+    return value;
   }
 
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) fail('IJSON_NON_FINITE_NUMBER');
     if (Number.isInteger(value) && !Number.isSafeInteger(value)) fail('IJSON_UNSAFE_INTEGER');
-    return;
+    return value;
   }
 
   if (typeof value !== 'object') fail('IJSON_NON_JSON_VALUE');
+  if (utilTypes.isProxy(value)) fail('IJSON_NON_PLAIN_OBJECT');
   if (active.has(value)) fail('IJSON_CYCLE');
 
   active.add(value);
   try {
-    if (Array.isArray(value)) validateArray(value, active);
-    else validateObject(value, active);
+    return Array.isArray(value)
+      ? snapshotArray(value, active)
+      : snapshotObject(value, active);
   } finally {
     active.delete(value);
   }
 };
 
+const safeSnapshot = (value) => snapshotIJson(value, new WeakSet());
+
 export const assertIJson = (value) => {
-  validateIJson(value, new WeakSet());
+  safeSnapshot(value);
   return value;
 };
 
@@ -100,7 +125,7 @@ const validateNfc = (value) => {
   if (value === null || typeof value !== 'object') return;
 
   if (Array.isArray(value)) {
-    for (const item of value) validateNfc(item);
+    for (let index = 0; index < value.length; index += 1) validateNfc(value[index]);
     return;
   }
 
@@ -111,19 +136,20 @@ const validateNfc = (value) => {
 };
 
 export const assertNfc = (value) => {
-  assertIJson(value);
-  validateNfc(value);
+  const snapshot = safeSnapshot(value);
+  validateNfc(snapshot);
   return value;
 };
 
 export const jcsBytes = (value) => {
-  assertIJson(value);
-  validateNfc(value);
-  return Buffer.from(canonicalize(value), 'utf8');
+  const snapshot = safeSnapshot(value);
+  validateNfc(snapshot);
+  return Buffer.from(canonicalize(snapshot), 'utf8');
 };
 
 export const canonicalSet = (items, keyOf) => {
   assertIJson(items);
+  if (!Array.isArray(items)) fail('IJSON_NON_JSON_VALUE');
   if (typeof keyOf !== 'function') fail('IJSON_NON_JSON_VALUE');
 
   const entries = items.map((item) => ({
