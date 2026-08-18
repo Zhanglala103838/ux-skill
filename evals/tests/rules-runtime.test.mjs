@@ -150,4 +150,39 @@ test('public reducers are total and fail closed for hostile inputs',()=>{
   assert.doesNotThrow(()=>reduceRunStatus(hostile));
   assert.equal(reduceRunStatus(hostile),'failed');
  }
+});test('TASK5_REVIEW_RED_REQUIRED_INPUT_COMPLETENESS',()=>{
+ const noToolRule=baseRule({
+  required_input_pointers:['/target/passes'],
+  check:eq('check','/target/passes',true)
+ });
+ expectState(evaluateRule(noToolRule,{target:{}},[]),{
+  terminal:'completed',outcome:'not_run',reason_code:'REQUIRED_INPUT_PARTIAL'
+ });
+ expectState(evaluateRule(noToolRule,{target:{passes:true}},[]),{
+  terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'
+ });
+ const readyToolRule={...noToolRule,required_dependencies:[{dependency_id:'ready',required:true}]};
+ expectState(evaluateRule(readyToolRule,{target:{}},[dep('ready','success',true)]),{
+  terminal:'completed',outcome:'not_run',reason_code:'REQUIRED_INPUT_PARTIAL'
+ });
+ expectState(evaluateRule(readyToolRule,{target:{passes:true}},[dep('ready','success',true)]),{
+  terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'
+ });
+});
+
+test('TASK5_REVIEW_RED_RUN_PART_CLOSED_UNION',()=>{
+ assert.equal(reduceRunStatus([]),'completed_clear');
+ const invalidParts=[
+  {},
+  {terminal:'completed',outcome:'invented',reason_code:'NONE',release_critical:false},
+  {outcome:'pass',reason_code:'CHECK_PASS',release_critical:false},
+  {terminal:'completed',reason_code:'CHECK_PASS',release_critical:false},
+  {terminal:'completed',outcome:'pass',release_critical:false},
+  {terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'},
+  {terminal:'tool_failed',outcome:'pass',reason_code:'CHECK_PASS',release_critical:false},
+  {terminal:'completed',outcome:'evaluation_error',reason_code:'CHECK_PASS',release_critical:false},
+  {terminal:'completed',outcome:'fail',reason_code:'NONE',release_critical:false},
+  {terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS',release_critical:'false'}
+ ];
+ for(const invalid of invalidParts)assert.equal(reduceRunStatus([invalid]),'failed',JSON.stringify(invalid));
 });
