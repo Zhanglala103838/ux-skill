@@ -30,9 +30,9 @@ export function derivePartyInventory(graph,proof,effectiveAt){
  if(at===null||starts===null||expires===null)return {status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_INVALID'};
  if(starts>at)return {status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_NOT_EFFECTIVE'};
  if(expires<=at)return {status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_EXPIRED'};
+ if(graph.snapshot_status!=='closed'||graph.refs_closed!==true||graph.closure_complete!==true)return {status:'unknown',party_ids:[],reason_code:'PARTY_GRAPH_INCOMPLETE'};
  const boundFields=['effect_scope_digest','resource_scope_digest','snapshot_digest','snapshot_version','closure_algorithm_id','closure_algorithm_version'];
  if(boundFields.some((key)=>graph[key]!==proof[key])||!isStringArray(graph.data_source_ids)||!sameStringSet(graph.data_source_ids,proof.data_source_ids))return {status:'unknown',party_ids:[],reason_code:'PARTY_COMPLETENESS_PROOF_INVALID'};
- if(graph.snapshot_status!=='closed'||graph.refs_closed!==true||graph.closure_complete!==true)return {status:'unknown',party_ids:[],reason_code:'PARTY_GRAPH_INCOMPLETE'};
  const party_ids=canonicalStrings(graph.affected_party_ids);
  return party_ids.length===0?{status:'verified_no_affected_party',party_ids}:{status:'verified_complete',party_ids};
 }
@@ -101,6 +101,11 @@ function explicitPrerequisiteFailure(context){
  if(isRecord(grant)&&grant.status==='rejected')return {status:'block',reason_code:'GRANT_INVALID'};
  if(isRecord(grant)&&grant.status==='unknown')return {status:'escalation',reason_code:'GRANT_VALIDITY_UNKNOWN'};
  if(isRecord(grant)&&grant.scope_coverage==='rejected')return {status:'block',reason_code:'GRANT_SCOPE_NOT_COVERED'};
+ if(isRecord(grant)&&grant.status==='active'){
+  const at=instant(context.evaluation_effective_at),starts=instant(grant.effective_at),expires=grant.expires_at===null?Infinity:instant(grant.expires_at);
+  if(at!==null&&starts!==null&&starts>at)return {status:'block',reason_code:'GRANT_NOT_EFFECTIVE'};
+  if(at!==null&&expires!==null&&expires<=at)return {status:'block',reason_code:'GRANT_EXPIRED'};
+ }
  if(isRecord(approval)&&(approval.status==='rejected'||approval.decision==='rejected'))return {status:'block',reason_code:'APPROVAL_PREREQUISITE_FAILED'};
  if(isRecord(approval)&&approval.status==='unknown')return {status:'escalation',reason_code:'APPROVAL_PREREQUISITE_UNKNOWN'};
  if(isRecord(capability)&&capability.status==='rejected')return {status:'block',reason_code:'CAPABILITY_INVALID'};
