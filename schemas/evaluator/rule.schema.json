@@ -55,6 +55,13 @@
     },
     "check": {
       "$ref": "#/$defs/AstNode"
+    },
+    "registered_input_pointers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
     }
   },
   "$defs": {
@@ -372,6 +379,13 @@
         },
         "check": {
           "$ref": "#/$defs/AstNode"
+        },
+        "registered_input_pointers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

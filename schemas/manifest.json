@@ -37,7 +37,7 @@
   },
   {
     "path": "schemas/evaluator/rule.schema.json",
-    "file_digest": "b12d3c3fb6f030780f2fab01c69f1a4c41273530fc10eaf7a50a40a4691f43aa"
+    "file_digest": "e0c23437698e6b11dd98680e3329c82e63e81e05d979aae65c013c30b5f25a4a"
   },
   {
     "path": "schemas/evaluator/semantic-projection.schema.json",

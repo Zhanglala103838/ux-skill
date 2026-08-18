@@ -33,7 +33,7 @@ function at(root,pointer){
  return value;
 }
 function validateRegistry(rule){
- const registry=new Set(rule.required_input_pointers);for(const pointer of registry)tokens(pointer);
+ const registry=new Set(rule.registered_input_pointers??rule.required_input_pointers);for(const pointer of registry)tokens(pointer);for(const pointer of rule.required_input_pointers)if(!registry.has(pointer))throw new Error('REQUIRED_PATH_OUTSIDE_REGISTRY');
  const visit=(node)=>{if(['exists','eq','in','compare'].includes(node.op)){tokens(node.path);if(!registry.has(node.path))throw new Error('PATH');}if(node.op==='all'||node.op==='any')for(const child of node.children)visit(child);if(node.op==='not')visit(node.child);if(node.op==='builtin'&&!Object.hasOwn(BUILTINS,node.invariant_id))throw new Error('BUILTIN');};
  for(const field of ['applicability','exclusion','precondition','check'])visit(rule[field]);
 }
@@ -65,7 +65,6 @@ export function evaluateRule(rule,input,toolResults){
   try{validateRegistry(safeRule);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   let dependency_trace;try{dependency_trace=dependencyTrace(safeRule,safeTools);}catch{return errorRow(safeRule,'invalid_input','INVALID_INPUT');}
   const decision=dependencyDecision(dependency_trace);if(decision){const dependency_id=decision.status?dependency_trace.find(item=>item.status===decision.status)?.dependency_id??null:null;return row(safeRule,decision.terminal,decision.outcome,decision.reason_code,[],dependency_trace,decision.outcome==='evaluation_error'?{code:'RULE_EVALUATION_ERROR',instance_pointer:'/required_dependencies',dependency_id}:null);}
-  if(safeRule.required_input_pointers.some(pointer=>at(safeInput,pointer)===MISSING))return row(safeRule,'completed','not_run','REQUIRED_INPUT_PARTIAL',[],dependency_trace);
   const trace=[];let app,exclusion;try{app=ast(safeRule.applicability,safeInput,trace);exclusion=ast(safeRule.exclusion,safeInput,trace);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   const notExclusion=exclusion==='T'?'F':exclusion==='F'?'T':exclusion,effective=combined(app,notExclusion,ALL,'T');
   if(effective==='E')return row(safeRule,'completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR',trace,dependency_trace,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/applicability',dependency_id:null});
@@ -75,6 +74,7 @@ export function evaluateRule(rule,input,toolResults){
   if(pre==='E')return row(safeRule,'completed','evaluation_error','PRECONDITION_EVALUATION_ERROR',trace,dependency_trace,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/precondition',dependency_id:null});
   if(pre==='F')return row(safeRule,'completed','not_run','PRECONDITION_FALSE',trace,dependency_trace);
   if(pre==='U')return row(safeRule,'completed','not_run','PRECONDITION_UNKNOWN',trace,dependency_trace);
+  if(safeRule.required_input_pointers.some(pointer=>at(safeInput,pointer)===MISSING))return row(safeRule,'completed','not_run','REQUIRED_INPUT_PARTIAL',trace,dependency_trace);
   let check;try{check=ast(safeRule.check,safeInput,trace);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   if(check==='E')return row(safeRule,'completed','evaluation_error','CHECK_EVALUATION_ERROR',trace,dependency_trace,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/check',dependency_id:null});
   if(check==='F')return row(safeRule,'completed','fail','CHECK_FAILED',trace,dependency_trace);
