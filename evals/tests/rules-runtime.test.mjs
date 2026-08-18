@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { jcsBytes } from '../../evaluator/canonical.mjs';
-import { evaluateRule, emitFinding, reduceRunStatus } from '../../evaluator/rules-runtime.mjs';
+import * as rulesRuntime from '../../evaluator/rules-runtime.mjs';
+import { deleteBundle } from '../helpers/fixtures.mjs';
+import { evaluateRule, emitFinding as rawEmitFinding, reduceRunStatus } from '../../evaluator/rules-runtime.mjs';
 
 const lit=(node_id,value)=>({node_id,op:'literal',value});
 const eq=(node_id,path,value)=>({node_id,op:'eq',path,value});
@@ -15,6 +17,30 @@ const baseRule=(overrides={})=>({
 const evalRule=(overrides={},input={target:{}},tools=[])=>evaluateRule(baseRule(overrides),input,tools);
 const state=(result)=>({terminal:result.terminal,outcome:result.outcome,reason_code:result.reason_code});
 const expectState=(actual,expected)=>assert.deepEqual(state(actual),expected);
+const findingContext=(overrides={})=>({
+ schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'ui/delete-button',
+ target_snapshot_digest:'1'.repeat(64),scenario_binding_ids:['a','z'],claim_key:null,...overrides
+});
+const exactEvaluation=(row)=>({
+ rule_id:row.rule_id,rule_version:row.rule_version,release_critical:row.release_critical,finding_type:row.finding_type,
+ terminal:row.terminal,outcome:row.outcome,reason_code:row.reason_code,
+ trace:row.trace??[],dependency_trace:row.dependency_trace??[],run_issue:row.run_issue??null
+});
+const contextFromLegacy=(row)=>findingContext({
+ schema_version:row.schema_version,behavior_version:row.behavior_version,
+ canonical_target_locator:row.canonical_target_locator,target_snapshot_digest:row.target_snapshot_digest,
+ scenario_binding_ids:row.scenario_binding_ids,claim_key:row.claim_key
+});
+const emitExplicit=(evaluation,context)=>{
+ let exact=evaluation;
+ let explicit=context;
+ if(explicit===undefined&&evaluation&&typeof evaluation==='object'&&'schema_version' in evaluation){
+  exact=exactEvaluation(evaluation);
+  explicit=contextFromLegacy(evaluation);
+ }
+ if(rawEmitFinding.length<2&&explicit!==undefined)return rawEmitFinding({...exact,...explicit});
+ return rawEmitFinding(exact,explicit);
+};
 
 const fixtureIds=['AST-APP-FE-001','TOOL-MULTI-CANCEL-TIMEOUT-001','FIND-INC-001','EMISSION-REASON-001'];
 const loadFixture=async(id)=>JSON.parse(await readFile(new URL(`../red/${id}.json`,import.meta.url),'utf8'));
@@ -27,7 +53,7 @@ test('four Task 5 vectors are executable and contract-linked',async()=>{
   let actual;
   if(vector.operation==='evaluateRule')actual=state(evaluateRule(vector.rule,vector.input,vector.tool_results));
   else if(vector.operation==='emitFinding'){
-   const finding=emitFinding(vector.rule_evaluation);
+   const finding=emitExplicit(vector.rule_evaluation);
    actual=finding===null?null:{finding_type:finding.finding_type,emission_reason_code:finding.emission_reason_code};
   }else assert.fail(`unsupported vector operation ${vector.operation}`);
   assert.deepEqual(actual,vector.expected);
@@ -96,10 +122,14 @@ test('required dependency first-match picks timeout over cancellation and traces
  assert.deepEqual(result.dependency_trace.map(x=>x.dependency_id),['a','m','z']);
 });
 
+const findingReason={
+ pass:'CHECK_PASS',fail:'CHECK_FAILED',partial:'CHECK_PARTIAL',not_run:'PRECONDITION_FALSE',
+ not_applicable:'APPLICABILITY_FALSE',unknown:'CHECK_UNKNOWN',evaluation_error:'CHECK_EVALUATION_ERROR'
+};
 const findingEval=(outcome,critical,extra={})=>({
- terminal:'completed',outcome,reason_code:`CHECK_${outcome.toUpperCase()}`,release_critical:critical,
- rule_id:'delete-safety',rule_version:'1.0.0',finding_type:'safety',schema_version:'finding-v1',behavior_version:'0.1.0',
- canonical_target_locator:'ui/delete-button',target_snapshot_digest:'1'.repeat(64),scenario_binding_ids:['z','a','a'],claim_key:null,...extra
+ terminal:'completed',outcome,reason_code:findingReason[outcome],release_critical:critical,
+ rule_id:'delete-safety',rule_version:'1.0.0',finding_type:'safety',trace:[],dependency_trace:[],
+ run_issue:outcome==='evaluation_error'?{code:'RULE_EVALUATION_ERROR',instance_pointer:'/check',dependency_id:null}:null,...extra
 });
 const emissionCases=[
  ['pass',false,null,'NONE'],['not_applicable',true,null,'NONE'],['fail',false,'safety','RULE_CHECK_FAILED'],
@@ -110,18 +140,18 @@ const emissionCases=[
 ];
 test('finding emission table is exact and evaluation errors remain RunIssues',()=>{
  for(const [outcome,critical,type,reason] of emissionCases){
-  const finding=emitFinding(findingEval(outcome,critical));
+  const finding=emitExplicit(findingEval(outcome,critical),findingContext());
   if(type===null)assert.equal(finding,null,`${outcome}/${critical}`);
   else assert.deepEqual({type:finding.finding_type,reason:finding.emission_reason_code},{type,reason});
  }
  const noncritical=evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}});
- assert.equal(emitFinding({...findingEval('evaluation_error',false),run_issue:noncritical.run_issue}),null);
+ assert.equal(emitExplicit({...findingEval('evaluation_error',false),run_issue:noncritical.run_issue},findingContext()),null);
  assert.deepEqual(noncritical.run_issue,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/check',dependency_id:null});
 });
 
 test('finding fingerprints canonicalize scenario ids and are deterministic',()=>{
- const a=emitFinding(findingEval('fail',false));
- const b=emitFinding(findingEval('fail',false,{scenario_binding_ids:['a','z']}));
+ const a=emitExplicit(findingEval('fail',false),findingContext());
+ const b=emitExplicit(findingEval('fail',false),findingContext({scenario_binding_ids:['a','z']}));
  assert.equal(a.fingerprint_full_digest,b.fingerprint_full_digest);
  assert.equal(a.finding_id,b.finding_id);
  assert.deepEqual(a.fingerprint.scenario_binding_ids,['a','z']);
@@ -130,13 +160,13 @@ test('finding fingerprints canonicalize scenario ids and are deterministic',()=>
  assert.equal(a.finding_id,`f_${expected.slice(0,32)}`);
 });
 test('RunStatus uses complete producer results, fixed priority, and rejects unregistered reasons',()=>{
- const enrich=(evaluation)=>({...evaluation,schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'ui/target',target_snapshot_digest:'3'.repeat(64),scenario_binding_ids:['z','a'],claim_key:null});
+ const context=findingContext({canonical_target_locator:'ui/target',target_snapshot_digest:'3'.repeat(64)});
  const pass=evalRule();
  const gap=evalRule({registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
  const escalationEvaluation=evalRule({release_critical:true,registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
- const escalation=emitFinding(enrich(escalationEvaluation));
+ const escalation=emitExplicit(escalationEvaluation,context);
  const blockEvaluation=evalRule({finding_type:'block',check:lit('check',false)});
- const block=emitFinding(enrich(blockEvaluation));
+ const block=emitExplicit(blockEvaluation,context);
  const criticalError=evalRule({release_critical:true,check:eq('check','/target/passes',true)},{target:{passes:[]}});
  assert.equal(reduceRunStatus([pass]),'completed_clear');
  assert.equal(reduceRunStatus([pass,gap]),'completed_with_gaps');
@@ -151,8 +181,8 @@ test('public reducers are total and fail closed for hostile inputs',()=>{
  for(const hostile of [null,undefined,42,'rule',{},Object.create(null)]){
   assert.doesNotThrow(()=>evaluateRule(hostile,hostile,hostile));
   assert.equal(evaluateRule(hostile,hostile,hostile).outcome,'evaluation_error');
-  assert.doesNotThrow(()=>emitFinding(hostile));
-  assert.equal(emitFinding(hostile),null);
+  assert.doesNotThrow(()=>emitExplicit(hostile));
+  assert.equal(emitExplicit(hostile),null);
   assert.doesNotThrow(()=>reduceRunStatus(hostile));
   assert.equal(reduceRunStatus(hostile),'failed');
  }
@@ -233,15 +263,15 @@ test('unregistered AST paths and required pointers outside registry are invalid 
  assert.equal(reduceRunStatus([critical.run_issue,critical]),'failed');
 });
 test('TASK5_FULL_PART_UNION_RED',()=>{
- const enrich=(evaluation)=>({...evaluation,schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'ui/target',target_snapshot_digest:'4'.repeat(64),scenario_binding_ids:['z','a'],claim_key:null});
+ const context=findingContext({canonical_target_locator:'ui/target',target_snapshot_digest:'4'.repeat(64)});
  const issue={code:'RULE_EVALUATION_ERROR',instance_pointer:'/check',dependency_id:null};
  const passBlock=evalRule({finding_type:'block'});
  const failBlock=evalRule({finding_type:'block',check:lit('check',false)});
- const blockFinding=emitFinding(enrich(failBlock));
+ const blockFinding=emitExplicit(failBlock,context);
  const criticalUnknown=evalRule({release_critical:true,registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
- const escalationFinding=emitFinding(enrich(criticalUnknown));
+ const escalationFinding=emitExplicit(criticalUnknown,context);
  const criticalError=evalRule({release_critical:true,check:eq('check','/target/passes',true)},{target:{passes:[]}});
- const criticalErrorFinding=emitFinding(enrich(criticalError));
+ const criticalErrorFinding=emitExplicit(criticalError,context);
  const noncriticalError=evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}});
  const invalidInput=evaluateRule(baseRule(),null,[]);
  const invalidRule=evaluateRule(baseRule({registered_input_pointers:['/target/enabled'],required_input_pointers:[],check:eq('check','/target/passes',true)}),{target:{passes:true}},[]);
@@ -312,5 +342,124 @@ test('TASK5_FULL_PART_UNION_RED',()=>{
  const proxy=new Proxy({}, {ownKeys(){throw new Error('proxy');}});
  for(const hostile of [cycle,accessor,proxy,{...issue,dependency_id:'e\u0301'},{...issue,dependency_id:'\ud800'}]){assert.doesNotThrow(()=>reduceRunStatus([hostile]));assert.equal(reduceRunStatus([hostile]),'failed');}
  const parts=[failBlock,blockFinding,issue];
+ assert.equal(reduceRunStatus(parts),reduceRunStatus([...parts].reverse()));
+});
+
+test('TASK5_CONTEXT_TRACE_RED FIND-CONTEXT-COMPOSE-001',()=>{
+ const derive=rulesRuntime.deriveFindingContext;
+ const bundle=structuredClone(deleteBundle());
+ const expected={
+  schema_version:'finding-v1',
+  behavior_version:bundle.behavior_version,
+  canonical_target_locator:bundle.target_snapshot.canonical_locator,
+  target_snapshot_digest:bundle.target_snapshot.snapshot_digest,
+  scenario_binding_ids:[bundle.scenario_profile_id],
+  claim_key:null
+ };
+ assert.deepEqual(derive(bundle),expected);
+ for(const claims of [[],bundle.claims,[...bundle.claims,{...bundle.claims[0],claim_id:'claim-2'}]]){
+  const varied=structuredClone(bundle);varied.claims=claims;
+  assert.equal(derive(varied).claim_key,null);
+ }
+ const fail=evalRule({finding_type:'block',check:lit('check',false)});
+ assert.equal(rawEmitFinding(fail),null);
+ const finding=rawEmitFinding(fail,derive(bundle));
+ assert.deepEqual(Object.keys(finding).sort(),['emission_reason_code','finding_id','finding_type','fingerprint','fingerprint_full_digest','rule_id','rule_version']);
+ assert.equal(finding.finding_type,'block');
+ const variants=[];
+ const behavior=structuredClone(bundle);behavior.behavior_version='0.1.1';variants.push(behavior);
+ const locator=structuredClone(bundle);locator.target_snapshot.canonical_locator='components/button';variants.push(locator);
+ const digest=structuredClone(bundle);digest.target_snapshot.snapshot_digest='9'.repeat(64);variants.push(digest);
+ const scenario=structuredClone(bundle);scenario.scenario_profile_id='brand-site';scenario.scenario_profiles=[{scenario_profile_id:'brand-site',scenario_family_id:'brand-marketing-website'}];variants.push(scenario);
+ for(const varied of variants){
+  const changed=rawEmitFinding(fail,derive(varied));
+  assert.notEqual(changed.fingerprint_full_digest,finding.fingerprint_full_digest);
+  assert.notEqual(changed.finding_id,finding.finding_id);
+ }
+ const criticalUnknown=evalRule({release_critical:true,registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
+ const unknownFinding=rawEmitFinding(criticalUnknown,derive(bundle));
+ assert.equal(unknownFinding.finding_type,'escalation');
+ assert.equal(reduceRunStatus([criticalUnknown,unknownFinding]),'completed_escalated');
+ const noncriticalError=evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}});
+ assert.equal(rawEmitFinding(noncriticalError,derive(bundle)),null);
+ assert.equal(reduceRunStatus([noncriticalError,noncriticalError.run_issue]),'completed_with_gaps');
+ const criticalError=evalRule({release_critical:true,check:eq('check','/target/passes',true)},{target:{passes:[]}});
+ const criticalErrorFinding=rawEmitFinding(criticalError,derive(bundle));
+ assert.equal(criticalErrorFinding.finding_type,'escalation');
+ assert.equal(reduceRunStatus([criticalError,criticalErrorFinding,criticalError.run_issue]),'failed');
+ const invalidInput=evaluateRule(baseRule(),null,[]);
+ const invalidRule=evaluateRule(baseRule({registered_input_pointers:['/target/enabled'],check:eq('check','/target/passes',true)}),{target:{passes:true}},[]);
+ for(const invalid of [invalidInput,invalidRule]){
+  assert.deepEqual(Object.keys(invalid).sort(),['dependency_trace','finding_type','outcome','reason_code','release_critical','rule_id','rule_version','run_issue','terminal','trace']);
+  assert.equal(reduceRunStatus([invalid,invalid.run_issue]),'failed');
+  assert.equal(rawEmitFinding(invalid,derive(bundle)),null);
+ }
+ for(const bad of [
+  undefined,
+  {...expected,extra:true},
+  (({claim_key,...rest})=>rest)(expected),
+  {...expected,schema_version:'self-reported'},
+  {...expected,scenario_binding_ids:['z','a']},
+  {...expected,claim_key:'caller-claim'}
+ ])assert.equal(rawEmitFinding(fail,bad),null);
+});
+
+test('TASK5_CONTEXT_TRACE_RED dependency decision coherence',()=>{
+ const required=(status,complete=true,check=true)=>evaluateRule(
+  dependencyRule([{dependency_id:'a',required:true}]),{target:{}},[dep('a',status,complete)]
+ );
+ expectState(required('partial',true),{terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'});
+ expectState(required('partial',false),{terminal:'completed',outcome:'not_run',reason_code:'REQUIRED_INPUT_PARTIAL'});
+ const successFalse=evaluateRule(dependencyRule([{dependency_id:'a',required:true}]),{target:{}},[dep('a','success',false)]);
+ expectState(successFalse,{terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'});
+ expectState(required('timeout',true),{terminal:'tool_failed',outcome:'evaluation_error',reason_code:'REQUIRED_TOOL_TIMEOUT'});
+ const multi=evaluateRule(dependencyRule([{dependency_id:'z',required:true},{dependency_id:'a',required:true}]),{target:{}},[dep('z','cancelled'),dep('a','timeout')]);
+ assert.equal(reduceRunStatus([multi,multi.run_issue]),'completed_with_gaps');
+ assert.deepEqual(multi.dependency_trace.map(x=>x.dependency_id),['a','z']);
+ assert.equal(multi.run_issue.dependency_id,'a');
+ for(const badTrace of [
+  [dep('z','cancelled'),dep('a','timeout')],
+  [dep('a','timeout'),dep('a','timeout')],
+  [{dependency_id:'',status:'timeout',complete:true}],
+  [{dependency_id:'e\u0301',status:'timeout',complete:true}]
+ ]){
+  const bad=structuredClone(multi);bad.dependency_trace=badTrace;
+  assert.equal(reduceRunStatus([bad]),'failed');
+ }
+ for(const bad of [
+  {...multi,terminal:'cancelled'},
+  {...multi,outcome:'not_run'},
+  {...multi,reason_code:'REQUIRED_TOOL_CANCELLED'},
+  {...multi,run_issue:{...multi.run_issue,instance_pointer:'/check'}},
+  {...multi,run_issue:{...multi.run_issue,dependency_id:'z'}},
+  {...multi,run_issue:null},
+  {...multi,terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS',run_issue:null}
+ ])assert.equal(reduceRunStatus([bad]),'failed');
+ const decisionStatuses=['invalid_request','auth_error','incompatible_source','timeout','server_error','cancelled','not_found'];
+ for(const status of decisionStatuses){
+  const result=required(status);
+  const wrongTerminal={...result,terminal:'completed'};
+  const wrongOutcome={...result,outcome:'pass'};
+  const wrongReason={...result,reason_code:'CHECK_PASS'};
+  assert.equal(reduceRunStatus([wrongTerminal]),'failed',status);
+  assert.equal(reduceRunStatus([wrongOutcome]),'failed',status);
+  assert.equal(reduceRunStatus([wrongReason]),'failed',status);
+  const wrongIssue=result.run_issue===null
+   ? {...result,run_issue:{code:'RULE_EVALUATION_ERROR',instance_pointer:'/required_dependencies',dependency_id:'a'}}
+   : {...result,run_issue:{...result.run_issue,dependency_id:'z'}};
+  assert.equal(reduceRunStatus([wrongIssue]),'failed',status);
+ }
+ const toolWithAst=structuredClone(multi);toolWithAst.trace=[{node_id:'x',parent_node_id:null,value:'T'}];
+ assert.equal(reduceRunStatus([toolWithAst]),'failed');
+ for(const invalid of [evaluateRule(baseRule(),null,[]),evaluateRule(baseRule({registered_input_pointers:['/target/enabled'],check:eq('check','/target/passes',true)}),{target:{passes:true}},[])]){
+  assert.equal(reduceRunStatus([invalid,invalid.run_issue]),'failed');
+  const withTrace=structuredClone(invalid);withTrace.trace=[{node_id:'x',parent_node_id:null,value:'T'}];assert.equal(reduceRunStatus([withTrace]),'failed');
+  const withDep=structuredClone(invalid);withDep.dependency_trace=[dep('a','success')];assert.equal(reduceRunStatus([withDep]),'failed');
+ }
+ const partial={...evalRule(),outcome:'partial',reason_code:'CHECK_PARTIAL'};
+ assert.equal(reduceRunStatus([partial]),'completed_with_gaps');
+ const traced=evalRule({applicability:{node_id:'root',op:'all',children:[lit('a',true),lit('b',true)]}});
+ assert.equal(reduceRunStatus([traced]),'completed_clear');
+ const parts=[multi,multi.run_issue,partial,traced];
  assert.equal(reduceRunStatus(parts),reduceRunStatus([...parts].reverse()));
 });
