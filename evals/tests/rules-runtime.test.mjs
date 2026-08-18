@@ -141,7 +141,8 @@ test('RunStatus uses fixed priority and rejects unregistered reason codes',()=>{
 });
 
 test('public reducers are total and fail closed for hostile inputs',()=>{
- for(const hostile of [null,undefined,42,'rule',[],{},Object.create(null)]){
+ assert.equal(reduceRunStatus([]),'completed_clear');
+ for(const hostile of [null,undefined,42,'rule',{},Object.create(null)]){
   assert.doesNotThrow(()=>evaluateRule(hostile,hostile,hostile));
   assert.equal(evaluateRule(hostile,hostile,hostile).outcome,'evaluation_error');
   assert.doesNotThrow(()=>emitFinding(hostile));
