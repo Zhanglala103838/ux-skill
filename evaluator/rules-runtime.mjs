@@ -13,9 +13,21 @@ const snapshot=(value)=>JSON.parse(jcsBytes(value).toString('utf8'));
 const compareId=(a,b)=>Buffer.compare(jcsBytes(a),jcsBytes(b));
 const scalar=(value)=>value===null||typeof value==='boolean'||typeof value==='string'||(typeof value==='number'&&Number.isFinite(value));
 const scalarType=(value)=>value===null?'null':typeof value;
-const row=(rule,terminal,outcome,reason_code,trace=[],dependency_trace=[],run_issue=null)=>({rule_id:typeof rule?.rule_id==='string'?rule.rule_id:'invalid-rule',rule_version:typeof rule?.rule_version==='string'?rule.rule_version:'invalid',release_critical:rule?.release_critical===true,finding_type:typeof rule?.finding_type==='string'?rule.finding_type:'unknown',terminal,outcome,reason_code,trace,dependency_trace,run_issue});
-const errorRow=(rule,terminal,reason,pointer='')=>row(rule,terminal,'evaluation_error',reason,[],[],{code:'RULE_EVALUATION_ERROR',instance_pointer:pointer,dependency_id:null});
-
+const ruleMetadata=(rule)=>{
+ try{
+  const value=snapshot(rule);
+  if(!object(value))throw new Error('RULE_METADATA');
+  return{
+   rule_id:typeof value.rule_id==='string'&&value.rule_id.length>0?value.rule_id:'invalid-rule',
+   rule_version:typeof value.rule_version==='string'&&value.rule_version.length>0?value.rule_version:'invalid',
+   release_critical:value.release_critical===true,
+   finding_type:typeof value.finding_type==='string'&&value.finding_type.length>0?value.finding_type:'unknown'
+  };
+ }catch{return{rule_id:'invalid-rule',rule_version:'invalid',release_critical:false,finding_type:'unknown'};}
+};
+const row=(rule,terminal,outcome,reason_code,trace=[],dependency_trace=[],run_issue=null)=>({...ruleMetadata(rule),terminal,outcome,reason_code,trace,dependency_trace,run_issue});
+const exactIssue=(pointer='',dependency_id=null)=>({code:'RULE_EVALUATION_ERROR',instance_pointer:pointer,dependency_id});
+const errorRow=(rule,terminal,reason,pointer='')=>row(rule,terminal,'evaluation_error',reason,[],[],exactIssue(pointer));
 function tokens(pointer){
  if(typeof pointer!=='string'||pointer.length<2||pointer[0]!=='/')throw new Error('PATH');
  const result=[];
@@ -99,52 +111,68 @@ const RULE_PAIRS=Object.freeze({
  tool_failed:Object.freeze({evaluation_error:new Set(['REQUIRED_TOOL_INVALID_REQUEST','REQUIRED_TOOL_AUTH_ERROR','REQUIRED_TOOL_INCOMPATIBLE_SOURCE','REQUIRED_TOOL_TIMEOUT','REQUIRED_TOOL_SERVER_ERROR'])}),
  cancelled:Object.freeze({not_run:new Set(['REQUIRED_TOOL_CANCELLED'])}),
  completed:Object.freeze({
-  pass:new Set(['CHECK_PASS']),
-  fail:new Set(['CHECK_FAILED']),
-  partial:new Set(['CHECK_PARTIAL']),
+  pass:new Set(['CHECK_PASS']),fail:new Set(['CHECK_FAILED']),partial:new Set(['CHECK_PARTIAL']),
   not_run:new Set(['REQUIRED_INPUT_PARTIAL','REQUIRED_INPUT_NOT_FOUND','PRECONDITION_FALSE','PRECONDITION_UNKNOWN']),
   not_applicable:new Set(['APPLICABILITY_FALSE','EXCLUSION_TRUE']),
   unknown:new Set(['APPLICABILITY_UNKNOWN','EXCLUSION_UNKNOWN','CHECK_UNKNOWN']),
   evaluation_error:new Set(['APPLICABILITY_EVALUATION_ERROR','PRECONDITION_EVALUATION_ERROR','CHECK_EVALUATION_ERROR'])
  })
 });
-const FINDING_PAIRS=Object.freeze({
- RULE_CHECK_FAILED:null,
- RULE_PARTIAL:'unknown',
- RELEASE_CRITICAL_PARTIAL:'escalation',
- RULE_NOT_RUN:'unknown',
- RELEASE_CRITICAL_NOT_RUN:'escalation',
- RULE_UNKNOWN:'unknown',
- RELEASE_CRITICAL_UNKNOWN:'escalation',
- RELEASE_CRITICAL_EVALUATION_ERROR:'escalation'
-});
-function validRulePart(value){
- if(typeof value.terminal!=='string'||typeof value.outcome!=='string'||typeof value.reason_code!=='string'||typeof value.release_critical!=='boolean')return false;
+const FINDING_PAIRS=Object.freeze({RULE_CHECK_FAILED:null,RULE_PARTIAL:'unknown',RELEASE_CRITICAL_PARTIAL:'escalation',RULE_NOT_RUN:'unknown',RELEASE_CRITICAL_NOT_RUN:'escalation',RULE_UNKNOWN:'unknown',RELEASE_CRITICAL_UNKNOWN:'escalation',RELEASE_CRITICAL_EVALUATION_ERROR:'escalation'});
+const RULE_KEYS=['dependency_trace','finding_type','outcome','reason_code','release_critical','rule_id','rule_version','run_issue','terminal','trace'];
+const FINDING_KEYS=['emission_reason_code','finding_id','finding_type','fingerprint','fingerprint_full_digest','rule_id','rule_version'];
+const ISSUE_KEYS=['code','dependency_id','instance_pointer'];
+const FINGERPRINT_KEYS=['behavior_version','canonical_target_locator','claim_key','emission_reason_code','finding_type','rule_id','rule_version','scenario_binding_ids','schema_version','target_snapshot_digest'];
+const CLAIM_KEYS=['context_id','population_id','predicate_id','time_scope_id'];
+const TRACE_KEYS=['node_id','parent_node_id','value'];
+const DEPENDENCY_KEYS=['complete','dependency_id','status'];
+const exactKeys=(value,keys)=>object(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
+const text=(value)=>typeof value==='string'&&value.length>0;
+const lowerHex64=(value)=>{
+ if(typeof value!=='string'||value.length!==64)return false;
+ for(const char of value)if(!'0123456789abcdef'.includes(char))return false;
+ return true;
+};
+const validIssue=(value)=>exactKeys(value,ISSUE_KEYS)&&value.code==='RULE_EVALUATION_ERROR'&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||text(value.dependency_id));
+const validTrace=(value)=>Array.isArray(value)&&value.every(item=>exactKeys(item,TRACE_KEYS)&&text(item.node_id)&&(item.parent_node_id===null||text(item.parent_node_id))&&['T','F','U','E'].includes(item.value));
+const validDependencyTrace=(value)=>Array.isArray(value)&&value.every(item=>exactKeys(item,DEPENDENCY_KEYS)&&text(item.dependency_id)&&TOOL_STATUSES.has(item.status)&&typeof item.complete==='boolean');
+function ruleSignal(value){
+ if(!exactKeys(value,RULE_KEYS)||!text(value.rule_id)||!text(value.rule_version)||!text(value.finding_type)||typeof value.release_critical!=='boolean'||!validTrace(value.trace)||!validDependencyTrace(value.dependency_trace))return null;
  const outcomes=Object.hasOwn(RULE_PAIRS,value.terminal)?RULE_PAIRS[value.terminal]:null;
- return outcomes!==null&&Object.hasOwn(outcomes,value.outcome)&&outcomes[value.outcome].has(value.reason_code);
+ if(outcomes===null||!Object.hasOwn(outcomes,value.outcome)||!outcomes[value.outcome].has(value.reason_code))return null;
+ if(value.outcome==='evaluation_error'){if(!validIssue(value.run_issue))return null;}else if(value.run_issue!==null)return null;
+ return{kind:'rule',failed:value.terminal==='invalid_input'||value.terminal==='invalid_rule'||(value.outcome==='evaluation_error'&&value.release_critical),gap:['partial','unknown','not_run','evaluation_error'].includes(value.outcome)};
 }
-function validFindingPart(value){
- if(typeof value.finding_type!=='string'||value.finding_type.length===0||typeof value.emission_reason_code!=='string'||!Object.hasOwn(FINDING_PAIRS,value.emission_reason_code))return false;
- const requiredType=FINDING_PAIRS[value.emission_reason_code];
- return requiredType===null||value.finding_type===requiredType;
+function validClaimKey(value){return value===null||(exactKeys(value,CLAIM_KEYS)&&CLAIM_KEYS.every(key=>text(value[key])));}
+function findingSignal(value){
+ if(!exactKeys(value,FINDING_KEYS)||!text(value.rule_id)||!text(value.rule_version)||!text(value.finding_type)||!Object.hasOwn(FINDING_PAIRS,value.emission_reason_code))return null;
+ const requiredType=FINDING_PAIRS[value.emission_reason_code];if(requiredType!==null&&value.finding_type!==requiredType)return null;
+ const fp=value.fingerprint;
+ if(!exactKeys(fp,FINGERPRINT_KEYS)||!text(fp.schema_version)||!text(fp.behavior_version)||!text(fp.rule_id)||!text(fp.rule_version)||!text(fp.finding_type)||!text(fp.canonical_target_locator)||!lowerHex64(fp.target_snapshot_digest)||!Array.isArray(fp.scenario_binding_ids)||fp.scenario_binding_ids.some(item=>!text(item))||!validClaimKey(fp.claim_key))return null;
+ if(fp.rule_id!==value.rule_id||fp.rule_version!==value.rule_version||fp.finding_type!==value.finding_type||fp.emission_reason_code!==value.emission_reason_code)return null;
+ let canonicalScenarios;try{canonicalScenarios=canonicalSet(fp.scenario_binding_ids,item=>item);}catch{return null;}
+ if(!jcsBytes(canonicalScenarios).equals(jcsBytes(fp.scenario_binding_ids)))return null;
+ const digest=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(fp)).digest('hex');
+ if(value.fingerprint_full_digest!==digest||value.finding_id!==`f_${digest.slice(0,32)}`)return null;
+ return{kind:'finding',block:value.finding_type==='block',escalation:value.finding_type==='escalation'};
 }
-function validRunIssuePart(value){return value.code==='RULE_EVALUATION_ERROR'&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||typeof value.dependency_id==='string');}
-function validRunPart(value){
- if(!object(value))return false;
- if(Object.hasOwn(value,'terminal')||Object.hasOwn(value,'outcome')||Object.hasOwn(value,'reason_code')||Object.hasOwn(value,'release_critical'))return validRulePart(value);
- if(Object.hasOwn(value,'finding_type')||Object.hasOwn(value,'emission_reason_code'))return validFindingPart(value);
- if(Object.hasOwn(value,'code')||Object.hasOwn(value,'instance_pointer')||Object.hasOwn(value,'dependency_id'))return validRunIssuePart(value);
- return false;
+const issueSignal=(value)=>validIssue(value)?{kind:'issue'}:null;
+function normalizePart(value){
+ if(!object(value))return null;
+ const variants=[exactKeys(value,RULE_KEYS),exactKeys(value,FINDING_KEYS),exactKeys(value,ISSUE_KEYS)];
+ if(variants.filter(Boolean).length!==1)return null;
+ if(variants[0])return ruleSignal(value);
+ if(variants[1])return findingSignal(value);
+ return issueSignal(value);
 }
 export function reduceRunStatus(parts){
  try{
-  const values=snapshot(parts);
-  if(!Array.isArray(values)||values.some(value=>!validRunPart(value)))return'failed';
-  if(values.some(value=>value.terminal==='invalid_input'||value.terminal==='invalid_rule'))return'failed';
-  if(values.some(value=>value.outcome==='evaluation_error'&&value.release_critical===true))return'failed';
-  if(values.some(value=>value.finding_type==='block'))return'completed_blocked';
-  if(values.some(value=>value.finding_type==='escalation'))return'completed_escalated';
-  if(values.some(value=>value.outcome==='partial'||value.outcome==='unknown'||value.outcome==='not_run'||value.outcome==='evaluation_error'))return'completed_with_gaps';
+  const values=snapshot(parts);if(!Array.isArray(values))return'failed';
+  const signals=values.map(normalizePart);if(signals.some(signal=>signal===null))return'failed';
+  if(signals.some(signal=>signal.failed))return'failed';
+  if(signals.some(signal=>signal.block))return'completed_blocked';
+  if(signals.some(signal=>signal.escalation))return'completed_escalated';
+  if(signals.some(signal=>signal.gap))return'completed_with_gaps';
   return'completed_clear';
  }catch{return'failed';}
 }
