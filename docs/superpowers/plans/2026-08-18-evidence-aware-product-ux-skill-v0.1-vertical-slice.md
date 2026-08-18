@@ -210,7 +210,7 @@ git commit -m "feat: add canonical UX data primitives"
 - Create: `evals/tests/validation.test.mjs`, `evals/helpers/fixtures.mjs`, `evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json`
 
 **Interfaces:**
-- `evals/helpers/fixtures.mjs` produces `fixtureWithHeaders`, `fixtureWithRedirectHop`, `highRiskDelete`, `twoSafeNonDominatedCandidates`, `ruleWithTwoRequiredTools`, `input`, `cancelled`, `timeout`, `deleteBundle`, `closureWithCsp`, `casWithoutHeaderBytes`, `appleCase`, and `fakeBrowserRequesting`; helpers return frozen JSON and perform no network.
+- `evals/helpers/fixtures.mjs` produces `fixtureWithHeaders`, `fixtureWithRedirectHop`, `highRiskDelete`, `twoSafeNonDominatedCandidates`, `ruleWithTwoRequiredTools`, `input`, `cancelled`, `timeout`, `deleteBundle`, `hulianDeleteBundle`, `closureWithCsp`, `casWithoutHeaderBytes`, `appleCase`, and `fakeBrowserRequesting`; helpers return frozen JSON and perform no network.
 - Produces: `validateBySchema(schemaId,value): {ok:true,value}|{ok:false,errors:NormalizedError[]}` and bundle wrapper `validateInput(value)`.
 - `NormalizedError` key is the complete tuple from spec §12.2.
 
@@ -220,7 +220,7 @@ git commit -m "feat: add canonical UX data primitives"
 test('headers is required and nested objects reject unknown fields', () => {
   const missing = validateBySchema('CanonicalResponseHeaders', {});
   assert.deepEqual(missing.errors.map((e) => [e.code,e.instance_pointer]), [['REQUIRED_MISSING','/headers']]);
-  const extra = validateBySchema('RedirectHop', {status:302,url:'https://a',location:'https://b',note:'x'});
+  const extra = validateBySchema('RedirectHop', fixtureWithRedirectHop({note:'x'}));
   assert.deepEqual(extra.errors.map((e) => e.code), ['ADDITIONAL_PROPERTY']);
 });
 ```
@@ -388,11 +388,11 @@ git commit -m "feat: add evidence-aware UX recommendation reducers"
 
 **Files:**
 - Create: all eight `references/*.md`
-- Create: `knowledge/manifest.json`, `scripts/check-knowledge.mjs`
+- Create: `knowledge/manifest.json`, `knowledge/policy-manifest.json`, `scripts/check-knowledge.mjs`
 - Create: `evals/tests/knowledge-manifest.test.mjs`
 
 **Interfaces:**
-- Produces: `loadKnowledgeManifest(): Promise<KnowledgeManifest>` and exact route closures for `guide|scan|refactor|verify`.
+- Produces: `loadKnowledgeManifest(): Promise<KnowledgeManifest>`, `loadPolicyManifest(): Promise<PolicyManifest>`, and exact route closures for `guide|scan|refactor|verify`.
 - `knowledge/manifest.json` fixes every knowledge/reference path, SHA-256, load order, and dependency closure before adapter/closure manifests and evaluator golden digests are created in Tasks 8-10.
 
 - [ ] **Step 1: Write the manifest contract test**
@@ -413,7 +413,7 @@ Expected: FAIL because the manifest loader is absent.
 
 - [ ] **Step 3: Write references and the closed manifest**
 
-Write each reference once, in imperative form where procedural, and keep detailed schemas/source propositions in their canonical JSON files. `knowledge/manifest.json` must contain exact `{path,file_digest}` rows, route load order, and dependency closure; no glob, locale sorting, or duplicated reference text.
+Write each reference once, in imperative form where procedural, and keep detailed schemas/source propositions in their canonical JSON files. `knowledge/policy-manifest.json` is additionalProperties=false and contains only `policy_files`, a canonical-set with the exact `{path:"knowledge/decision-policies.json",file_digest}` row; `policy_manifest_digest=digestJcs("ux-skill:manifest:v1", policyManifest)`. `knowledge/manifest.json` contains exact `{path,file_digest}` rows for knowledge/reference inputs including policy-manifest.json, plus route load order and dependency closure; it excludes itself to avoid a digest cycle. No glob, locale sorting, raw-file shortcut, or duplicated reference text is allowed.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -422,7 +422,7 @@ Run: `node scripts/check-knowledge.mjs && node --test evals/tests/knowledge-mani
 Expected: PASS; changing one knowledge or reference byte fails the manifest check.
 
 ```bash
-git add references knowledge/manifest.json scripts/check-knowledge.mjs evals/tests/knowledge-manifest.test.mjs
+git add references knowledge/manifest.json knowledge/policy-manifest.json scripts/check-knowledge.mjs evals/tests/knowledge-manifest.test.mjs
 git commit -m "feat: add UX knowledge and route manifest"
 ```
 
@@ -560,7 +560,7 @@ Expected: FAIL with missing evaluator entry point.
 
 - [ ] **Step 3: Implement the pipeline**
 
-Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json` and `knowledge/manifest.json`, then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and decision-policy manifest digests. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
+Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json` and `knowledge/manifest.json`, then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and policy manifest digests. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -692,7 +692,7 @@ test('one-file ustar is byte exact', async () => {
 });
 ```
 
-`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all ten named domain schemas plus `schemas/manifest.json`, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
+`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all ten named domain schemas plus `schemas/manifest.json`, all seven knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
 
 The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
 
@@ -729,7 +729,7 @@ git commit -m "feat: add canonical UX Skill artifact packer"
 ```js
 test('red vectors and missing holdout cannot release', async () => {
   const report = await checkRelease({catalog:catalogWithOneRed(),holdout:{status:'missing'},publicCases:[]});
-  assert.deepEqual(report, {status:'no_release',reason_codes:['HOLDOUT_MISSING','VECTOR_RED','REAL_WORLD_REQUIRED']});
+  assert.deepEqual(report, {status:'no_release',reason_codes:['HOLDOUT_MISSING','REAL_WORLD_REQUIRED','VECTOR_RED']});
 });
 
 test('Skill CLI and MCP bridge are semantic peers', async () => {
@@ -763,7 +763,7 @@ git commit -m "test: enforce UX semantic parity and release gates"
 **Files:**
 - Create: `.github/workflows/ci.yml`
 - Modify: `package.json`
-- Create: `evals/tests/no-prohibited-claims.test.mjs`
+- Create: `evals/tests/no-prohibited-claims.test.mjs` (imports `deleteBundle` and `hulianDeleteBundle` from the Task 3 fixture helper)
 
 **Interfaces:**
 - CI jobs: `unit`, `golden`, `pack-repro`, `release-report`.
@@ -772,8 +772,9 @@ git commit -m "test: enforce UX semantic parity and release gates"
 - [ ] **Step 1: Add the prohibited-claim test**
 
 ```js
-test('all public and Hulian fixtures respect evidence ceilings', async () => {
-  for (const output of await evaluateAllPublicFixtures()) {
+test('implemented delete and Hulian fixtures respect evidence ceilings', async () => {
+  const outputs = [evaluate(deleteBundle()), evaluate(hulianDeleteBundle())];
+  for (const output of outputs) {
     assert.equal(output.assurance.claims.includes('wcag_conformant'), false);
     assert.equal(output.assurance.claims.includes('user_success'), false);
     assert.equal(output.assurance.claims.includes('ux_good'), false);
