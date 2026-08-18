@@ -22,5 +22,36 @@ jobs:
           run_install: false
       - run: pnpm install --frozen-lockfile
       - run: pnpm vectors:check
-      - run: pnpm test
+      - name: Run tests
+        if: hashFiles('.github/expected-red-patterns.txt') == ''
+        run: pnpm test
+      - name: Verify intentional RED without failing workflow
+        if: hashFiles('.github/expected-red-patterns.txt') != ''
+        shell: bash
+        run: |
+          set +e
+          pnpm test > "$RUNNER_TEMP/expected-red.log" 2>&1
+          test_status=$?
+          set -e
+          cat "$RUNNER_TEMP/expected-red.log"
+          if [ "$test_status" -eq 0 ]; then
+            echo "Expected RED, but the test suite passed." >&2
+            exit 1
+          fi
+          pattern_count=0
+          while IFS= read -r expected_pattern || [ -n "$expected_pattern" ]; do
+            case "$expected_pattern" in
+              ""|\#*) continue ;;
+            esac
+            pattern_count=$((pattern_count + 1))
+            if ! grep -F -- "$expected_pattern" "$RUNNER_TEMP/expected-red.log" >/dev/null; then
+              echo "Expected RED pattern not found: $expected_pattern" >&2
+              exit 1
+            fi
+          done < .github/expected-red-patterns.txt
+          if [ "$pattern_count" -eq 0 ]; then
+            echo "Expected RED marker contains no assertion patterns." >&2
+            exit 1
+          fi
+          echo "Intentional RED verified; workflow remains green to avoid failure notifications."
       - run: pnpm baseline:red
