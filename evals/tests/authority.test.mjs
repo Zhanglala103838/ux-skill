@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {canonicalSet,jcsBytes} from '../../evaluator/canonical.mjs';
 import {evaluateAuthority,derivePartyInventory,solveCandidates} from '../../evaluator/authority.mjs';
 
 const vectorIds=['AUTH-ROOT-001','ACT-DISJOINT-001','TENANT-UNKNOWN-001','PARTY-COMPLETENESS-PROOF-001','SOFT-TIE-001','SOFT-TIE-AUTH-U-001'];
@@ -40,7 +42,7 @@ test('all six fixed authority vectors are executable and contract-linked',()=>{
   assert.equal(vector.behavior_version,'0.1.0');
   assert.equal(vector.contract_linkage.design_commit,'f596998c88ca088a0c74160e55d54328f7123a49');
   assert.ok(vector.contract_linkage.design_sections.length>0);
-  const actual=vector.operation==='solveCandidates'?solveCandidates(vector.input):evaluateAuthority(vector.input);
+  const actual=vector.operation==='solveCandidates'?solveCandidates(withGateBinding(vector.input)):evaluateAuthority(vector.input);
   assert.deepEqual(actual,vector.expected,id);
  }
 });
@@ -120,7 +122,7 @@ test('hard solver follows E then U then feasible then zero-feasible priority',()
 
 test('soft ties escalate when authority, party closure, or a safety floor is incomplete',()=>{
  for(const patch of [{authority_status:'unknown'},{party_inventory_status:'unknown'},{safety_or_rights_floor_status:'triggered'}]){
-  const result=solveCandidates({...twoSafeNonDominatedCandidates(),...patch});
+  const result=solveCandidates(completeUniverse(twoSafeNonDominatedCandidates().candidate_evaluations.map((row)=>({solution_id:row.solution_id,hard_constraints:row.hard_constraints.map((item)=>({id:item.constraint_id,result:item.result,conflict_class:item.conflict_class})),soft_dimensions:row.soft_dimensions})),patch));
   assert.equal(result.selection_status,'undecided'); assert.equal(result.selected_solution_id,null); assert.equal(result.release_recommendation,'escalation');
  }
 });
@@ -199,7 +201,24 @@ test("acting edge scope time and caller verified proof are fail closed",()=>{
 
 const dimension=(party_or_cohort_id,criterion,tier,value,floor_result="T")=>({party_or_cohort_id,criterion,tier,value,floor_result});
 const solution=(solution_id,soft_dimensions,hard_constraints=[{id:"hard",result:"T"}])=>({solution_id,hard_constraints,soft_dimensions});
-const completeUniverse=(candidates)=>({authority_status:"complete",party_inventory_status:"verified_complete",safety_or_rights_floor_status:"resolved",candidate_universe:candidates.map((candidate)=>({solution_id:candidate.solution_id,option_ids:[]})),candidate_evaluations:candidates.map((candidate)=>({solution_id:candidate.solution_id,hard_constraints:candidate.hard_constraints.map((row)=>({constraint_id:row.id,result:row.result,conflict_class:row.conflict_class??"ordinary"})),soft_dimensions:candidate.soft_dimensions}))});
+const gateDigest=(domain,value)=>createHash("sha256").update(domain,"utf8").update(jcsBytes(value)).digest("hex");
+const withGateBinding=(input,statuses={})=>{
+ const authority_status=statuses.authority_status??input.authority_status;
+ const party_inventory_status=statuses.party_inventory_status??input.party_inventory_status;
+ const safety_or_rights_floor_status=statuses.safety_or_rights_floor_status??input.safety_or_rights_floor_status;
+ const evaluation_effective_at="2026-08-18T00:00:00Z",policy_version="solver-gate-policy-v1";
+ const candidateUniverse=canonicalSet(input.candidate_universe,(row)=>row.solution_id);
+ const candidateEvaluations=canonicalSet(input.candidate_evaluations,(row)=>row.solution_id);
+ const candidate_universe_digest=gateDigest("ux-skill:candidate-universe:v1",candidateUniverse);
+ const candidate_evaluations_digest=gateDigest("ux-skill:candidate-evaluations:v1",candidateEvaluations);
+ const authorityBody={authorization_decision_id:"solver-authority-decision-v1",status:authority_status,candidate_universe_digest,evaluation_effective_at,policy_version,proof_trace_digest:gateDigest("ux-skill:authority-proof-trace:v1",[candidate_universe_digest,evaluation_effective_at,policy_version])};
+ const proofBody={proof_id:"solver-party-completeness-v1",effect_scope_digest:"e".repeat(64),resource_scope_digest:"d".repeat(64),data_source_ids:["directory"],snapshot_digest:"c".repeat(64),snapshot_version:"v1",effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z",closure_algorithm_id:"party-closure",closure_algorithm_version:"1",verification_status:party_inventory_status==="unknown"?"unknown":"verified"};
+ const completeness_proof={...proofBody,completeness_proof_digest:gateDigest("ux-skill:party-completeness-proof:v1",proofBody)};
+ const partyBody={party_inventory_id:"solver-party-inventory-v1",status:party_inventory_status,party_ids:party_inventory_status==="verified_no_affected_party"?[]:["party-a"],candidate_universe_digest,evaluation_effective_at,policy_version,completeness_proof_digest:completeness_proof.completeness_proof_digest};
+ const floorBody={assessment_id:"solver-floor-assessment-v1",status:safety_or_rights_floor_status,candidate_universe_digest,candidate_evaluations_digest,evaluation_effective_at,policy_version};
+ return {...input,evaluator_gate_binding:{binding_version:"EvaluatorGateBindingV1",evaluation_effective_at,policy_version,candidate_universe_digest,candidate_evaluations_digest,authority_decision:{...authorityBody,authority_decision_digest:gateDigest("ux-skill:authority-decision:v1",authorityBody)},party_inventory:{...partyBody,party_inventory_digest:gateDigest("ux-skill:party-inventory:v1",partyBody),completeness_proof},safety_or_rights_floor_assessment:{...floorBody,assessment_digest:gateDigest("ux-skill:safety-rights-floor-assessment:v1",floorBody)}}};
+};
+const completeUniverse=(candidates,statuses={})=>withGateBinding({authority_status:"complete",party_inventory_status:"verified_complete",safety_or_rights_floor_status:"resolved",candidate_universe:candidates.map((candidate)=>({solution_id:candidate.solution_id,option_ids:[]})),candidate_evaluations:candidates.map((candidate)=>({solution_id:candidate.solution_id,hard_constraints:candidate.hard_constraints.map((row)=>({constraint_id:row.id,result:row.result,conflict_class:row.conflict_class??"ordinary"})),soft_dimensions:candidate.soft_dimensions}))},statuses);
 
 test("unsat cores are unique inclusion-minimal canonical sets",()=>{
  const candidates=[
@@ -247,7 +266,7 @@ test("multiple nondominated candidates never select and incomplete authority esc
  const candidates=[solution("a",[dimension("party-a","quality",0,1),dimension("party-a","speed",0,0)]),solution("b",[dimension("party-a","quality",0,0),dimension("party-a","speed",0,1)])];
  const safe=solveCandidates(completeUniverse(candidates));
  assert.equal(safe.selection_status,"undecided"); assert.equal(safe.selected_solution_id,null); assert.equal(safe.release_recommendation,"undecided");
- const incomplete=solveCandidates({...completeUniverse(candidates),authority_status:"unknown"});
+ const incomplete=solveCandidates(completeUniverse(candidates,{authority_status:"unknown"}));
  assert.equal(incomplete.selection_status,"undecided"); assert.equal(incomplete.selected_solution_id,null); assert.equal(incomplete.release_recommendation,"escalation");
 });
 
@@ -365,4 +384,15 @@ test('TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION hashes tenant bindings as c
  const forward=authorityModule.tenantBindingSetDigest(tenants,bindings);
  const permuted=authorityModule.tenantBindingSetDigest([...tenants].reverse(),[...bindings].reverse());
  assert.equal(forward,permuted,'TASK4_SECURITY_RED_TENANT_SET_CANONICALIZATION');
+});
+
+test('EvaluatorGateBindingV1 preserves safe tie and fails closed on missing mismatch or digest tamper',()=>{
+ const valid=twoSafeNonDominatedCandidates();
+ assert.deepEqual(solveCandidates(valid),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['a','b'],next_action:'ask_decision_owner',release_recommendation:'undecided',reason_code:'SOFT_PARETO_TIE'});
+ const missing=clone(valid); delete missing.evaluator_gate_binding;
+ assert.equal(solveCandidates(missing).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
+ const mismatch=clone(valid); mismatch.evaluator_gate_binding.candidate_universe_digest='0'.repeat(64);
+ assert.equal(solveCandidates(mismatch).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
+ const tampered=clone(valid); tampered.evaluator_gate_binding.authority_decision.authority_decision_digest='0'.repeat(64);
+ assert.equal(solveCandidates(tampered).reason_code,'SOLVER_GATE_EVIDENCE_REQUIRED');
 });
