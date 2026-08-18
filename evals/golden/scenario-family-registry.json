@@ -1,0 +1,18 @@
+{
+  "fixture_id": "scenario-family-registry-v1",
+  "domain": "ux-skill:scenario-family-registry:v1",
+  "value": {
+    "registry_version": "scenario-family-v1",
+    "scenario_family_ids": [
+      "admin-internal-tool",
+      "ai-assisted-workflow",
+      "brand-marketing-website",
+      "consumer-transaction",
+      "cross-channel-service",
+      "developer-documentation",
+      "public-service-information",
+      "retail-commerce-discovery"
+    ]
+  },
+  "expected_digest": "b764d922bd94ceb6869cd60984261acae344cd0a5e21c1cc9970cff710e417d0"
+}

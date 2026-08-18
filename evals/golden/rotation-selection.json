@@ -1,0 +1,17 @@
+{
+  "fixture_id": "rotation-selection-v1-gen-000",
+  "domain": "ux-skill:rotation-selection:v1",
+  "preimage": {
+    "generation_commitment": "0000000000000000000000000000000000000000000000000000000000000000",
+    "generation_id": "gen-000",
+    "generation_sequence": 0,
+    "portfolio_version": "real-world-portfolio-v1",
+    "selected_case_id": "RW-DOCS-STRIPE-001",
+    "sorted_candidate_case_ids": [
+      "RW-DOCS-STRIPE-001",
+      "RW-WEBSITE-IKEA-001"
+    ]
+  },
+  "expected_digest": "e01f97c0db9a39b9bd3f61c187ce9892a962a953328eb3cdac67658974a3bfcd",
+  "selection_rule": "generation_sequence mod sorted_candidate_case_ids.length"
+}
