@@ -1,10 +1,141 @@
 {
   "registry_version": "authority-registries-v1",
   "authority_root_registry": [
-    {"authority_root_id":"ux-skill-expired-admin-root-v1","issuer":{"namespace_uri":"https://identity.example","issuer_id":"ux-skill","subject_id":"authority-root","kind":"service"},"allowed_grant_scopes":[{"actions":["delete"],"resource_types":["admin_account"],"tenant_ids":["tenant-a"],"purposes":["account_deletion"]}],"allowed_representation_scopes":[],"effective_at":"2026-01-01T00:00:00Z","expires_at":"2026-08-18T00:00:00Z","key_version":"1","revoked":false},
-    {"authority_root_id":"ux-skill-local-admin-root-v1","issuer":{"namespace_uri":"https://identity.example","issuer_id":"ux-skill","subject_id":"authority-root","kind":"service"},"allowed_grant_scopes":[{"actions":["delete"],"resource_types":["admin_account"],"tenant_ids":["tenant-a"],"purposes":["account_deletion"]}],"allowed_representation_scopes":[],"effective_at":"2026-08-17T00:00:00Z","expires_at":null,"key_version":"1","revoked":false},
-    {"authority_root_id":"ux-skill-revoked-admin-root-v1","issuer":{"namespace_uri":"https://identity.example","issuer_id":"ux-skill","subject_id":"authority-root","kind":"service"},"allowed_grant_scopes":[{"actions":["delete"],"resource_types":["admin_account"],"tenant_ids":["tenant-a"],"purposes":["account_deletion"]}],"allowed_representation_scopes":[],"effective_at":"2026-08-17T00:00:00Z","expires_at":null,"key_version":"1","revoked":true}
+    {
+      "authority_root_id": "ux-skill-expired-admin-root-v1",
+      "issuer": {
+        "namespace_uri": "https://identity.example",
+        "issuer_id": "ux-skill",
+        "subject_id": "authority-root",
+        "kind": "service"
+      },
+      "allowed_grant_scopes": [
+        {
+          "actions": [
+            "delete"
+          ],
+          "resource_types": [
+            "admin_account"
+          ],
+          "tenant_ids": [
+            "tenant-a"
+          ],
+          "purposes": [
+            "account_deletion"
+          ]
+        }
+      ],
+      "allowed_representation_scopes": [],
+      "effective_at": "2026-01-01T00:00:00Z",
+      "expires_at": "2026-08-18T00:00:00Z",
+      "key_version": "1",
+      "revoked": false
+    },
+    {
+      "authority_root_id": "ux-skill-local-admin-root-v1",
+      "issuer": {
+        "namespace_uri": "https://identity.example",
+        "issuer_id": "ux-skill",
+        "subject_id": "authority-root",
+        "kind": "service"
+      },
+      "allowed_grant_scopes": [
+        {
+          "actions": [
+            "delete"
+          ],
+          "resource_types": [
+            "admin_account"
+          ],
+          "tenant_ids": [
+            "tenant-a"
+          ],
+          "purposes": [
+            "account_deletion"
+          ]
+        }
+      ],
+      "allowed_representation_scopes": [],
+      "effective_at": "2026-08-17T00:00:00Z",
+      "expires_at": null,
+      "key_version": "1",
+      "revoked": false
+    },
+    {
+      "authority_root_id": "ux-skill-revoked-admin-root-v1",
+      "issuer": {
+        "namespace_uri": "https://identity.example",
+        "issuer_id": "ux-skill",
+        "subject_id": "authority-root",
+        "kind": "service"
+      },
+      "allowed_grant_scopes": [
+        {
+          "actions": [
+            "delete"
+          ],
+          "resource_types": [
+            "admin_account"
+          ],
+          "tenant_ids": [
+            "tenant-a"
+          ],
+          "purposes": [
+            "account_deletion"
+          ]
+        }
+      ],
+      "allowed_representation_scopes": [],
+      "effective_at": "2026-08-17T00:00:00Z",
+      "expires_at": null,
+      "key_version": "1",
+      "revoked": true
+    }
   ],
-  "action_policy_registry": [{"action":"delete","resource_type":"admin_account","authorization_purpose":"account_deletion","risk":"high","tenant_join":"all","required_tenant_relationships":["target","controller"],"party_inventory_required":true,"approval_required":true,"capability_required":true}],
-  "party_inventory_statuses": ["unknown", "verified_complete", "verified_no_affected_party"]
+  "action_policy_registry": [
+    {
+      "action": "delete",
+      "resource_type": "admin_account",
+      "authorization_purpose": "account_deletion",
+      "risk": "high",
+      "tenant_join": "all",
+      "required_tenant_relationships": [
+        "target",
+        "controller"
+      ],
+      "party_inventory_required": true,
+      "approval_required": true,
+      "capability_required": true
+    }
+  ],
+  "party_inventory_statuses": [
+    "unknown",
+    "verified_complete",
+    "verified_no_affected_party"
+  ],
+  "tenant_join_proof_registry": [
+    {
+      "tenant_join_proof_id": "ux-skill-tenant-a-admin-delete-v1",
+      "action": "delete",
+      "resource_type": "admin_account",
+      "authorization_purpose": "account_deletion",
+      "risk": "high",
+      "tenant_ids": [
+        "tenant-a"
+      ],
+      "relationship_bindings": [
+        {
+          "relationship": "controller",
+          "tenant_id": "tenant-a"
+        },
+        {
+          "relationship": "target",
+          "tenant_id": "tenant-a"
+        }
+      ],
+      "extra_effect_tenant_ids": [],
+      "verification_status": "verified",
+      "tenant_binding_set_digest": "6ce3ca9927d14423613ebde2ab30bfc594e3f93c1e48a6e258f59faeb84a5a8a"
+    }
+  ]
 }

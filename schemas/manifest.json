@@ -12,6 +12,10 @@
     "file_digest": "a2b9791a907df1ce076b425a23ecf1508b2ff4a152ea3ca124e2f6b2347da399"
   },
   {
+    "path": "schemas/core/candidate-solver-input.schema.json",
+    "file_digest": "3f67b8cbc981583939e082eb0ade17f0427a369d5a59054085957bf6b13fdeb4"
+  },
+  {
     "path": "schemas/core/claims.schema.json",
     "file_digest": "cab17bb3d8ee0ef4f77a9ab4ffc64b3527bd58e2bccd85b81142de371e0c9796"
   },

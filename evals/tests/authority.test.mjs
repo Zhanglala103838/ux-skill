@@ -10,8 +10,8 @@ const policies=JSON.parse(await readFile(new URL('../../knowledge/decision-polic
 const actor=(subject_id,namespace_uri='https://identity.example')=>({namespace_uri,issuer_id:'ux-skill',subject_id,kind:'human'});
 const verifiedProof=()=>({proof_id:'proof-1',effect_scope_digest:'e'.repeat(64),resource_scope_digest:'d'.repeat(64),data_source_ids:['directory'],snapshot_digest:'c'.repeat(64),snapshot_version:'v1',verification_status:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
 const boundGraph=(affected_party_ids)=>({snapshot_status:'closed',refs_closed:true,closure_complete:true,affected_party_ids,effect_scope_digest:'e'.repeat(64),resource_scope_digest:'d'.repeat(64),data_source_ids:['directory'],snapshot_digest:'c'.repeat(64),snapshot_version:'v1',closure_algorithm_id:'party-closure',closure_algorithm_version:'1'});
-const highRiskDelete=({partyProof='verified'}={})=>({action:'delete',resource_type:'admin_account',risk:'high',authorization_purpose:'account_deletion',evaluation_effective_at:'2026-08-18T00:00:00Z',authenticated_principal:actor('admin'),effective_actor:actor('admin'),authority_root_id:'ux-skill-local-admin-root-v1',authority_root_membership:'verified',acting_edges:[],tenant_bindings:{status:'verified',required:['target','controller'],covered:['target','controller'],extra_effects:[]},party_graph:boundGraph(['party-a']),party_proof:partyProof==='verified'?verifiedProof():null,grant:{status:'active',scope_coverage:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',revoked:false},approval:{status:'verified'},capability:{status:'verified',ledger_status:'unused'},authority_features:{execution_envelope:'verified',time_authority:'verified',commit_revalidation:'verified'}});
-const twoSafeNonDominatedCandidates=()=>({authority_status:'complete',party_inventory_status:'verified_complete',candidates:[{solution_id:'a',hard_constraints:[{id:'h',result:'T'}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:0,floor_result:'T'}]},{solution_id:'b',hard_constraints:[{id:'h',result:'T'}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:1,floor_result:'T'}]}]});
+const highRiskDelete=({partyProof='verified'}={})=>({action:'delete',resource_type:'admin_account',risk:'high',authorization_purpose:'account_deletion',evaluation_effective_at:'2026-08-18T00:00:00Z',tenant_ids:['tenant-a'],tenant_join_proof_id:'ux-skill-tenant-a-admin-delete-v1',authenticated_principal:actor('admin'),effective_actor:actor('admin'),authority_root_id:'ux-skill-local-admin-root-v1',authority_root_membership:'verified',acting_edges:[],tenant_bindings:{status:'verified',required:['target','controller'],covered:['target','controller'],extra_effects:[]},party_graph:boundGraph(['party-a']),party_proof:partyProof==='verified'?verifiedProof():null,grant:{status:'active',scope_coverage:'verified',effective_at:'2026-08-17T00:00:00Z',expires_at:'2026-08-19T00:00:00Z',revoked:false},approval:{status:'verified'},capability:{status:'verified',ledger_status:'unused'},authority_features:{execution_envelope:'verified',time_authority:'verified',commit_revalidation:'verified'}});
+const twoSafeNonDominatedCandidates=()=>completeUniverse([{solution_id:'a',hard_constraints:[{id:'h',result:'T'}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:0,floor_result:'T'}]},{solution_id:'b',hard_constraints:[{id:'h',result:'T'}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:0,floor_result:'T'},{party_or_cohort_id:'party-a',criterion:'speed',tier:0,value:1,floor_result:'T'}]}]);
 const clone=(value)=>structuredClone(value);
 
 test('unknown party closure escalates a high-risk delete', () => {
@@ -72,15 +72,13 @@ test('acting chains require exact byte-equal continuity and verified edges',()=>
  assert.deepEqual(evaluateAuthority(unknown),{status:'escalation',reason_code:'ACTING_EDGE_UNKNOWN'});
 });
 
-test('tenant coverage implements block, escalation, exact all-join, and invalid input branches',()=>{
- const missing=highRiskDelete(); missing.tenant_bindings.covered=[];
- assert.deepEqual(evaluateAuthority(missing),{status:'block',reason_code:'TENANT_SCOPE_NOT_COVERED'});
- const extra=highRiskDelete(); extra.tenant_bindings.extra_effects=['tenant-b'];
- assert.deepEqual(evaluateAuthority(extra),{status:'block',reason_code:'TENANT_EXTRA_EFFECT'});
- const unknown=highRiskDelete(); unknown.tenant_bindings.status='unknown';
- assert.deepEqual(evaluateAuthority(unknown),{status:'escalation',reason_code:'TENANT_COVERAGE_UNKNOWN'});
- const malformed=highRiskDelete(); malformed.tenant_bindings.required=[42];
- assert.deepEqual(evaluateAuthority(malformed),{status:'invalid_input',reason_code:'AUTHORITY_INPUT_INVALID'});
+test('tenant coverage derives only from the closed proof registry',()=>{
+ const absent=highRiskDelete(); delete absent.tenant_join_proof_id;
+ assert.deepEqual(evaluateAuthority(absent),{status:'escalation',reason_code:'TENANT_COVERAGE_UNKNOWN',coverage_gap_id:'tenant-join-proof-v1'});
+ const unknown=highRiskDelete(); unknown.tenant_join_proof_id='unknown-proof';
+ assert.deepEqual(evaluateAuthority(unknown),{status:'escalation',reason_code:'TENANT_COVERAGE_UNKNOWN',coverage_gap_id:'tenant-join-proof-v1'});
+ const asserted=highRiskDelete(); asserted.tenant_bindings={status:'verified',required:[],covered:['unregistered'],extra_effects:['tenant-b']};
+ assert.deepEqual(evaluateAuthority(asserted),{status:'escalation',reason_code:'GRANT_VALIDITY_UNKNOWN',coverage_gap_id:'grant-contract-v1'});
 });
 
 test('grant validity blocks false prerequisites and escalates unknown prerequisites',()=>{
@@ -111,17 +109,17 @@ test('approval, capability, and Task 3 authority prerequisites fail closed',()=>
 
 test('hard solver follows E then U then feasible then zero-feasible priority',()=>{
  const candidate=(solution_id,result,conflict_class='ordinary')=>({solution_id,hard_constraints:[{id:`h-${solution_id}`,result,conflict_class}],soft_dimensions:[{party_or_cohort_id:'party-a',criterion:'quality',tier:0,value:1,floor_result:'T'}]});
- assert.deepEqual(solveCandidates({candidates:[candidate('a','E')],authority_status:'complete',party_inventory_status:'verified_complete'}),{selection_status:'evaluation_error',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_evaluation_error',release_recommendation:'escalation',reason_code:'HARD_CONSTRAINT_EVALUATION_ERROR'});
- assert.deepEqual(solveCandidates({candidates:[candidate('a','T'),candidate('b','U')],authority_status:'complete',party_inventory_status:'verified_complete'}),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['a'],next_action:'escalate_hard_constraint',release_recommendation:'escalation',reason_code:'HARD_CONSTRAINT_UNKNOWN'});
- const ordinary=solveCandidates({candidates:[candidate('a','F')],authority_status:'complete',party_inventory_status:'verified_complete'});
+ assert.deepEqual(solveCandidates(completeUniverse([candidate('a','E')])),{selection_status:'evaluation_error',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_evaluation_error',release_recommendation:'escalation',reason_code:'HARD_CONSTRAINT_EVALUATION_ERROR'});
+ assert.deepEqual(solveCandidates(completeUniverse([candidate('a','T'),candidate('b','U')])),{selection_status:'undecided',selected_solution_id:null,feasible_solution_ids:['a'],next_action:'escalate_hard_constraint',release_recommendation:'escalation',reason_code:'HARD_CONSTRAINT_UNKNOWN'});
+ const ordinary=solveCandidates(completeUniverse([candidate('a','F')]));
  assert.equal(ordinary.release_recommendation,'block'); assert.deepEqual(ordinary.unsat_cores,[['h-a']]);
- const rights=solveCandidates({candidates:[candidate('a','F','rights')],authority_status:'complete',party_inventory_status:'verified_complete'});
+ const rights=solveCandidates(completeUniverse([candidate('a','F','rights')]));
  assert.equal(rights.release_recommendation,'escalation'); assert.equal(rights.reason_code,'HARD_CONSTRAINT_HIGH_RISK_UNSAT');
- assert.equal(solveCandidates({candidates:[candidate('b','F'),candidate('a','T')],authority_status:'complete',party_inventory_status:'verified_complete'}).selected_solution_id,'a');
+ assert.equal(solveCandidates(completeUniverse([candidate('b','F'),candidate('a','T')])).selected_solution_id,'a');
 });
 
 test('soft ties escalate when authority, party closure, or a safety floor is incomplete',()=>{
- for(const patch of [{authority_status:'unknown'},{party_inventory_status:'unknown'},{touches_safety_or_rights_floor:true}]){
+ for(const patch of [{authority_status:'unknown'},{party_inventory_status:'unknown'},{safety_or_rights_floor_status:'triggered'}]){
   const result=solveCandidates({...twoSafeNonDominatedCandidates(),...patch});
   assert.equal(result.selection_status,'undecided'); assert.equal(result.selected_solution_id,null); assert.equal(result.release_recommendation,'escalation');
  }
@@ -129,7 +127,7 @@ test('soft ties escalate when authority, party closure, or a safety floor is inc
 
 test('candidate and score ordering are deterministic',()=>{
  const first=twoSafeNonDominatedCandidates();
- const second=clone(first); second.candidates.reverse(); for(const candidate of second.candidates) candidate.soft_dimensions.reverse();
+ const second=clone(first); second.candidate_universe.reverse(); second.candidate_evaluations.reverse(); for(const candidate of second.candidate_evaluations) candidate.soft_dimensions.reverse();
  assert.deepEqual(solveCandidates(first),solveCandidates(second));
 });
 
@@ -165,11 +163,11 @@ test("acting chains reject self-support cycles repeated nodes and incomplete Tas
  assert.deepEqual(evaluateAuthority(incomplete),{status:"escalation",reason_code:"ACTING_EDGE_UNKNOWN",coverage_gap_id:"acting-edge-proof-v1"});
 });
 
-test("tenant all-join obligations come from the closed policy and require exact coverage",()=>{
- const erased=highRiskDelete(); erased.tenant_bindings={status:"verified",required:[],covered:[],extra_effects:[]};
- assert.deepEqual(evaluateAuthority(erased),{status:"block",reason_code:"TENANT_SCOPE_NOT_COVERED"});
- const superset=highRiskDelete(); superset.tenant_bindings={status:"verified",required:["target","controller"],covered:["target","controller","unregistered"],extra_effects:[]};
- assert.deepEqual(evaluateAuthority(superset),{status:"block",reason_code:"TENANT_SCOPE_NOT_COVERED"});
+test("tenant all-join cannot be synthesized by exact empty or superset caller arrays",()=>{
+ for(const tenant_bindings of [{status:"verified",required:[],covered:[],extra_effects:[]},{status:"verified",required:["target","controller"],covered:["target","controller","unregistered"],extra_effects:[]}]){
+  const value=highRiskDelete(); delete value.tenant_join_proof_id; value.tenant_bindings=tenant_bindings;
+  assert.deepEqual(evaluateAuthority(value),{status:"escalation",reason_code:"TENANT_COVERAGE_UNKNOWN",coverage_gap_id:"tenant-join-proof-v1"});
+ }
 });
 
 test("caller verified strings and abbreviated authority objects never authorize deletion",()=>{
@@ -189,7 +187,7 @@ test("party completeness proof is bound to effect resource source snapshot and a
 });
 
 test("acting edge scope time and caller verified proof are fail closed",()=>{
- const scope={actions:["delete"],resource_types:["admin_account"],tenant_ids:["target","controller"],purposes:["account_deletion"]};
+ const scope={actions:["delete"],resource_types:["admin_account"],tenant_ids:["tenant-a"],purposes:["account_deletion"]};
  const edge=(from,to)=>({edge_id:`${from.subject_id}-${to.subject_id}`,sequence:0,from,to,basis_ref:"grant-1",scope,effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z",version:"1",validity:"verified"});
  const unsupported=highRiskDelete(); unsupported.authenticated_principal=actor("a"); unsupported.effective_actor=actor("b"); unsupported.acting_edges=[edge(actor("a"),actor("b"))];
  assert.deepEqual(evaluateAuthority(unsupported),{status:"escalation",reason_code:"ACTING_EDGE_UNKNOWN",coverage_gap_id:"acting-edge-proof-v1"});
@@ -201,7 +199,7 @@ test("acting edge scope time and caller verified proof are fail closed",()=>{
 
 const dimension=(party_or_cohort_id,criterion,tier,value,floor_result="T")=>({party_or_cohort_id,criterion,tier,value,floor_result});
 const solution=(solution_id,soft_dimensions,hard_constraints=[{id:"hard",result:"T"}])=>({solution_id,hard_constraints,soft_dimensions});
-const completeUniverse=(candidates)=>({authority_status:"complete",party_inventory_status:"verified_complete",candidates});
+const completeUniverse=(candidates)=>({authority_status:"complete",party_inventory_status:"verified_complete",safety_or_rights_floor_status:"resolved",candidate_universe:candidates.map((candidate)=>({solution_id:candidate.solution_id,option_ids:[]})),candidate_evaluations:candidates.map((candidate)=>({solution_id:candidate.solution_id,hard_constraints:candidate.hard_constraints.map((row)=>({constraint_id:row.id,result:row.result,conflict_class:row.conflict_class??"ordinary"})),soft_dimensions:candidate.soft_dimensions}))});
 
 test("unsat cores are unique inclusion-minimal canonical sets",()=>{
  const candidates=[
@@ -339,7 +337,7 @@ test('TASK4_RED_TOTAL_FAIL_CLOSED public reducers never throw or consume hostile
 });
 
 test('TASK4_RED_TENANT_PROOF_AND_SCOPE rejects caller assertions and includes tenant ids in scope',()=>{
- const asserted=highRiskDelete(); asserted.tenant_ids=['tenant-a'];
+ const asserted=highRiskDelete(); asserted.tenant_ids=['tenant-a']; delete asserted.tenant_join_proof_id;
  assert.deepEqual(evaluateAuthority(asserted),{status:'escalation',reason_code:'TENANT_COVERAGE_UNKNOWN',coverage_gap_id:'tenant-join-proof-v1'},'TASK4_RED_TENANT_PROOF_AND_SCOPE');
  const outOfScope=highRiskDelete(); outOfScope.tenant_ids=['tenant-b'];
  assert.deepEqual(evaluateAuthority(outOfScope),{status:'block',reason_code:'AUTHORITY_ROOT_SCOPE_NOT_COVERED'},'TASK4_RED_TENANT_PROOF_AND_SCOPE');

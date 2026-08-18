@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/core/candidate-solver-input.schema.json",
+  "title": "CandidateSolverInput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "candidate_universe",
+    "candidate_evaluations",
+    "authority_status",
+    "party_inventory_status",
+    "safety_or_rights_floor_status"
+  ],
+  "properties": {
+    "candidate_universe": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/$defs/Solution"
+      }
+    },
+    "candidate_evaluations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/CandidateEvaluation"
+      }
+    },
+    "authority_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "unknown"
+      ]
+    },
+    "party_inventory_status": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "verified_complete",
+        "verified_no_affected_party"
+      ]
+    },
+    "safety_or_rights_floor_status": {
+      "type": "string",
+      "enum": [
+        "not_applicable",
+        "resolved",
+        "unresolved",
+        "triggered"
+      ]
+    }
+  },
+  "$defs": {
+    "CandidateEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "solution_id",
+        "hard_constraints",
+        "soft_dimensions"
+      ],
+      "properties": {
+        "solution_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hard_constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HardConstraintEvaluation"
+          }
+        },
+        "soft_dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SoftDimensionEvaluation"
+          }
+        }
+      }
+    },
+    "HardConstraintEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "constraint_id",
+        "result",
+        "conflict_class"
+      ],
+      "properties": {
+        "constraint_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "E",
+            "F",
+            "T",
+            "U"
+          ]
+        },
+        "conflict_class": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "SoftDimensionEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "party_or_cohort_id",
+        "criterion",
+        "tier",
+        "value",
+        "floor_result"
+      ],
+      "properties": {
+        "party_or_cohort_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "criterion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tier": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": "number"
+        },
+        "floor_result": {
+          "type": "string",
+          "enum": [
+            "E",
+            "F",
+            "T",
+            "U"
+          ]
+        }
+      }
+    }
+  }
+}
