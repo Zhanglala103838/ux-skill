@@ -1,0 +1,19 @@
+name: Implementation CI
+
+on:
+  push:
+    branches:
+      - implementation/v0.1-vertical-slice
+
+permissions:
+  contents: read
+
+jobs:
+  intentional-red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.2
+      - run: node --test evals/tests/vector-catalog.test.mjs
