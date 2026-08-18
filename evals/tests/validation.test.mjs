@@ -31,6 +31,8 @@ test('duplicate IDs and missing references are collection errors',()=>{
 test('tagged unions emit only discriminator errors',()=>{
  assert.deepEqual(validateBySchema('AstNode',{node_id:'n'}).errors.map((e)=>e.code),['AST_OP_REQUIRED']);
  assert.deepEqual(validateBySchema('AstNode',{node_id:'n',op:'script'}).errors.map((e)=>e.code),['AST_OP_UNKNOWN']);
+ const selected=validateBySchema('AstNode',{node_id:'n',op:'literal',path:'/not-allowed'});
+ assert.deepEqual(selected.errors.map((e)=>[e.code,e.instance_pointer]),[['ADDITIONAL_PROPERTY','/path'],['REQUIRED_MISSING','/value']]);
 });
 
 test('later ref validation is suppressed when schema prerequisite is absent',()=>{
