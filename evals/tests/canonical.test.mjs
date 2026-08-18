@@ -260,3 +260,78 @@ test('digest rejects text and arbitrary preimages instead of coercing them', () 
   assertCode(() => digest('domain', [1, 2, 3]), 'DIGEST_BYTES_REQUIRED');
   assertCode(() => digest(123, Buffer.from('bytes')), 'DIGEST_DOMAIN_INVALID');
 });
+
+
+test('shared references with prefix-related paths remain valid canonical data', () => {
+  const shared = { value: 1 };
+  assert.equal(
+    jcsBytes({ a: shared, ab: shared }).toString('utf8'),
+    '{"a":{"value":1},"ab":{"value":1}}',
+  );
+
+  const cyclic = {};
+  cyclic.self = cyclic;
+  assertCode(() => jcsBytes(cyclic), 'IJSON_CYCLE');
+});
+
+test('inherited Object.prototype.toJSON cannot execute or replace canonical bytes', () => {
+  const original = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+  let called = false;
+  try {
+    Object.defineProperty(Object.prototype, 'toJSON', {
+      configurable: true,
+      value() {
+        called = true;
+        return { hijacked: true };
+      },
+    });
+    assert.equal(jcsBytes({ a: 1 }).toString('utf8'), '{"a":1}');
+    assert.equal(called, false);
+  } finally {
+    if (original) Object.defineProperty(Object.prototype, 'toJSON', original);
+    else delete Object.prototype.toJSON;
+  }
+});
+
+test('inherited Array.prototype.toJSON cannot execute or replace canonical bytes', () => {
+  const original = Object.getOwnPropertyDescriptor(Array.prototype, 'toJSON');
+  let called = false;
+  try {
+    Object.defineProperty(Array.prototype, 'toJSON', {
+      configurable: true,
+      value() {
+        called = true;
+        return { array_hijacked: true };
+      },
+    });
+    assert.equal(jcsBytes([1, 2]).toString('utf8'), '[1,2]');
+    assert.equal(called, false);
+  } finally {
+    if (original) Object.defineProperty(Array.prototype, 'toJSON', original);
+    else delete Array.prototype.toJSON;
+  }
+});
+
+test('Proxy-supplied toJSON is rejected without executing the trap result', () => {
+  let callbackCalled = false;
+  const value = new Proxy({ a: 1 }, {
+    get(target, property, receiver) {
+      if (property === 'toJSON') {
+        return () => {
+          callbackCalled = true;
+          return { proxy_hijacked: true };
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  assertCode(() => jcsBytes(value), 'IJSON_NON_PLAIN_OBJECT');
+  assert.equal(callbackCalled, false);
+});
+
+test('canonical set rejects non-array JSON with a stable code', () => {
+  for (const value of [{}, 'items', null]) {
+    assertCode(() => canonicalSet(value, (item) => item), 'IJSON_NON_JSON_VALUE');
+  }
+});
