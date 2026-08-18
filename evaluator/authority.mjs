@@ -283,9 +283,10 @@ const tieDecision=(universe,feasible_solution_ids)=>{
  const decision=policies.soft_tie_table[branch];
  return {selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:decision.next_action,release_recommendation:decision.release_recommendation,reason_code};
 };
-const selectionGate=(universe,feasible_solution_ids)=>{
- if(universe.authority_status!=='complete'||!['verified_complete','verified_no_affected_party'].includes(universe.party_inventory_status)||['unresolved','triggered'].includes(universe.safety_or_rights_floor_status))return tieDecision(derivedGate,feasible_solution_ids);
- return {selection_status:'undecided',selected_solution_id:null,feasible_solution_ids,next_action:'bind_evaluator_gate',release_recommendation:'escalation',reason_code:'SOLVER_GATE_EVIDENCE_REQUIRED'};
+const selectionGate=(derivedGate,feasible_solution_ids)=>{
+ if(!derivedGate)return solverGateRequired(feasible_solution_ids);
+ if(derivedGate.authority_status!=='complete'||!['verified_complete','verified_no_affected_party'].includes(derivedGate.party_inventory_status)||['unresolved','triggered'].includes(derivedGate.safety_or_rights_floor_status))return tieDecision(derivedGate,feasible_solution_ids);
+ return null;
 };
 
 export function solveCandidates(universeInput){
