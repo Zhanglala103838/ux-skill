@@ -438,7 +438,7 @@ test('TASK5_CONTEXT_TRACE_RED dependency decision coherence',()=>{
  const decisionStatuses=['invalid_request','auth_error','incompatible_source','timeout','server_error','cancelled','not_found'];
  for(const status of decisionStatuses){
   const result=required(status);
-  const wrongTerminal={...result,terminal:'completed'};
+  const wrongTerminal={...result,terminal:status==='not_found'?'cancelled':'completed'};
   const wrongOutcome={...result,outcome:'pass'};
   const wrongReason={...result,reason_code:'CHECK_PASS'};
   assert.equal(reduceRunStatus([wrongTerminal]),'failed',status);

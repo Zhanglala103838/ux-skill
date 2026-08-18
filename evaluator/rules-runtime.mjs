@@ -152,7 +152,8 @@ function validDependencyTrace(value){
 }
 function validFindingContext(value){
  if(!exactKeys(value,FINDING_CONTEXT_KEYS)||value.schema_version!=='finding-v1'||!text(value.behavior_version)||!text(value.canonical_target_locator)||!lowerHex64(value.target_snapshot_digest)||value.claim_key!==null)return false;
- return Array.isArray(value.scenario_binding_ids)&&value.scenario_binding_ids.length===1&&text(value.scenario_binding_ids[0]);
+ if(!Array.isArray(value.scenario_binding_ids)||value.scenario_binding_ids.length===0||value.scenario_binding_ids.some(item=>!text(item)))return false;
+ try{return jcsBytes(canonicalSet(value.scenario_binding_ids,item=>item)).equals(jcsBytes(value.scenario_binding_ids));}catch{return false;}
 }
 function ruleSignal(value){
  if(!exactKeys(value,RULE_KEYS)||!text(value.rule_id)||!text(value.rule_version)||!text(value.finding_type)||typeof value.release_critical!=='boolean'||!validTrace(value.trace)||!validDependencyTrace(value.dependency_trace))return null;
