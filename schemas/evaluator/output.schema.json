@@ -76,19 +76,19 @@
     "claim_assessments": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/AssessmentItem"
+        "$ref": "#/$defs/ClaimAssessment"
       }
     },
     "risk_assessments": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/AssessmentItem"
+        "$ref": "#/$defs/RiskAssessment"
       }
     },
     "recommendation_assessments": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/AssessmentItem"
+        "$ref": "#/$defs/RecommendationAssessment"
       }
     },
     "release_recommendation": {
@@ -121,6 +121,24 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/CoverageGap"
+      }
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Alternative"
+      }
+    },
+    "solutions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Solution"
+      }
+    },
+    "unsat_cores": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/UnsatCore"
       }
     }
   },
@@ -202,35 +220,20 @@
       "additionalProperties": false,
       "required": [
         "finding_id",
-        "rule_id",
-        "finding_type",
-        "emission_reason_code",
-        "canonical_target_locator",
-        "target_snapshot_digest"
+        "fingerprint_full_digest",
+        "fingerprint"
       ],
       "properties": {
         "finding_id": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^f_[0-9a-f]{32}$"
         },
-        "rule_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "finding_type": {
-          "type": "string",
-          "minLength": 1
-        },
-        "emission_reason_code": {
-          "type": "string",
-          "minLength": 1
-        },
-        "canonical_target_locator": {
-          "type": "string"
-        },
-        "target_snapshot_digest": {
+        "fingerprint_full_digest": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/FindingFingerprintV1"
         }
       }
     },
@@ -260,32 +263,6 @@
               "type": "null"
             }
           ]
-        }
-      }
-    },
-    "AssessmentItem": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "assessment_id",
-        "status",
-        "reason_codes"
-      ],
-      "properties": {
-        "assessment_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "status": {
-          "type": "string",
-          "minLength": 1
-        },
-        "reason_codes": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
         }
       }
     },
@@ -474,19 +451,19 @@
         "claim_assessments": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/AssessmentItem"
+            "$ref": "#/$defs/ClaimAssessment"
           }
         },
         "risk_assessments": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/AssessmentItem"
+            "$ref": "#/$defs/RiskAssessment"
           }
         },
         "recommendation_assessments": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/AssessmentItem"
+            "$ref": "#/$defs/RecommendationAssessment"
           }
         },
         "release_recommendation": {
@@ -519,6 +496,404 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/CoverageGap"
+          }
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Alternative"
+          }
+        },
+        "solutions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Solution"
+          }
+        },
+        "unsat_cores": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnsatCore"
+          }
+        }
+      }
+    },
+    "ClaimKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predicate_id",
+        "population_id",
+        "context_id",
+        "time_scope_id"
+      ],
+      "properties": {
+        "predicate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "population_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "time_scope_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "FindingFingerprintV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "behavior_version",
+        "rule_id",
+        "rule_version",
+        "finding_type",
+        "emission_reason_code",
+        "canonical_target_locator",
+        "target_snapshot_digest",
+        "scenario_binding_ids",
+        "claim_key"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "behavior_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finding_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emission_reason_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_target_locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_snapshot_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scenario_binding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "claim_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClaimKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ClaimAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_assessment_id",
+        "claim_id",
+        "admissible_conclusion",
+        "assessed_predicate",
+        "evidence_grade",
+        "check_results",
+        "dimension_scores",
+        "reason_codes"
+      ],
+      "properties": {
+        "claim_assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "admissible_conclusion": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "associational",
+            "predictive",
+            "descriptive",
+            "reported_experience",
+            "observed_signal",
+            "unresolved"
+          ]
+        },
+        "assessed_predicate": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "evidence_grade": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "check_results": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "dimension_scores": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          }
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "RiskAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk_assessment_id",
+        "status",
+        "decision",
+        "severity",
+        "likelihood",
+        "exposure",
+        "reversibility",
+        "reason_codes"
+      ],
+      "properties": {
+        "risk_assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "clear",
+            "block",
+            "escalation",
+            "investigate_immediately"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "low",
+            "moderate",
+            "severe",
+            "catastrophic",
+            "unknown"
+          ]
+        },
+        "likelihood": {
+          "type": "string",
+          "enum": [
+            "unlikely",
+            "possible",
+            "likely",
+            "unknown"
+          ]
+        },
+        "exposure": {
+          "type": "string",
+          "enum": [
+            "limited",
+            "broad",
+            "unknown"
+          ]
+        },
+        "reversibility": {
+          "type": "string",
+          "enum": [
+            "reversible",
+            "irreversible",
+            "unknown"
+          ]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "RecommendationAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recommendation_assessment_id",
+        "status",
+        "authority_ceiling",
+        "evidence_ceiling",
+        "risk_ceiling",
+        "reversibility_ceiling",
+        "strength",
+        "policy_version",
+        "reason_codes"
+      ],
+      "properties": {
+        "recommendation_assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority_ceiling": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "evidence_ceiling": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "risk_ceiling": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "reversibility_ceiling": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "Alternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alternative_id"
+      ],
+      "properties": {
+        "alternative_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Solution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "solution_id",
+        "option_ids"
+      ],
+      "properties": {
+        "solution_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "option_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "UnsatCore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "constraint_ids"
+      ],
+      "properties": {
+        "constraint_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }

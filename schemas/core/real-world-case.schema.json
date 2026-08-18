@@ -32,7 +32,8 @@
     "cleanup_contract",
     "portfolio_role",
     "scenario_stratum",
-    "comparison_policy"
+    "comparison_policy",
+    "negative_controls"
   ],
   "properties": {
     "case_id": {
@@ -185,6 +186,13 @@
     "comparison_policy": {
       "type": "string",
       "const": "within_case_only"
+    },
+    "negative_controls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/NegativeControlGateSpec"
+      }
     }
   },
   "$defs": {
@@ -322,7 +330,8 @@
       "required": [
         "measure_id",
         "kind",
-        "direction"
+        "direction",
+        "measure_role"
       ],
       "properties": {
         "measure_id": {
@@ -343,6 +352,13 @@
             "increase",
             "decrease",
             "not_increase"
+          ]
+        },
+        "measure_role": {
+          "type": "string",
+          "enum": [
+            "success",
+            "guardrail"
           ]
         }
       }
@@ -499,7 +515,8 @@
         "cleanup_contract",
         "portfolio_role",
         "scenario_stratum",
-        "comparison_policy"
+        "comparison_policy",
+        "negative_controls"
       ],
       "properties": {
         "case_id": {
@@ -652,8 +669,267 @@
         "comparison_policy": {
           "type": "string",
           "const": "within_case_only"
+        },
+        "negative_controls": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/NegativeControlGateSpec"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "target_kind": {
+                "const": "black_box_site"
+              }
+            },
+            "required": [
+              "target_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "immutable_ref": {
+                "type": "null"
+              },
+              "snapshot_closure_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "snapshot_closure_digest"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target_kind": {
+                "enum": [
+                  "pinned_repository",
+                  "hulianui_contract"
+                ]
+              }
+            },
+            "required": [
+              "target_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "immutable_ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "snapshot_closure_digest": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "immutable_ref"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "measures": {
+              "contains": {
+                "properties": {
+                  "measure_role": {
+                    "const": "success"
+                  }
+                },
+                "required": [
+                  "measure_role"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "measures": {
+              "contains": {
+                "properties": {
+                  "measure_role": {
+                    "const": "guardrail"
+                  }
+                },
+                "required": [
+                  "measure_role"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "NegativeControlGateSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control_id",
+        "metric_id",
+        "transform",
+        "unit",
+        "scale_id",
+        "lower_bound",
+        "upper_bound",
+        "lower_inclusive",
+        "upper_inclusive"
+      ],
+      "properties": {
+        "control_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transform": {
+          "type": "string",
+          "enum": [
+            "signed",
+            "absolute"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scale_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lower_bound": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "upper_bound": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lower_inclusive": {
+          "type": "boolean"
+        },
+        "upper_inclusive": {
+          "type": "boolean"
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "lower_bound": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "properties": {
+            "upper_bound": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "target_kind": {
+            "const": "black_box_site"
+          }
+        },
+        "required": [
+          "target_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "immutable_ref": {
+            "type": "null"
+          },
+          "snapshot_closure_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "snapshot_closure_digest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_kind": {
+            "enum": [
+              "pinned_repository",
+              "hulianui_contract"
+            ]
+          }
+        },
+        "required": [
+          "target_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "immutable_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "snapshot_closure_digest": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "immutable_ref"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "measures": {
+          "contains": {
+            "properties": {
+              "measure_role": {
+                "const": "success"
+              }
+            },
+            "required": [
+              "measure_role"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "measures": {
+          "contains": {
+            "properties": {
+              "measure_role": {
+                "const": "guardrail"
+              }
+            },
+            "required": [
+              "measure_role"
+            ]
+          }
         }
       }
     }
-  }
+  ]
 }

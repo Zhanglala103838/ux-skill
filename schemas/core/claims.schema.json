@@ -10,7 +10,8 @@
     "proposition_assessments",
     "policy_adoptions",
     "claims",
-    "claim_assessments"
+    "claim_assessments",
+    "claim_assessment_policies"
   ],
   "properties": {
     "sources": {
@@ -47,6 +48,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/ClaimAssessment"
+      }
+    },
+    "claim_assessment_policies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ClaimAssessmentPolicy"
       }
     }
   },
@@ -427,8 +434,11 @@
       "required": [
         "claim_assessment_id",
         "claim_id",
+        "policy_id",
         "status",
-        "assessed_predicate_id",
+        "assessed_predicate",
+        "checks",
+        "dimension_scores",
         "evidence_grade",
         "reason_codes"
       ],
@@ -454,17 +464,6 @@
             "unresolved"
           ]
         },
-        "assessed_predicate_id": {
-          "anyOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "evidence_grade": {
           "$ref": "#/$defs/EvidenceGrade"
         },
@@ -473,6 +472,34 @@
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessed_predicate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssessedPredicate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClaimCheckResult"
+          }
+        },
+        "dimension_scores": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/EvidenceDimensionScore"
           }
         }
       }
@@ -486,7 +513,8 @@
         "proposition_assessments",
         "policy_adoptions",
         "claims",
-        "claim_assessments"
+        "claim_assessments",
+        "claim_assessment_policies"
       ],
       "properties": {
         "sources": {
@@ -524,6 +552,253 @@
           "items": {
             "$ref": "#/$defs/ClaimAssessment"
           }
+        },
+        "claim_assessment_policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClaimAssessmentPolicy"
+          }
+        }
+      }
+    },
+    "AssessedPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation_kind",
+        "predicate_id",
+        "population_id",
+        "context_id",
+        "time_scope_id",
+        "subject_id",
+        "value",
+        "intervention_id",
+        "counterfactual_id",
+        "effect_estimand_id",
+        "future_target_id"
+      ],
+      "properties": {
+        "relation_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "associational",
+            "predictive",
+            "descriptive",
+            "reported_experience",
+            "observed_signal",
+            "unresolved"
+          ]
+        },
+        "predicate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "population_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "time_scope_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intervention_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "counterfactual_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "effect_estimand_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "future_target_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "ClaimPolicyCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_check_id",
+        "dimension",
+        "critical",
+        "evaluator_invariant"
+      ],
+      "properties": {
+        "required_check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "validity",
+            "directness",
+            "precision",
+            "transportability"
+          ]
+        },
+        "critical": {
+          "type": "boolean"
+        },
+        "evaluator_invariant": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ClaimAssessmentPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "claim_kind",
+        "required_checks"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "predictive",
+            "reported_experience",
+            "observed_signal"
+          ]
+        },
+        "required_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ClaimPolicyCheck"
+          }
+        }
+      }
+    },
+    "ClaimCheckResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_check_id",
+        "dimension",
+        "critical",
+        "status",
+        "score",
+        "evidence_refs",
+        "reason_codes"
+      ],
+      "properties": {
+        "required_check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "validity",
+            "directness",
+            "precision",
+            "transportability"
+          ]
+        },
+        "critical": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "rejected",
+            "unknown",
+            "verified_with_limit",
+            "verified"
+          ]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "EvidenceDimensionScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "score",
+        "grade"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "validity",
+            "directness",
+            "precision",
+            "transportability"
+          ]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "grade": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
         }
       }
     }

@@ -9,19 +9,19 @@
   },
   {
     "path": "schemas/core/authority.schema.json",
-    "file_digest": "c203831c74dda67c6aeca5255e32d32a2779b8e349da8968abb12fed6495009c"
+    "file_digest": "a2b9791a907df1ce076b425a23ecf1508b2ff4a152ea3ca124e2f6b2347da399"
   },
   {
     "path": "schemas/core/claims.schema.json",
-    "file_digest": "750d59f63558346b5f33ef782f2094dbdc687a1b38d34034718c533d6a8e33e7"
+    "file_digest": "cab17bb3d8ee0ef4f77a9ab4ffc64b3527bd58e2bccd85b81142de371e0c9796"
   },
   {
     "path": "schemas/core/evaluation-input.schema.json",
-    "file_digest": "5c5a6d800cdda290bb2f04f9ba636aea8095f3ba14892421c51350d34d4a8dee"
+    "file_digest": "062c2c87ec4ae06fed06cb38cbe312373020d6373e5d34fed7f837d2ede9ca0f"
   },
   {
     "path": "schemas/core/real-world-case.schema.json",
-    "file_digest": "5f0ed8aad13a323a054f96fb4b5f5a3031cf35d519aedde64db977b5123bf570"
+    "file_digest": "67714daab6cb5fe49004d56b34bbe318844784b0bec1d6c7a71d35da3bc0c3ec"
   },
   {
     "path": "schemas/core/snapshot-closure.schema.json",
@@ -29,14 +29,14 @@
   },
   {
     "path": "schemas/evaluator/output.schema.json",
-    "file_digest": "90fea2333a6e62b8d570d9c396697adef295869f84667243531a89817d337c32"
+    "file_digest": "fab990b59f5d4a90e84830fc74a3911c92baf8d150f95e2f3e96d2dae6ad4123"
   },
   {
     "path": "schemas/evaluator/rule.schema.json",
-    "file_digest": "90b71155f8194fe37482f06fde825073fd75bf82f46503be8a6175dd90590d9d"
+    "file_digest": "b12d3c3fb6f030780f2fab01c69f1a4c41273530fc10eaf7a50a40a4691f43aa"
   },
   {
     "path": "schemas/evaluator/semantic-projection.schema.json",
-    "file_digest": "8c2cbc02d37139a3d75dda242b202caf0ac1f15365524c3e4d49fb28eb84e03c"
+    "file_digest": "cde66c10a32e8613a33812d018deed3d34f0ca6fb418706429c7d48874aac219"
   }
 ]

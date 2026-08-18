@@ -59,71 +59,247 @@
   },
   "$defs": {
     "AstNode": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "node_id",
-        "op"
-      ],
-      "properties": {
-        "node_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "op": {
-          "type": "string",
-          "enum": [
-            "literal",
-            "exists",
-            "eq",
-            "in",
-            "compare",
-            "all",
-            "any",
-            "not",
-            "builtin"
-          ]
-        },
-        "value": {
-          "type": [
-            "boolean",
-            "string",
-            "number",
-            "null"
-          ]
-        },
-        "path": {
-          "type": "string"
-        },
-        "operator": {
-          "type": "string",
-          "enum": [
-            "lt",
-            "lte",
-            "gt",
-            "gte"
-          ]
-        },
-        "children": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/AstNode"
-          }
-        },
-        "child": {
-          "$ref": "#/$defs/AstNode"
-        },
-        "invariant_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "params": {
+      "oneOf": [
+        {
           "type": "object",
           "additionalProperties": false,
-          "required": [],
-          "properties": {}
+          "required": [
+            "node_id",
+            "op",
+            "value"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "literal"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "path"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "exists"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "path",
+            "value"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "eq"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": [
+                "boolean",
+                "string",
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "path",
+            "value"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "in"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": [
+                "boolean",
+                "string",
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "path",
+            "operator",
+            "value"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "compare"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "lt",
+                "lte",
+                "gt",
+                "gte"
+              ]
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "children"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "all"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/AstNode"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "children"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "any"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/AstNode"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "child"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "not"
+            },
+            "child": {
+              "$ref": "#/$defs/AstNode"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id",
+            "op",
+            "invariant_id",
+            "params"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "op": {
+              "const": "builtin"
+            },
+            "invariant_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
         }
-      }
+      ]
     },
     "ToolDependency": {
       "type": "object",

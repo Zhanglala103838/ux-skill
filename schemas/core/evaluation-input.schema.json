@@ -20,8 +20,7 @@
     "claims",
     "research_state",
     "adapter_evidence",
-    "policy_digests",
-    "inquiry_draft"
+    "policy_digests"
   ],
   "properties": {
     "schema_version": {
@@ -487,8 +486,7 @@
         "claims",
         "research_state",
         "adapter_evidence",
-        "policy_digests",
-        "inquiry_draft"
+        "policy_digests"
       ],
       "properties": {
         "schema_version": {

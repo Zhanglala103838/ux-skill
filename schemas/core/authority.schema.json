@@ -11,7 +11,15 @@
     "control_principal_edges",
     "party_graph_proofs",
     "party_inventories",
-    "authorization_decisions"
+    "authorization_decisions",
+    "execution_envelopes",
+    "approval_decisions",
+    "time_authority_policies",
+    "capabilities",
+    "capability_ledger_entries",
+    "invalidations",
+    "execution_leases",
+    "external_effect_connectors"
   ],
   "properties": {
     "authority_roots": {
@@ -54,6 +62,54 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/AuthorizationDecision"
+      }
+    },
+    "execution_envelopes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ExecutionEnvelope"
+      }
+    },
+    "approval_decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ApprovalDecision"
+      }
+    },
+    "time_authority_policies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TimeAuthorityPolicy"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Capability"
+      }
+    },
+    "capability_ledger_entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CapabilityLedgerEntry"
+      }
+    },
+    "invalidations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/InvalidationRecord"
+      }
+    },
+    "execution_leases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ExecutionLease"
+      }
+    },
+    "external_effect_connectors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ExternalEffectConnector"
       }
     }
   },
@@ -562,7 +618,15 @@
         "control_principal_edges",
         "party_graph_proofs",
         "party_inventories",
-        "authorization_decisions"
+        "authorization_decisions",
+        "execution_envelopes",
+        "approval_decisions",
+        "time_authority_policies",
+        "capabilities",
+        "capability_ledger_entries",
+        "invalidations",
+        "execution_leases",
+        "external_effect_connectors"
       ],
       "properties": {
         "authority_roots": {
@@ -606,6 +670,589 @@
           "items": {
             "$ref": "#/$defs/AuthorizationDecision"
           }
+        },
+        "execution_envelopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExecutionEnvelope"
+          }
+        },
+        "approval_decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApprovalDecision"
+          }
+        },
+        "time_authority_policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TimeAuthorityPolicy"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          }
+        },
+        "capability_ledger_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CapabilityLedgerEntry"
+          }
+        },
+        "invalidations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InvalidationRecord"
+          }
+        },
+        "execution_leases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExecutionLease"
+          }
+        },
+        "external_effect_connectors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExternalEffectConnector"
+          }
+        }
+      }
+    },
+    "ResourceVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource_id",
+        "version"
+      ],
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ExecutionEnvelopeBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "payload_digest",
+        "effect_digest",
+        "precondition_digest",
+        "postcondition_digest",
+        "resource_versions",
+        "tenant_set_digest",
+        "authorization_purpose",
+        "acting_chain_digest",
+        "grant_chain_digest",
+        "party_inventory_digest",
+        "party_effect_graph_snapshot_digest",
+        "party_effect_graph_snapshot_version",
+        "party_graph_completeness_proof_digest",
+        "time_authority_policy_digest",
+        "journey_run_id",
+        "journey_step_id",
+        "channel",
+        "audience"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "effect_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "precondition_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "postcondition_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "resource_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceVersion"
+          }
+        },
+        "tenant_set_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "authorization_purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acting_chain_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "grant_chain_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "party_inventory_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "party_effect_graph_snapshot_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "party_effect_graph_snapshot_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "party_graph_completeness_proof_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "time_authority_policy_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "journey_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "journey_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1
+        },
+        "research_guard_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "ExecutionEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "envelope_id",
+        "envelope_digest",
+        "body"
+      ],
+      "properties": {
+        "envelope_id": {
+          "type": "string",
+          "pattern": "^e_[0-9a-f]{32}$"
+        },
+        "envelope_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "body": {
+          "$ref": "#/$defs/ExecutionEnvelopeBody"
+        }
+      }
+    },
+    "ApprovalDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_decision_id",
+        "sequence",
+        "approver_context_digest",
+        "approver_authority_ref",
+        "envelope_digest",
+        "decision",
+        "effective_at",
+        "expires_at",
+        "consumed"
+      ],
+      "properties": {
+        "approval_decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "approver_context_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "approver_authority_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "envelope_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "rejected"
+          ]
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "consumed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "TimeAuthorityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time_authority_policy_id",
+        "authority",
+        "key_version",
+        "clock_profile",
+        "monotonic_profile",
+        "effective_at",
+        "expires_at",
+        "policy_digest"
+      ],
+      "properties": {
+        "time_authority_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "key_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clock_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "monotonic_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "policy_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "CapabilityBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "step_id",
+        "acting_chain_digest",
+        "session_id",
+        "channel",
+        "audience",
+        "tenant_set_digest",
+        "resource_versions",
+        "authorization_purpose",
+        "envelope_digest",
+        "nonce",
+        "expires_at",
+        "issuer_id",
+        "key_version",
+        "capability_use"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acting_chain_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant_set_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "resource_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceVersion"
+          }
+        },
+        "authorization_purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "envelope_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "issuer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capability_use": {
+          "type": "string",
+          "enum": [
+            "execute",
+            "recover"
+          ]
+        }
+      }
+    },
+    "Capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "capability_digest",
+        "body",
+        "authenticator",
+        "ledger_ref"
+      ],
+      "properties": {
+        "capability_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capability_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "body": {
+          "$ref": "#/$defs/CapabilityBody"
+        },
+        "authenticator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ledger_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "CapabilityLedgerEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_digest",
+        "status",
+        "consumed_at",
+        "consumption_effect_digest"
+      ],
+      "properties": {
+        "capability_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "unused",
+            "consumed"
+          ]
+        },
+        "consumed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "consumption_effect_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "InvalidationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invalidation_id",
+        "ancestor_artifact_digest",
+        "reason_code",
+        "invalidated_at",
+        "tombstone_digest"
+      ],
+      "properties": {
+        "invalidation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ancestor_artifact_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invalidated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tombstone_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "ExecutionLease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_lease_id",
+        "envelope_digest",
+        "guard_snapshot_digest",
+        "effective_at",
+        "expires_at",
+        "lease_digest"
+      ],
+      "properties": {
+        "execution_lease_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "envelope_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "guard_snapshot_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lease_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "ExternalEffectConnector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connector_id",
+        "receiver_id",
+        "supports_idempotency",
+        "supports_fencing",
+        "idempotency_key_field",
+        "ack_semantics",
+        "effect_query_semantics"
+      ],
+      "properties": {
+        "connector_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiver_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supports_idempotency": {
+          "type": "boolean"
+        },
+        "supports_fencing": {
+          "type": "boolean"
+        },
+        "idempotency_key_field": {
+          "const": "envelope_digest"
+        },
+        "ack_semantics": {
+          "type": "string",
+          "enum": [
+            "authoritative",
+            "best_effort",
+            "unknown"
+          ]
+        },
+        "effect_query_semantics": {
+          "type": "string",
+          "enum": [
+            "supported",
+            "unsupported"
+          ]
         }
       }
     }
