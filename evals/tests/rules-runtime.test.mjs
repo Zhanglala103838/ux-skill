@@ -129,14 +129,20 @@ test('finding fingerprints canonicalize scenario ids and are deterministic',()=>
  assert.equal(a.fingerprint_full_digest,expected);
  assert.equal(a.finding_id,`f_${expected.slice(0,32)}`);
 });
-
-test('RunStatus uses fixed priority and rejects unregistered reason codes',()=>{
- const pass={terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS',release_critical:false};
+test('RunStatus uses complete producer results, fixed priority, and rejects unregistered reasons',()=>{
+ const enrich=(evaluation)=>({...evaluation,schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'ui/target',target_snapshot_digest:'3'.repeat(64),scenario_binding_ids:['z','a'],claim_key:null});
+ const pass=evalRule();
+ const gap=evalRule({registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
+ const escalationEvaluation=evalRule({release_critical:true,registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
+ const escalation=emitFinding(enrich(escalationEvaluation));
+ const blockEvaluation=evalRule({finding_type:'block',check:lit('check',false)});
+ const block=emitFinding(enrich(blockEvaluation));
+ const criticalError=evalRule({release_critical:true,check:eq('check','/target/passes',true)},{target:{passes:[]}});
  assert.equal(reduceRunStatus([pass]),'completed_clear');
- assert.equal(reduceRunStatus([pass,{terminal:'completed',outcome:'unknown',reason_code:'CHECK_UNKNOWN',release_critical:false}]),'completed_with_gaps');
- assert.equal(reduceRunStatus([pass,{finding_type:'escalation',emission_reason_code:'RELEASE_CRITICAL_UNKNOWN'}]),'completed_escalated');
- assert.equal(reduceRunStatus([pass,{finding_type:'block',emission_reason_code:'RULE_CHECK_FAILED'}]),'completed_blocked');
- assert.equal(reduceRunStatus([{terminal:'completed',outcome:'evaluation_error',reason_code:'CHECK_EVALUATION_ERROR',release_critical:true},{finding_type:'block',emission_reason_code:'RULE_CHECK_FAILED'}]),'failed');
+ assert.equal(reduceRunStatus([pass,gap]),'completed_with_gaps');
+ assert.equal(reduceRunStatus([pass,escalationEvaluation,escalation]),'completed_escalated');
+ assert.equal(reduceRunStatus([pass,blockEvaluation,block]),'completed_blocked');
+ assert.equal(reduceRunStatus([criticalError,criticalError.run_issue]),'failed');
  assert.equal(reduceRunStatus([{terminal:'completed',outcome:'pass',reason_code:'UNREGISTERED'}]),'failed');
 });
 
@@ -225,4 +231,86 @@ test('unregistered AST paths and required pointers outside registry are invalid 
  assert.equal(reduceRunStatus([validIssue,noncritical]),'completed_with_gaps');
  const critical={...noncritical,release_critical:true};
  assert.equal(reduceRunStatus([validIssue,critical]),'failed');
+});
+test('TASK5_FULL_PART_UNION_RED',()=>{
+ const enrich=(evaluation)=>({...evaluation,schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'ui/target',target_snapshot_digest:'4'.repeat(64),scenario_binding_ids:['z','a'],claim_key:null});
+ const issue={code:'RULE_EVALUATION_ERROR',instance_pointer:'/check',dependency_id:null};
+ const passBlock=evalRule({finding_type:'block'});
+ const failBlock=evalRule({finding_type:'block',check:lit('check',false)});
+ const blockFinding=emitFinding(enrich(failBlock));
+ const criticalUnknown=evalRule({release_critical:true,registered_input_pointers:['/target/enabled'],required_input_pointers:[],applicability:eq('app','/target/enabled',true)},{target:{}});
+ const escalationFinding=emitFinding(enrich(criticalUnknown));
+ const criticalError=evalRule({release_critical:true,check:eq('check','/target/passes',true)},{target:{passes:[]}});
+ const criticalErrorFinding=emitFinding(enrich(criticalError));
+ const noncriticalError=evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}});
+ const invalidInput=evaluateRule(baseRule(),null,[]);
+ const invalidRule=evaluateRule(baseRule({registered_input_pointers:['/target/enabled'],required_input_pointers:[],check:eq('check','/target/passes',true)}),{target:{passes:true}},[]);
+ assert.equal(reduceRunStatus([passBlock]),'completed_clear');
+ assert.equal(reduceRunStatus([failBlock,blockFinding]),'completed_blocked');
+ assert.equal(reduceRunStatus([criticalUnknown,escalationFinding]),'completed_escalated');
+ assert.equal(reduceRunStatus([criticalError,criticalErrorFinding,criticalError.run_issue]),'failed');
+ assert.equal(reduceRunStatus([noncriticalError,noncriticalError.run_issue]),'completed_with_gaps');
+ assert.equal(reduceRunStatus([invalidInput,invalidInput.run_issue]),'failed');
+ assert.equal(reduceRunStatus([invalidRule,invalidRule.run_issue]),'failed');
+ assert.equal(reduceRunStatus([issue]),'completed_clear');
+ assert.equal(reduceRunStatus([]),'completed_clear');
+
+ const ruleKeys=['dependency_trace','finding_type','outcome','reason_code','release_critical','rule_id','rule_version','run_issue','terminal','trace'];
+ const findingKeys=['emission_reason_code','finding_id','finding_type','fingerprint','fingerprint_full_digest','rule_id','rule_version'];
+ const issueKeys=['code','dependency_id','instance_pointer'];
+ assert.deepEqual(Object.keys(passBlock).sort(),ruleKeys);
+ assert.deepEqual(Object.keys(blockFinding).sort(),findingKeys);
+ assert.deepEqual(Object.keys(issue).sort(),issueKeys);
+ const missingOne=(value,key)=>{const copy=structuredClone(value);delete copy[key];return copy;};
+ for(const key of ruleKeys)assert.equal(reduceRunStatus([missingOne(passBlock,key)]),'failed',`rule missing ${key}`);
+ for(const key of findingKeys)assert.equal(reduceRunStatus([missingOne(blockFinding,key)]),'failed',`finding missing ${key}`);
+ for(const key of issueKeys)assert.equal(reduceRunStatus([missingOne(issue,key)]),'failed',`issue missing ${key}`);
+ assert.equal(reduceRunStatus([{...passBlock,unexpected:true}]),'failed');
+ assert.equal(reduceRunStatus([{...blockFinding,unexpected:true}]),'failed');
+ assert.equal(reduceRunStatus([{...issue,unexpected:true}]),'failed');
+ assert.equal(reduceRunStatus([{...passBlock,...blockFinding}]),'failed');
+ assert.equal(reduceRunStatus([{...blockFinding,...issue}]),'failed');
+ assert.equal(reduceRunStatus([{terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS',release_critical:false}]),'failed');
+ assert.equal(reduceRunStatus([{finding_type:'block',emission_reason_code:'RULE_CHECK_FAILED'}]),'failed');
+ assert.equal(reduceRunStatus([{rule_id:'r',terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS'}]),'failed');
+
+ for(const code of ['CHECK_PASS','RULE_CHECK_FAILED','FINDING_REASON_INVALID'])assert.equal(reduceRunStatus([{...issue,code}]),'failed',code);
+ assert.equal(reduceRunStatus([{...issue,dependency_id:''}]),'failed');
+ assert.equal(reduceRunStatus([{...issue,note:'extra'}]),'failed');
+ const seal=(finding)=>{const copy=structuredClone(finding);const digest=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(copy.fingerprint)).digest('hex');copy.fingerprint_full_digest=digest;copy.finding_id=`f_${digest.slice(0,32)}`;return copy;};
+ assert.equal(reduceRunStatus([{...blockFinding,finding_type:'unknown'}]),'failed');
+ assert.equal(reduceRunStatus([{...blockFinding,rule_id:'tampered'}]),'failed');
+ assert.equal(reduceRunStatus([{...blockFinding,fingerprint_full_digest:'0'.repeat(64)}]),'failed');
+ assert.equal(reduceRunStatus([{...blockFinding,finding_id:'f_deadbeef'}]),'failed');
+ const noncanonical=structuredClone(blockFinding);noncanonical.fingerprint.scenario_binding_ids=['z','a'];assert.equal(reduceRunStatus([seal(noncanonical)]),'failed');
+ const duplicateScenario=structuredClone(blockFinding);duplicateScenario.fingerprint.scenario_binding_ids=['a','a'];assert.equal(reduceRunStatus([seal(duplicateScenario)]),'failed');
+ const badPair=structuredClone(blockFinding);badPair.finding_type='unknown';badPair.emission_reason_code='RELEASE_CRITICAL_UNKNOWN';badPair.fingerprint.finding_type='unknown';badPair.fingerprint.emission_reason_code='RELEASE_CRITICAL_UNKNOWN';assert.equal(reduceRunStatus([seal(badPair)]),'failed');
+
+ const fullRule=(terminal,outcome,reason_code,release_critical=false,run_issue_value=outcome==='evaluation_error'?issue:null)=>({...passBlock,terminal,outcome,reason_code,release_critical,run_issue:run_issue_value,trace:[],dependency_trace:[]});
+ const legalRows=[
+  ['invalid_input','evaluation_error','INVALID_INPUT','failed'],['invalid_rule','evaluation_error','INVALID_RULE','failed'],
+  ['tool_failed','evaluation_error','REQUIRED_TOOL_INVALID_REQUEST','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_AUTH_ERROR','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_INCOMPATIBLE_SOURCE','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_TIMEOUT','completed_with_gaps'],['tool_failed','evaluation_error','REQUIRED_TOOL_SERVER_ERROR','completed_with_gaps'],
+  ['cancelled','not_run','REQUIRED_TOOL_CANCELLED','completed_with_gaps'],['completed','pass','CHECK_PASS','completed_clear'],['completed','fail','CHECK_FAILED','completed_clear'],['completed','partial','CHECK_PARTIAL','completed_with_gaps'],['completed','not_run','REQUIRED_INPUT_PARTIAL','completed_with_gaps'],['completed','not_run','REQUIRED_INPUT_NOT_FOUND','completed_with_gaps'],['completed','not_run','PRECONDITION_FALSE','completed_with_gaps'],['completed','not_run','PRECONDITION_UNKNOWN','completed_with_gaps'],['completed','not_applicable','APPLICABILITY_FALSE','completed_clear'],['completed','not_applicable','EXCLUSION_TRUE','completed_clear'],['completed','unknown','APPLICABILITY_UNKNOWN','completed_with_gaps'],['completed','unknown','EXCLUSION_UNKNOWN','completed_with_gaps'],['completed','unknown','CHECK_UNKNOWN','completed_with_gaps'],['completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR','completed_with_gaps'],['completed','evaluation_error','PRECONDITION_EVALUATION_ERROR','completed_with_gaps'],['completed','evaluation_error','CHECK_EVALUATION_ERROR','completed_with_gaps']
+ ];
+ for(const [terminal,outcome,reason,status] of legalRows)assert.equal(reduceRunStatus([fullRule(terminal,outcome,reason)]),status,`${terminal}/${outcome}/${reason}`);
+ for(const invalid of [fullRule('completed','pass','CHECK_FAILED'),fullRule('cancelled','evaluation_error','REQUIRED_TOOL_CANCELLED'),fullRule('tool_failed','evaluation_error','CHECK_EVALUATION_ERROR'),fullRule('completed','evaluation_error','CHECK_EVALUATION_ERROR',false,null),fullRule('completed','pass','CHECK_PASS',false,issue)])assert.equal(reduceRunStatus([invalid]),'failed');
+
+ const traced=evalRule({applicability:{node_id:'root',op:'all',children:[lit('a',true),lit('b',true)]}});
+ assert.ok(traced.trace.length>0);
+ for(const traceRow of traced.trace)assert.deepEqual(Object.keys(traceRow).sort(),['node_id','parent_node_id','value']);
+ const badTraceAdditional=structuredClone(traced);badTraceAdditional.trace[0].extra=true;assert.equal(reduceRunStatus([badTraceAdditional]),'failed');
+ const badTraceMissing=structuredClone(traced);delete badTraceMissing.trace[0].node_id;assert.equal(reduceRunStatus([badTraceMissing]),'failed');
+ const badTraceValue=structuredClone(traced);badTraceValue.trace[0].value='X';assert.equal(reduceRunStatus([badTraceValue]),'failed');
+ const depended=evaluateRule(baseRule({required_dependencies:[{dependency_id:'ready',required:true}]}),{target:{}},[dep('ready','success',true)]);
+ assert.deepEqual(Object.keys(depended.dependency_trace[0]).sort(),['complete','dependency_id','status']);
+ const badDepAdditional=structuredClone(depended);badDepAdditional.dependency_trace[0].extra=true;assert.equal(reduceRunStatus([badDepAdditional]),'failed');
+ const badDepStatus=structuredClone(depended);badDepStatus.dependency_trace[0].status='invented';assert.equal(reduceRunStatus([badDepStatus]),'failed');
+ const badDepType=structuredClone(depended);badDepType.dependency_trace[0].complete='true';assert.equal(reduceRunStatus([badDepType]),'failed');
+
+ const cycle={};cycle.self=cycle;
+ const accessor={};Object.defineProperty(accessor,'terminal',{enumerable:true,get(){throw new Error('getter');}});
+ const proxy=new Proxy({}, {ownKeys(){throw new Error('proxy');}});
+ for(const hostile of [cycle,accessor,proxy,{...issue,dependency_id:'e\u0301'},{...issue,dependency_id:'\ud800'}]){assert.doesNotThrow(()=>reduceRunStatus([hostile]));assert.equal(reduceRunStatus([hostile]),'failed');}
+ const parts=[failBlock,blockFinding,issue];
+ assert.equal(reduceRunStatus(parts),reduceRunStatus([...parts].reverse()));
 });
