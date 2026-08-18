@@ -1,0 +1,590 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json",
+  "title": "EvaluationInputBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "behavior_version",
+    "evaluation_effective_at",
+    "request_mode",
+    "target_snapshot",
+    "scenario_profile_id",
+    "scenario_profiles",
+    "candidate_universe",
+    "journeys",
+    "source_registry_refs",
+    "evidence",
+    "studies",
+    "claims",
+    "research_state",
+    "adapter_evidence",
+    "policy_digests",
+    "inquiry_draft"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "evaluation-input-v1"
+    },
+    "behavior_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evaluation_effective_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "request_mode": {
+      "type": "string",
+      "enum": [
+        "guide",
+        "scan",
+        "refactor",
+        "verify"
+      ]
+    },
+    "target_snapshot": {
+      "$ref": "#/$defs/TargetSnapshot"
+    },
+    "scenario_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario_profiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ScenarioProfile"
+      }
+    },
+    "candidate_universe": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Solution"
+      }
+    },
+    "journeys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Journey"
+      }
+    },
+    "source_registry_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EvidenceArtifact"
+      }
+    },
+    "studies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Study"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Claim"
+      }
+    },
+    "research_state": {
+      "$ref": "#/$defs/ResearchState"
+    },
+    "adapter_evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AdapterEvidence"
+      }
+    },
+    "policy_digests": {
+      "$ref": "#/$defs/PolicyDigests"
+    },
+    "inquiry_draft": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InquiryDraft"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "TargetSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_snapshot_id",
+        "target_kind",
+        "canonical_locator",
+        "snapshot_digest"
+      ],
+      "properties": {
+        "target_snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_kind": {
+          "type": "string",
+          "enum": [
+            "black_box_site",
+            "pinned_repository",
+            "hulianui_contract"
+          ]
+        },
+        "canonical_locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        },
+        "snapshot_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "ScenarioProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario_profile_id",
+        "scenario_family_id"
+      ],
+      "properties": {
+        "scenario_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_family_id": {
+          "type": "string",
+          "enum": [
+            "admin-internal-tool",
+            "ai-assisted-workflow",
+            "brand-marketing-website",
+            "consumer-transaction",
+            "cross-channel-service",
+            "developer-documentation",
+            "public-service-information",
+            "retail-commerce-discovery"
+          ]
+        }
+      }
+    },
+    "Solution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "solution_id",
+        "option_ids"
+      ],
+      "properties": {
+        "solution_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "option_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "Journey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journey_id",
+        "step_ids"
+      ],
+      "properties": {
+        "journey_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "EvidenceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "artifact_digest",
+        "source_ref"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_kind": {
+          "type": "string",
+          "enum": [
+            "page-content",
+            "runtime",
+            "code",
+            "component-contract",
+            "research"
+          ]
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Study": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "study_id",
+        "study_kind",
+        "execution_digest",
+        "status"
+      ],
+      "properties": {
+        "study_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "study_kind": {
+          "type": "string",
+          "enum": [
+            "observational",
+            "experimental",
+            "research-review"
+          ]
+        },
+        "execution_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "completed",
+            "invalid"
+          ]
+        }
+      }
+    },
+    "Claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "claim_kind",
+        "relation_kind",
+        "predicate_id",
+        "population_id",
+        "context_id",
+        "time_scope_id",
+        "subject_id",
+        "value",
+        "evidence_refs"
+      ],
+      "properties": {
+        "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "predictive",
+            "reported_experience",
+            "observed_signal"
+          ]
+        },
+        "relation_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "associational",
+            "predictive",
+            "descriptive",
+            "reported_experience",
+            "observed_signal",
+            "unresolved"
+          ]
+        },
+        "predicate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "population_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "time_scope_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ResearchState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "research_state_id",
+        "status",
+        "authorization_ref"
+      ],
+      "properties": {
+        "research_state_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_requested",
+            "planned",
+            "authorized",
+            "blocked",
+            "completed"
+          ]
+        },
+        "authorization_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AdapterEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter_evidence_id",
+        "adapter_contract_id",
+        "artifact_digest"
+      ],
+      "properties": {
+        "adapter_evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapter_contract_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "PolicyDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_policy_digest",
+        "claim_policy_digest",
+        "rule_registry_digest"
+      ],
+      "properties": {
+        "decision_policy_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "claim_policy_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rule_registry_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "InquiryDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inquiry_draft_id",
+        "text",
+        "authoritative"
+      ],
+      "properties": {
+        "inquiry_draft_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "authoritative": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EvaluationInputBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "behavior_version",
+        "evaluation_effective_at",
+        "request_mode",
+        "target_snapshot",
+        "scenario_profile_id",
+        "scenario_profiles",
+        "candidate_universe",
+        "journeys",
+        "source_registry_refs",
+        "evidence",
+        "studies",
+        "claims",
+        "research_state",
+        "adapter_evidence",
+        "policy_digests",
+        "inquiry_draft"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "evaluation-input-v1"
+        },
+        "behavior_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "request_mode": {
+          "type": "string",
+          "enum": [
+            "guide",
+            "scan",
+            "refactor",
+            "verify"
+          ]
+        },
+        "target_snapshot": {
+          "$ref": "#/$defs/TargetSnapshot"
+        },
+        "scenario_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScenarioProfile"
+          }
+        },
+        "candidate_universe": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Solution"
+          }
+        },
+        "journeys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Journey"
+          }
+        },
+        "source_registry_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceArtifact"
+          }
+        },
+        "studies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Study"
+          }
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Claim"
+          }
+        },
+        "research_state": {
+          "$ref": "#/$defs/ResearchState"
+        },
+        "adapter_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AdapterEvidence"
+          }
+        },
+        "policy_digests": {
+          "$ref": "#/$defs/PolicyDigests"
+        },
+        "inquiry_draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InquiryDraft"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

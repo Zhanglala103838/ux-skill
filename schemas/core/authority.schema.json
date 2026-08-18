@@ -1,0 +1,613 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/core/authority.schema.json",
+  "title": "AuthorityBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authority_roots",
+    "acting_edges",
+    "grants",
+    "control_principal_edges",
+    "party_graph_proofs",
+    "party_inventories",
+    "authorization_decisions"
+  ],
+  "properties": {
+    "authority_roots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AuthorityRootRecord"
+      }
+    },
+    "acting_edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ActingEdge"
+      }
+    },
+    "grants": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Grant"
+      }
+    },
+    "control_principal_edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ControlPrincipalEdge"
+      }
+    },
+    "party_graph_proofs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PartyEffectGraphCompletenessProof"
+      }
+    },
+    "party_inventories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PartyInventory"
+      }
+    },
+    "authorization_decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AuthorizationDecision"
+      }
+    }
+  },
+  "$defs": {
+    "ActorIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace_uri",
+        "issuer_id",
+        "subject_id",
+        "kind"
+      ],
+      "properties": {
+        "namespace_uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "issuer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "human",
+            "service",
+            "organization",
+            "agent"
+          ]
+        }
+      }
+    },
+    "AuthorityScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actions",
+        "resource_types",
+        "tenant_ids",
+        "purposes"
+      ],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "resource_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "tenant_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "purposes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "AuthorityRootRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_root_id",
+        "issuer",
+        "allowed_grant_scopes",
+        "allowed_representation_scopes",
+        "effective_at",
+        "expires_at",
+        "key_version",
+        "revoked"
+      ],
+      "properties": {
+        "authority_root_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuer": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "allowed_grant_scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AuthorityScope"
+          }
+        },
+        "allowed_representation_scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AuthorityScope"
+          }
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "key_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revoked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ActingEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edge_id",
+        "sequence",
+        "from",
+        "to",
+        "basis_ref",
+        "scope",
+        "effective_at",
+        "expires_at",
+        "version",
+        "validity"
+      ],
+      "properties": {
+        "edge_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "from": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "to": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "basis_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/$defs/AuthorityScope"
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validity": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "rejected",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "Grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grant_id",
+        "issuer",
+        "subject",
+        "parent_grant_id",
+        "scope",
+        "effective_at",
+        "expires_at",
+        "status",
+        "delegable",
+        "remaining_depth",
+        "epoch",
+        "version",
+        "proof_digest"
+      ],
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuer": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "subject": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "parent_grant_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/AuthorityScope"
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "revoked",
+            "unknown"
+          ]
+        },
+        "delegable": {
+          "type": "boolean"
+        },
+        "remaining_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proof_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "ControlPrincipalEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control_edge_id",
+        "from",
+        "to",
+        "basis_ref",
+        "effective_at",
+        "expires_at",
+        "status"
+      ],
+      "properties": {
+        "control_edge_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "to": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "basis_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "rejected",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "PartyEffectGraphCompletenessProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proof_id",
+        "effect_scope_digest",
+        "resource_scope_digest",
+        "data_source_ids",
+        "snapshot_digest",
+        "snapshot_version",
+        "effective_at",
+        "expires_at",
+        "closure_algorithm_id",
+        "closure_algorithm_version",
+        "verification_status"
+      ],
+      "properties": {
+        "proof_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effect_scope_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "resource_scope_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "data_source_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "snapshot_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "snapshot_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closure_algorithm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "closure_algorithm_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "rejected",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "PartyInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "party_inventory_id",
+        "status",
+        "party_ids",
+        "inventory_digest"
+      ],
+      "properties": {
+        "party_inventory_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified_complete",
+            "verified_no_affected_party",
+            "unknown"
+          ]
+        },
+        "party_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "inventory_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "AuthorizationDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorization_decision_id",
+        "status",
+        "effective_actor",
+        "acting_chain_digest",
+        "grant_chain_digest",
+        "tenant_binding_set_digest",
+        "reason_code"
+      ],
+      "properties": {
+        "authorization_decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "block",
+            "escalation",
+            "invalid_input"
+          ]
+        },
+        "effective_actor": {
+          "$ref": "#/$defs/ActorIdentity"
+        },
+        "acting_chain_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "grant_chain_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tenant_binding_set_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "AuthorityBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_roots",
+        "acting_edges",
+        "grants",
+        "control_principal_edges",
+        "party_graph_proofs",
+        "party_inventories",
+        "authorization_decisions"
+      ],
+      "properties": {
+        "authority_roots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AuthorityRootRecord"
+          }
+        },
+        "acting_edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActingEdge"
+          }
+        },
+        "grants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Grant"
+          }
+        },
+        "control_principal_edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ControlPrincipalEdge"
+          }
+        },
+        "party_graph_proofs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PartyEffectGraphCompletenessProof"
+          }
+        },
+        "party_inventories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PartyInventory"
+          }
+        },
+        "authorization_decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AuthorizationDecision"
+          }
+        }
+      }
+    }
+  }
+}

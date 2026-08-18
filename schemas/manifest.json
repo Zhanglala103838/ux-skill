@@ -1,0 +1,42 @@
+[
+  {
+    "path": "schemas/adapters/hulian-component-doc-v1.schema.json",
+    "file_digest": "86a4dc87401cbc8c5bb12ac181e3f9aa06fa02b87ffa662dc6093c1279ea46bb"
+  },
+  {
+    "path": "schemas/adapters/hulian-evaluation-request-v1.schema.json",
+    "file_digest": "f3e3062a97ce9d58ab660b3007f0b0287e6b1c1f1131e942e16d36170cea79af"
+  },
+  {
+    "path": "schemas/core/authority.schema.json",
+    "file_digest": "c203831c74dda67c6aeca5255e32d32a2779b8e349da8968abb12fed6495009c"
+  },
+  {
+    "path": "schemas/core/claims.schema.json",
+    "file_digest": "750d59f63558346b5f33ef782f2094dbdc687a1b38d34034718c533d6a8e33e7"
+  },
+  {
+    "path": "schemas/core/evaluation-input.schema.json",
+    "file_digest": "5c5a6d800cdda290bb2f04f9ba636aea8095f3ba14892421c51350d34d4a8dee"
+  },
+  {
+    "path": "schemas/core/real-world-case.schema.json",
+    "file_digest": "5f0ed8aad13a323a054f96fb4b5f5a3031cf35d519aedde64db977b5123bf570"
+  },
+  {
+    "path": "schemas/core/snapshot-closure.schema.json",
+    "file_digest": "19b22528c5111c12a59d3a0617f444181b4174843ab77dc458b2bfd8a0306229"
+  },
+  {
+    "path": "schemas/evaluator/output.schema.json",
+    "file_digest": "90fea2333a6e62b8d570d9c396697adef295869f84667243531a89817d337c32"
+  },
+  {
+    "path": "schemas/evaluator/rule.schema.json",
+    "file_digest": "90b71155f8194fe37482f06fde825073fd75bf82f46503be8a6175dd90590d9d"
+  },
+  {
+    "path": "schemas/evaluator/semantic-projection.schema.json",
+    "file_digest": "8c2cbc02d37139a3d75dda242b202caf0ac1f15365524c3e4d49fb28eb84e03c"
+  }
+]

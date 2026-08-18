@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/evaluator/rule.schema.json",
+  "title": "Rule",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rule_id",
+    "rule_version",
+    "release_critical",
+    "finding_type",
+    "required_dependencies",
+    "required_input_pointers",
+    "applicability",
+    "exclusion",
+    "precondition",
+    "check"
+  ],
+  "properties": {
+    "rule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rule_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "release_critical": {
+      "type": "boolean"
+    },
+    "finding_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ToolDependency"
+      }
+    },
+    "required_input_pointers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "applicability": {
+      "$ref": "#/$defs/AstNode"
+    },
+    "exclusion": {
+      "$ref": "#/$defs/AstNode"
+    },
+    "precondition": {
+      "$ref": "#/$defs/AstNode"
+    },
+    "check": {
+      "$ref": "#/$defs/AstNode"
+    }
+  },
+  "$defs": {
+    "AstNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "op"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "literal",
+            "exists",
+            "eq",
+            "in",
+            "compare",
+            "all",
+            "any",
+            "not",
+            "builtin"
+          ]
+        },
+        "value": {
+          "type": [
+            "boolean",
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "lt",
+            "lte",
+            "gt",
+            "gte"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AstNode"
+          }
+        },
+        "child": {
+          "$ref": "#/$defs/AstNode"
+        },
+        "invariant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {}
+        }
+      }
+    },
+    "ToolDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependency_id",
+        "required"
+      ],
+      "properties": {
+        "dependency_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "rule_version",
+        "release_critical",
+        "finding_type",
+        "required_dependencies",
+        "required_input_pointers",
+        "applicability",
+        "exclusion",
+        "precondition",
+        "check"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "release_critical": {
+          "type": "boolean"
+        },
+        "finding_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolDependency"
+          }
+        },
+        "required_input_pointers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applicability": {
+          "$ref": "#/$defs/AstNode"
+        },
+        "exclusion": {
+          "$ref": "#/$defs/AstNode"
+        },
+        "precondition": {
+          "$ref": "#/$defs/AstNode"
+        },
+        "check": {
+          "$ref": "#/$defs/AstNode"
+        }
+      }
+    }
+  }
+}

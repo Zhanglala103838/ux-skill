@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/adapters/hulian-evaluation-request-v1.schema.json",
+  "title": "HulianEvaluationRequestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_mode",
+    "bundle_base",
+    "component_request"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "hulian-evaluation-request-v1"
+    },
+    "request_mode": {
+      "type": "string",
+      "enum": [
+        "guide",
+        "scan",
+        "refactor",
+        "verify"
+      ]
+    },
+    "bundle_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "behavior_version",
+        "evaluation_effective_at",
+        "target_snapshot",
+        "scenario_profile_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "behavior_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "target_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_snapshot_id",
+            "target_kind",
+            "canonical_locator",
+            "snapshot_digest"
+          ],
+          "properties": {
+            "target_snapshot_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_kind": {
+              "type": "string",
+              "enum": [
+                "black_box_site",
+                "pinned_repository",
+                "hulianui_contract"
+              ]
+            },
+            "canonical_locator": {
+              "type": "string",
+              "format": "canonical-relative-path"
+            },
+            "snapshot_digest": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "scenario_profile_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "component_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "format",
+        "sections"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string",
+          "const": "json"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "props",
+              "events",
+              "slots"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "HulianEvaluationRequestV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "request_mode",
+        "bundle_base",
+        "component_request"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "hulian-evaluation-request-v1"
+        },
+        "request_mode": {
+          "type": "string",
+          "enum": [
+            "guide",
+            "scan",
+            "refactor",
+            "verify"
+          ]
+        },
+        "bundle_base": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "behavior_version",
+            "evaluation_effective_at",
+            "target_snapshot",
+            "scenario_profile_id"
+          ],
+          "properties": {
+            "schema_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "behavior_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evaluation_effective_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "target_snapshot": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "target_snapshot_id",
+                "target_kind",
+                "canonical_locator",
+                "snapshot_digest"
+              ],
+              "properties": {
+                "target_snapshot_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "target_kind": {
+                  "type": "string",
+                  "enum": [
+                    "black_box_site",
+                    "pinned_repository",
+                    "hulianui_contract"
+                  ]
+                },
+                "canonical_locator": {
+                  "type": "string",
+                  "format": "canonical-relative-path"
+                },
+                "snapshot_digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            },
+            "scenario_profile_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "component_request": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "format",
+            "sections"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "format": {
+              "type": "string",
+              "const": "json"
+            },
+            "sections": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "props",
+                  "events",
+                  "slots"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

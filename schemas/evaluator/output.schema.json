@@ -1,0 +1,527 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/evaluator/output.schema.json",
+  "title": "EvaluationOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "behavior_version",
+    "input_digest",
+    "evaluator_digest",
+    "run_status",
+    "validation_errors",
+    "rule_evaluations",
+    "findings",
+    "run_issues",
+    "claim_assessments",
+    "risk_assessments",
+    "recommendation_assessments",
+    "release_recommendation",
+    "resolution_traces",
+    "inquiry_validation",
+    "coverage_gaps"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "behavior_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evaluator_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "run_status": {
+      "type": "string",
+      "enum": [
+        "failed",
+        "completed_blocked",
+        "completed_escalated",
+        "completed_with_gaps",
+        "completed_clear"
+      ]
+    },
+    "validation_errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/NormalizedError"
+      }
+    },
+    "rule_evaluations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RuleEvaluation"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      }
+    },
+    "run_issues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RunIssue"
+      }
+    },
+    "claim_assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AssessmentItem"
+      }
+    },
+    "risk_assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AssessmentItem"
+      }
+    },
+    "recommendation_assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AssessmentItem"
+      }
+    },
+    "release_recommendation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReleaseRecommendation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "resolution_traces": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ResolutionTrace"
+      }
+    },
+    "inquiry_validation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InquiryValidation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "coverage_gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CoverageGap"
+      }
+    }
+  },
+  "$defs": {
+    "NormalizedError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "code",
+        "instance_pointer",
+        "invariant_or_schema_id",
+        "params_jcs"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "parse",
+            "nfc",
+            "schema",
+            "collections",
+            "semantic"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance_pointer": {
+          "type": "string"
+        },
+        "invariant_or_schema_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params_jcs": {
+          "type": "string"
+        }
+      }
+    },
+    "RuleEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "outcome",
+        "reason_code",
+        "release_critical"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "partial",
+            "not_run",
+            "unknown",
+            "not_applicable",
+            "evaluation_error"
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "release_critical": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "rule_id",
+        "finding_type",
+        "emission_reason_code",
+        "canonical_target_locator",
+        "target_snapshot_digest"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finding_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emission_reason_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_target_locator": {
+          "type": "string"
+        },
+        "target_snapshot_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "RunIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "instance_pointer",
+        "dependency_id"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance_pointer": {
+          "type": "string"
+        },
+        "dependency_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AssessmentItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment_id",
+        "status",
+        "reason_codes"
+      ],
+      "properties": {
+        "assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ReleaseRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "next_action",
+        "condition_ids"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "allow_with_conditions",
+            "block",
+            "escalation",
+            "undecided",
+            "no_release"
+          ]
+        },
+        "next_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ResolutionTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolution_trace_id",
+        "trace_digest",
+        "node_ids"
+      ],
+      "properties": {
+        "resolution_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "InquiryValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authoritative",
+        "gap_ids",
+        "status"
+      ],
+      "properties": {
+        "authoritative": {
+          "type": "boolean"
+        },
+        "gap_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "valid",
+            "invalid",
+            "incomplete"
+          ]
+        }
+      }
+    },
+    "CoverageGap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage_gap_id",
+        "reason_code",
+        "release_critical"
+      ],
+      "properties": {
+        "coverage_gap_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "release_critical": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EvaluationOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "behavior_version",
+        "input_digest",
+        "evaluator_digest",
+        "run_status",
+        "validation_errors",
+        "rule_evaluations",
+        "findings",
+        "run_issues",
+        "claim_assessments",
+        "risk_assessments",
+        "recommendation_assessments",
+        "release_recommendation",
+        "resolution_traces",
+        "inquiry_validation",
+        "coverage_gaps"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "behavior_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evaluator_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "run_status": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "completed_blocked",
+            "completed_escalated",
+            "completed_with_gaps",
+            "completed_clear"
+          ]
+        },
+        "validation_errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NormalizedError"
+          }
+        },
+        "rule_evaluations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuleEvaluation"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Finding"
+          }
+        },
+        "run_issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunIssue"
+          }
+        },
+        "claim_assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AssessmentItem"
+          }
+        },
+        "risk_assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AssessmentItem"
+          }
+        },
+        "recommendation_assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AssessmentItem"
+          }
+        },
+        "release_recommendation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReleaseRecommendation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolution_traces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResolutionTrace"
+          }
+        },
+        "inquiry_validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InquiryValidation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage_gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CoverageGap"
+          }
+        }
+      }
+    }
+  }
+}

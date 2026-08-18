@@ -1,0 +1,531 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/core/claims.schema.json",
+  "title": "ClaimsBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sources",
+    "fragments",
+    "proposition_assessments",
+    "policy_adoptions",
+    "claims",
+    "claim_assessments"
+  ],
+  "properties": {
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SourceRecord"
+      }
+    },
+    "fragments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SourceFragment"
+      }
+    },
+    "proposition_assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FragmentPropositionAssessment"
+      }
+    },
+    "policy_adoptions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PolicyAdoptionRecord"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Claim"
+      }
+    },
+    "claim_assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ClaimAssessment"
+      }
+    }
+  },
+  "$defs": {
+    "SourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "publisher",
+        "canonical_uri",
+        "version",
+        "status",
+        "effective_at",
+        "expires_at",
+        "content_digest"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publisher": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "effective",
+            "superseded",
+            "withdrawn",
+            "unknown"
+          ]
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "SourceFragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fragment_id",
+        "source_id",
+        "locator",
+        "fragment_kind",
+        "fragment_digest",
+        "proposition_id"
+      ],
+      "properties": {
+        "fragment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fragment_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "empirical",
+            "informative",
+            "example"
+          ]
+        },
+        "fragment_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "proposition_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "FragmentPropositionAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment_id",
+        "fragment_digest",
+        "proposition_digest",
+        "relation",
+        "assessment_method",
+        "reviewer_identity",
+        "reviewer_authority_ref",
+        "reviewed_at",
+        "status",
+        "reason_codes"
+      ],
+      "properties": {
+        "assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fragment_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "proposition_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "relation": {
+          "type": "string",
+          "enum": [
+            "entails",
+            "contradicts",
+            "unrelated",
+            "unknown"
+          ]
+        },
+        "assessment_method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_authority_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "rejected",
+            "unknown"
+          ]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "PolicyAdoptionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adoption_id",
+        "assertion_id",
+        "adopter_id",
+        "decision_authority_ref",
+        "artifact_digest",
+        "scope_id",
+        "effective_at",
+        "expires_at",
+        "revoked",
+        "version"
+      ],
+      "properties": {
+        "adoption_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assertion_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adopter_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision_authority_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scope_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "claim_kind",
+        "relation_kind",
+        "predicate_id",
+        "population_id",
+        "context_id",
+        "time_scope_id",
+        "subject_id",
+        "value",
+        "evidence_refs"
+      ],
+      "properties": {
+        "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "predictive",
+            "reported_experience",
+            "observed_signal"
+          ]
+        },
+        "relation_kind": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "associational",
+            "predictive",
+            "descriptive",
+            "reported_experience",
+            "observed_signal",
+            "unresolved"
+          ]
+        },
+        "predicate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "population_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "time_scope_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "EvidenceGrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validity",
+        "directness",
+        "precision",
+        "transportability",
+        "overall"
+      ],
+      "properties": {
+        "validity": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "directness": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "precision": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "transportability": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "overall": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        }
+      }
+    },
+    "ClaimAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_assessment_id",
+        "claim_id",
+        "status",
+        "assessed_predicate_id",
+        "evidence_grade",
+        "reason_codes"
+      ],
+      "properties": {
+        "claim_assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "associational",
+            "predictive",
+            "descriptive",
+            "reported_experience",
+            "observed_signal",
+            "unresolved"
+          ]
+        },
+        "assessed_predicate_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_grade": {
+          "$ref": "#/$defs/EvidenceGrade"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ClaimsBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sources",
+        "fragments",
+        "proposition_assessments",
+        "policy_adoptions",
+        "claims",
+        "claim_assessments"
+      ],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRecord"
+          }
+        },
+        "fragments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceFragment"
+          }
+        },
+        "proposition_assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FragmentPropositionAssessment"
+          }
+        },
+        "policy_adoptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyAdoptionRecord"
+          }
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Claim"
+          }
+        },
+        "claim_assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClaimAssessment"
+          }
+        }
+      }
+    }
+  }
+}

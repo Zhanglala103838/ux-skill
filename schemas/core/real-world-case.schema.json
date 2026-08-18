@@ -1,0 +1,659 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/core/real-world-case.schema.json",
+  "title": "RealWorldRegressionCase",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "scenario_profile_id",
+    "request_mode",
+    "target_kind",
+    "canonical_locator",
+    "immutable_ref",
+    "snapshot_closure_digest",
+    "task_script",
+    "entry_state",
+    "seed_state",
+    "inventory",
+    "allowed_effects",
+    "prohibited_effects",
+    "evidence_capability",
+    "baseline_bundle_digest",
+    "intervention_manifest_digest",
+    "candidate_bundle_digest",
+    "hypotheses",
+    "measures",
+    "semantic_delta",
+    "forbidden_claims",
+    "replay_oracle",
+    "environment_digest",
+    "outbound_effect_sink",
+    "cleanup_contract",
+    "portfolio_role",
+    "scenario_stratum",
+    "comparison_policy"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request_mode": {
+      "type": "string",
+      "enum": [
+        "guide",
+        "scan",
+        "refactor",
+        "verify"
+      ]
+    },
+    "target_kind": {
+      "type": "string",
+      "enum": [
+        "black_box_site",
+        "pinned_repository",
+        "hulianui_contract"
+      ]
+    },
+    "canonical_locator": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "immutable_ref": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "snapshot_closure_digest": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "task_script": {
+      "$ref": "#/$defs/TaskScript"
+    },
+    "entry_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seed_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inventory": {
+      "$ref": "#/$defs/ActorPartyInventory"
+    },
+    "allowed_effects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "prohibited_effects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "evidence_capability": {
+      "$ref": "#/$defs/EvidenceCapability"
+    },
+    "baseline_bundle_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "intervention_manifest_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "candidate_bundle_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      }
+    },
+    "measures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Measure"
+      }
+    },
+    "semantic_delta": {
+      "$ref": "#/$defs/SemanticDelta"
+    },
+    "forbidden_claims": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "replay_oracle": {
+      "type": "string",
+      "const": "semantic-delta-v1"
+    },
+    "environment_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "outbound_effect_sink": {
+      "$ref": "#/$defs/OutboundEffectSink"
+    },
+    "cleanup_contract": {
+      "$ref": "#/$defs/CleanupContract"
+    },
+    "portfolio_role": {
+      "type": "string",
+      "enum": [
+        "fixed_anchor",
+        "rotation_candidate"
+      ]
+    },
+    "scenario_stratum": {
+      "type": "string",
+      "minLength": 1
+    },
+    "comparison_policy": {
+      "type": "string",
+      "const": "within_case_only"
+    }
+  },
+  "$defs": {
+    "TaskStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "required_replay_profile_ids",
+        "instruction"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_replay_profile_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "instruction": {
+          "type": "string"
+        }
+      }
+    },
+    "TaskScript": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_script_id",
+        "steps"
+      ],
+      "properties": {
+        "task_script_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskStep"
+          }
+        }
+      }
+    },
+    "ActorPartyInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_ids",
+        "party_ids",
+        "status"
+      ],
+      "properties": {
+        "actor_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "party_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified_complete",
+            "verified_no_affected_party",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "EvidenceCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page_content",
+        "runtime",
+        "code",
+        "component_contract",
+        "research"
+      ],
+      "properties": {
+        "page_content": {
+          "type": "boolean"
+        },
+        "runtime": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "boolean"
+        },
+        "component_contract": {
+          "type": "boolean"
+        },
+        "research": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesis_id",
+        "predicate_id",
+        "disconfirming"
+      ],
+      "properties": {
+        "hypothesis_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "predicate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disconfirming": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measure_id",
+        "kind",
+        "direction"
+      ],
+      "properties": {
+        "measure_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "success",
+            "guardrail",
+            "negative-control"
+          ]
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "increase",
+            "decrease",
+            "not_increase"
+          ]
+        }
+      }
+    },
+    "SemanticDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delta_version",
+        "allowed_locators",
+        "forbidden_locators"
+      ],
+      "properties": {
+        "delta_version": {
+          "type": "string",
+          "const": "semantic-delta-v1"
+        },
+        "allowed_locators": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_locators": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "OutboundEffectSink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sink_id",
+        "mode",
+        "digest"
+      ],
+      "properties": {
+        "sink_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "deny-all",
+            "record-only"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "CleanupContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cleanup_id",
+        "required",
+        "procedure_digest"
+      ],
+      "properties": {
+        "cleanup_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "procedure_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "RotationSelectionManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "portfolio_version",
+        "generation_id",
+        "generation_sequence",
+        "generation_commitment",
+        "sorted_candidate_case_ids",
+        "selected_case_id",
+        "manifest_digest"
+      ],
+      "properties": {
+        "portfolio_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation_sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "generation_commitment": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sorted_candidate_case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "selected_case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "RealWorldRegressionCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "scenario_profile_id",
+        "request_mode",
+        "target_kind",
+        "canonical_locator",
+        "immutable_ref",
+        "snapshot_closure_digest",
+        "task_script",
+        "entry_state",
+        "seed_state",
+        "inventory",
+        "allowed_effects",
+        "prohibited_effects",
+        "evidence_capability",
+        "baseline_bundle_digest",
+        "intervention_manifest_digest",
+        "candidate_bundle_digest",
+        "hypotheses",
+        "measures",
+        "semantic_delta",
+        "forbidden_claims",
+        "replay_oracle",
+        "environment_digest",
+        "outbound_effect_sink",
+        "cleanup_contract",
+        "portfolio_role",
+        "scenario_stratum",
+        "comparison_policy"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_mode": {
+          "type": "string",
+          "enum": [
+            "guide",
+            "scan",
+            "refactor",
+            "verify"
+          ]
+        },
+        "target_kind": {
+          "type": "string",
+          "enum": [
+            "black_box_site",
+            "pinned_repository",
+            "hulianui_contract"
+          ]
+        },
+        "canonical_locator": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "immutable_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot_closure_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_script": {
+          "$ref": "#/$defs/TaskScript"
+        },
+        "entry_state": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seed_state": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inventory": {
+          "$ref": "#/$defs/ActorPartyInventory"
+        },
+        "allowed_effects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "prohibited_effects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence_capability": {
+          "$ref": "#/$defs/EvidenceCapability"
+        },
+        "baseline_bundle_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "intervention_manifest_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "candidate_bundle_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "hypotheses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Hypothesis"
+          }
+        },
+        "measures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Measure"
+          }
+        },
+        "semantic_delta": {
+          "$ref": "#/$defs/SemanticDelta"
+        },
+        "forbidden_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "replay_oracle": {
+          "type": "string",
+          "const": "semantic-delta-v1"
+        },
+        "environment_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "outbound_effect_sink": {
+          "$ref": "#/$defs/OutboundEffectSink"
+        },
+        "cleanup_contract": {
+          "$ref": "#/$defs/CleanupContract"
+        },
+        "portfolio_role": {
+          "type": "string",
+          "enum": [
+            "fixed_anchor",
+            "rotation_candidate"
+          ]
+        },
+        "scenario_stratum": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparison_policy": {
+          "type": "string",
+          "const": "within_case_only"
+        }
+      }
+    }
+  }
+}
