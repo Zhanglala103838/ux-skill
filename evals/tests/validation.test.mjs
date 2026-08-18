@@ -41,7 +41,7 @@ test('later ref validation is suppressed when schema prerequisite is absent',()=
  assert.deepEqual(errors.filter((e)=>e.code==='SUPPRESSED_BY_STAGE'),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:'/scenario_profile_id',invariant_or_schema_id:'ScenarioProfileRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);
 });
 
-const inspect=(node,path='')=>{if(!node||typeof node!=='object')return;if(node.type==='object'||(Array.isArray(node.type)\&\&node.type.includes('object'))){assert.equal(node.additionalProperties,false,`${path||'/'} is open`);assert.ok(Array.isArray(node.required),`${path||'/'} lacks required`);}for(const [key,value] of Object.entries(node))inspect(value,`${path}/${key}`);};
+const inspect=(node,path='')=>{if(!node||typeof node!=='object')return;if(node.type==='object'||(Array.isArray(node.type)&&node.type.includes('object'))){assert.equal(node.additionalProperties,false,`${path||'/'} is open`);assert.ok(Array.isArray(node.required),`${path||'/'} lacks required`);}for(const [key,value] of Object.entries(node))inspect(value,`${path}/${key}`);};
 
 test('all domain schema objects are explicitly closed',async()=>{for(const path of paths)inspect(JSON.parse(await readFile(path,'utf8')));});
 
