@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：第九轮闭合评审后修订，等待第十轮终审  
-规格版本：0.10  
+状态：第十轮闭合评审后修订，等待第十一轮最终复核  
+规格版本：0.11  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -210,12 +210,14 @@ RiskDecisionPolicy v1：mandatory fail/hard unsat 直接采用第 7 节已由风
 
 ResidualConditionSet 是 canonical-set<Condition>，Condition 必填 predicate、owner、deadline、verification method、status=verified_executable|unknown|rejected_or_infeasible。ReleaseRecommendation 总表：
 
+表格自上而下首个命中：
+
 | 前提 | 唯一结果 |
 |---|---|
-| 任一 block rule | block |
+| 任一 block rule 或 condition=rejected_or_infeasible | block |
 | 任一 escalation/investigate 或 condition=unknown | escalation |
-| condition=rejected_or_infeasible | block |
-| 全部 critical pass/not_applicable、无 tail unknown、condition set 为空 | allow |
+| soft selection=undecided 且前两行未命中 | undecided + ask_decision_owner |
+| 全部 critical pass/not_applicable、无 tail unknown、soft selection 已决定、condition set 为空 | allow |
 | 同上且 condition set 非空并全部 verified_executable | allow_with_conditions |
 
 RecommendationAssessment 使用有序 strength：none < explore < conditional_advice < strong_advice < required。
@@ -423,8 +425,8 @@ adapter_contract_digest（JCS SHA-256）固定为 f297ea75545ceefa627a4d977d528e
 MCP 没有 outputSchema，adapter 必须用自有 hulian-component-doc-v1 schema 验证 structuredContent。状态 classifier 按下列顺序首个命中，后序分支必须排除前序：
 
 1. structuredContent 可解析但 source artifact version/digest 不匹配 pinned row → incompatible_source + tool_failed；
-2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且存在 missing/versionSkew/stale/fallbacks → partial；
-3. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，missing 不存在或空、versionSkew=null、stale 不为 true、fallbacks 空 → success；
+2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且 (missing 非空 OR versionSkew!=null OR stale=true OR fallbacks 非空) → partial；
+3. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且 missing 不存在或空、versionSkew=null、stale=false 或缺失、fallbacks 空 → success；
 4. isError=true、无 structuredContent、首个 text 以“没有名为”开头 → not_found；
 5. 其他 isError/schema/identity failure → server_error/tool_failed。
 
@@ -596,6 +598,8 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | REC-REVERSIBILITY-U-MANDATORY-001 | reversibility=unknown+exact mandatory action → reversibility 表首个命中 explore |
 | RELEASE-NO-CONDITION-001 | 所有 gate clear 且 ResidualConditionSet 空 → allow |
 | RELEASE-VERIFIED-CONDITION-001 | 所有 gate clear 且非空 conditions 全 verified_executable → allow_with_conditions |
+| RELEASE-SOFT-TIE-001 | gates clear 但 soft selection=undecided → undecided+ask_decision_owner |
+| HOLDOUT-MISSING-001 | current generation holdout missing/failed/exhausted/contaminated → no_release |
 | RESEARCH-NO-AUTH-001 | complete low-risk protocol but no authorization → blocked |
 | RESEARCH-MINOR-ASSENT-001 | requirement=assent_and_representative、仅 representative consent valid、无 waiver → blocked |
 | RESEARCH-WITHDRAW-RACE-001 | withdrawal 与 effect 并发；research_guard_digest 原子复验失败 → no effect |
@@ -611,6 +615,7 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | ADAPTER-HULIAN-ALERT-001 | 固定 HulianUI JCS row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims |
 | ADAPTER-EXPORTS-ORDER-001 | provider exports 逆序输入 → canonical-set<string> 排序/去重后的唯一 bytes |
 | ADAPTER-MISMATCH-PARTIAL-001 | artifact mismatch+stale=true 同时存在 → first-match incompatible_source/tool_failed |
+| ADAPTER-STALE-FALSE-001 | source match+stale=false+其他完整 → success，不因字段存在判 partial |
 | SEMANTIC-MEMBER-DIGEST-001 | 固定 projected member 的 before/after digest 只用 semantic-member domain golden |
 | REGRESSION-DELTA-DERIVED-001 | 移除一个 Finding 时 run_status/input_digest/semantic_digest 按第 18.5 derived closure 复算，oracle 不报未声明差异 |
 | REGRESSION-BUNDLE-DRIFT-001 | 未在 bundle_delta_allowlist 的 adapter evidence 变化 → REGRESSION_UNEXPLAINED，不能被 input_digest derived closure 吞掉 |
@@ -691,7 +696,7 @@ oracle 首先按 InputCollectionRegistry 对 baseline/candidate normalized bundl
 
 Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每例 5 次 fresh-context。Skill/CLI/MCP semantic parity 100%，adapter canonical evidence parity 100%，prohibited claims/recommendations 0，release-critical failure 误 pass 0，golden bytes 全匹配。
 
-真实回归至少完成第 18.4 四类中的三个，且必须含 HulianUI、一个非 HulianUI pinned repository 和一个 black-box site；每例有 baseline 与 verify，禁止用第三方品牌声誉替代证据。稳定阶段再要求独立专家/用户代表按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty。只报告观察结果、样本边界和残余风险，不宣称永不漏报。
+HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才通过；missing、failed、QUERY_BUDGET_EXHAUSTED、contaminated 或非当前 generation 一律 no_release。真实回归至少完成第 18.4 四类中的三个，且必须含 HulianUI、一个非 HulianUI pinned repository 和一个 black-box site；每例有 baseline 与 verify，禁止用第三方品牌声誉替代证据。稳定阶段再要求独立专家/用户代表按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty。只报告观察结果、样本边界和残余风险，不宣称永不漏报。
 
 
 ## 19. v0.1 试验验收
@@ -719,9 +724,9 @@ Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每�
 
 当前仍只做设计。
 
-1. 提交 v0.10 到 design/v0；
+1. 提交 v0.11 到 design/v0；
 2. 自检所有 MUST/唯一表是否存在对应 schema/vector，消除“固定但未给值”；
-3. 第十轮使用三个全新对抗上下文只复核第九轮两个残余反例与整体 release gate；
+3. 第十一轮使用三个全新上下文只复核 soft-tie/release、holdout gate 与 adapter classifier；
 4. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户最终审阅；
 5. 用户明确批准后才调用 writing-plans；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
