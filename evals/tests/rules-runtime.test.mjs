@@ -36,7 +36,7 @@ test('four Task 5 vectors are executable and contract-linked',async()=>{
 
 test('applicability and exclusion are eager and map effective E/F/U/T exactly',()=>{
  const hostile=evalRule({applicability:lit('z-app',false),exclusion:eq('a-exc','/target/excluded',true)},{target:{excluded:{bad:true}}});
- expectState(hostile,{terminal:'invalid_input',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
+ expectState(hostile,{terminal:'completed',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
  expectState(evalRule({applicability:lit('app',false)}),{terminal:'completed',outcome:'not_applicable',reason_code:'APPLICABILITY_FALSE'});
  expectState(evalRule({exclusion:lit('exc',true)}),{terminal:'completed',outcome:'not_applicable',reason_code:'EXCLUSION_TRUE'});
  expectState(evalRule({applicability:eq('app','/target/enabled',true)}),{terminal:'completed',outcome:'unknown',reason_code:'APPLICABILITY_UNKNOWN'});
@@ -48,15 +48,15 @@ test('precondition and check preserve F/U/E/T without coercion',()=>{
  expectState(evalRule({precondition:eq('pre','/target/ready',true)}),{terminal:'completed',outcome:'not_run',reason_code:'PRECONDITION_UNKNOWN'});
  expectState(evalRule({check:lit('check',false)}),{terminal:'completed',outcome:'fail',reason_code:'CHECK_FAILED'});
  expectState(evalRule({check:eq('check','/target/passes',true)}),{terminal:'completed',outcome:'unknown',reason_code:'CHECK_UNKNOWN'});
- expectState(evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}}),{terminal:'invalid_input',outcome:'evaluation_error',reason_code:'CHECK_EVALUATION_ERROR'});
+ expectState(evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}}),{terminal:'completed',outcome:'evaluation_error',reason_code:'CHECK_EVALUATION_ERROR'});
 });
 
 test('all and any evaluate every child in node_id byte order with fixed precedence',()=>{
  const all=evalRule({applicability:{node_id:'root',op:'all',children:[lit('z-f',false),eq('a-e','/target/enabled',true),eq('m-u','/target/ready',true)]}},{target:{enabled:[]}});
- expectState(all,{terminal:'invalid_input',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
+ expectState(all,{terminal:'completed',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
  assert.deepEqual(all.trace.filter(x=>x.parent_node_id==='root').map(x=>[x.node_id,x.value]),[['a-e','E'],['m-u','U'],['z-f','F']]);
  const any=evalRule({applicability:{node_id:'root',op:'any',children:[lit('z-t',true),eq('a-e','/target/enabled',true),lit('m-f',false)]}},{target:{enabled:[]}});
- expectState(any,{terminal:'invalid_input',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
+ expectState(any,{terminal:'completed',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
  assert.deepEqual(any.trace.filter(x=>x.parent_node_id==='root').map(x=>x.node_id),['a-e','m-f','z-t']);
  assert.equal(evalRule({applicability:{node_id:'root',op:'all',children:[]}}).outcome,'pass');
  assert.equal(evalRule({applicability:{node_id:'root',op:'any',children:[]}}).outcome,'not_applicable');
@@ -68,7 +68,7 @@ test('invalid operators, unregistered paths, static operand types and runtime ty
   baseRule({applicability:eq('x','/not/registered',true)}),
   baseRule({applicability:{node_id:'x',op:'eq',path:'/target/enabled',value:{}}})
  ])expectState(evaluateRule(rule,{target:{}},[]),{terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'});
- expectState(evalRule({applicability:{node_id:'x',op:'compare',path:'/target/score',operator:'gt',value:1}},{target:{score:'2'}}),{terminal:'invalid_input',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
+ expectState(evalRule({applicability:{node_id:'x',op:'compare',path:'/target/score',operator:'gt',value:1}},{target:{score:'2'}}),{terminal:'completed',outcome:'evaluation_error',reason_code:'APPLICABILITY_EVALUATION_ERROR'});
 });
 
 const dependencyRule=(required_dependencies)=>baseRule({required_dependencies});
