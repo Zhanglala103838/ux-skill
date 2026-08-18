@@ -205,7 +205,7 @@ git commit -m "feat: add canonical UX data primitives"
 
 **Files:**
 - Create: `schemas/core/evaluation-input.schema.json`, `schemas/core/snapshot-closure.schema.json`, `schemas/core/authority.schema.json`, `schemas/core/claims.schema.json`
-- Create: `schemas/evaluator/output.schema.json`, `evaluator/validation.mjs`
+- Create: `schemas/evaluator/output.schema.json`, `schemas/evaluator/rule.schema.json`, `schemas/evaluator/semantic-projection.schema.json`, `schemas/adapters/hulian-component-doc-v1.schema.json`, `schemas/core/real-world-case.schema.json`, `schemas/manifest.json`, `evaluator/validation.mjs`
 - Create: `evals/tests/validation.test.mjs`, `evals/helpers/fixtures.mjs`, `evals/red/RW-SNAPSHOT-SCHEMA-CLOSED-001.json`
 
 **Interfaces:**
@@ -232,11 +232,11 @@ Expected: FAIL because `validateInput` is absent.
 
 - [ ] **Step 3: Encode schemas as closed objects**
 
-Set `additionalProperties:false` and explicit `required` on every Manifest, ReplayProfile, CanonicalResponseHeaders wrapper/item, network item, redirect hop, observation item, authority item, claim item, and output projection item. Compile with Ajv 2020 and `allErrors:true`.
+Set `additionalProperties:false` and explicit `required` on all nine domain schemas and every Manifest, ReplayProfile, CanonicalResponseHeaders wrapper/item, network item, redirect hop, observation item, authority item, claim item, and output projection item. Compile with Ajv 2020 and `allErrors:true`.
 
 - [ ] **Step 4: Normalize Ajv output**
 
-Map only to the spec codes, deduplicate by full tuple, and sort with `canonicalSet`. Tagged unions validate the selected branch only; never expose Ajv `oneOf` summary text.
+Map only to the spec codes, deduplicate by full tuple, and sort with `canonicalSet`. Tagged unions validate the selected branch only; never expose Ajv `oneOf` summary text. Write `schemas/manifest.json` as exact `{path,file_digest}` rows for all nine domain schemas, sorted by CanonicalRelativePath.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -302,7 +302,7 @@ git commit -m "feat: enforce destructive-action authority boundaries"
 
 **Files:**
 - Create: `evaluator/rules-runtime.mjs`
-- Create: `schemas/evaluator/rule.schema.json`
+- Consume: `schemas/evaluator/rule.schema.json`
 - Create: `knowledge/rules.json`
 - Create: `evals/tests/rules-runtime.test.mjs`
 - Create: fixtures for `AST-APP-FE-001`, `TOOL-MULTI-CANCEL-TIMEOUT-001`, `FIND-INC-001`, `EMISSION-REASON-001`
@@ -392,7 +392,7 @@ git commit -m "feat: add evidence-aware UX recommendation reducers"
 
 **Interfaces:**
 - Skill invokes `pnpm ux:evaluate -- --mode <mode> --input - --output json`.
-- `knowledge/manifest.json` fixes every knowledge/reference path, SHA-256, load order, and dependency closure per mode before evaluator golden digests are created in Task 8.
+- `knowledge/manifest.json` fixes every knowledge/reference path, SHA-256, load order, and dependency closure per mode before adapter/closure manifests and evaluator golden digests are created in Tasks 8-10.
 
 - [ ] **Step 1: Write the Skill contract test**
 
@@ -438,55 +438,11 @@ git add SKILL.md agents references knowledge/manifest.json scripts/check-knowled
 git commit -m "feat: add evidence-aware Product UX Skill"
 ```
 
-### Task 8: Sole Evaluator Entry Point and Semantic Projection
-
-**Files:**
-- Create: `evaluator/projection.mjs`, `evaluator/index.mjs`
-- Create: `schemas/evaluator/semantic-projection.schema.json`
-- Create: `evals/tests/evaluator.test.mjs`
-- Create: `evals/golden/high-risk-delete.json`
-
-**Interfaces:**
-- Produces: `evaluate(bundle,{adapterEvidence=[]}): EvaluationResult`.
-- `EvaluationResult` contains `assurance`, `inquiry`, `semantic_projection`, `semantic_digest`, and non-semantic `audit_sidecar`.
-
-- [ ] **Step 1: Write the end-to-end failing test**
-
-```js
-test('same normalized delete bundle replays to one semantic digest', async () => {
-  const outputs = await Promise.all(Array.from({length:5}, () => evaluate(deleteBundle(), {adapterEvidence:[]})));
-  assert.equal(new Set(outputs.map((x) => x.semantic_digest)).size, 1);
-  assert.match(outputs[0].assurance.warning, /does not mean UX is good/i);
-  assert.equal(outputs[0].inquiry.authoritative, false);
-});
-```
-
-- [ ] **Step 2: Confirm RED**
-
-Run: `node --test evals/tests/evaluator.test.mjs`
-
-Expected: FAIL with missing evaluator entry point.
-
-- [ ] **Step 3: Implement the pipeline**
-
-Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
-
-- [ ] **Step 4: Verify and commit**
-
-Run: `node --test evals/tests/evaluator.test.mjs`
-
-Expected: PASS with five identical digests and byte-equal golden projection.
-
-```bash
-git add evaluator/index.mjs evaluator/projection.mjs schemas/evaluator/semantic-projection.schema.json evals/tests/evaluator.test.mjs evals/golden/high-risk-delete.json
-git commit -m "feat: compose deterministic UX evaluator"
-```
-
-### Task 9: HulianUI AlertDialog Evidence Adapter
+### Task 8: HulianUI AlertDialog Evidence Adapter
 
 **Files:**
 - Create: `adapters/hulianui/contract.json`, `adapters/hulianui/fixture.json`, `adapters/hulianui/adapter.mjs`, `adapters/hulianui/bridge.mjs`
-- Create: `schemas/adapters/hulian-component-doc-v1.schema.json`
+- Consume: `schemas/adapters/hulian-component-doc-v1.schema.json`
 - Create: `evals/tests/hulianui-adapter.test.mjs`
 - Create: relevant adapter RED/golden fixtures
 
@@ -521,93 +477,11 @@ git add adapters schemas/adapters evals/tests/hulianui-adapter.test.mjs evals/re
 git commit -m "feat: add pinned HulianUI evidence adapter"
 ```
 
-### Task 10: CLI Transport and Four Request Modes
-
-**Files:**
-- Create: `scripts/ux-evaluate.mjs`
-- Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
-- Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
-
-**Interfaces:**
-- CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
-- `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
-- Produces stdout JSON only; diagnostics go to stderr.
-
-- [ ] **Step 1: Write CLI contract tests**
-
-```js
-test('unknown and multiple modes are invalid_input', async () => {
-  assert.equal((await runCli(['--mode','audit+verify'])).json.run_status, 'invalid_input');
-});
-
-test('transport metadata does not change semantic digest', async () => {
-  const a = await runCli(['--mode','scan','--input','evals/parity/scan.json']);
-  const b = await runCliWithDifferentRequestId(['--mode','scan','--input','evals/parity/scan.json']);
-  assert.equal(a.json.semantic_digest, b.json.semantic_digest);
-});
-```
-
-- [ ] **Step 2: Confirm RED, implement thin transport, verify**
-
-Run: `node --test evals/tests/cli.test.mjs`
-
-Expected before: FAIL; after: PASS. The CLI must call `evaluate()` and contain no UX rule or recommendation table.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add scripts/ux-evaluate.mjs evals/tests/cli.test.mjs evals/parity
-git commit -m "feat: expose UX evaluator CLI transport"
-```
-
-### Task 11: Canonical ustar Artifact
-
-**Files:**
-- Create: `scripts/pack-ustar.mjs`, `knowledge/artifact-manifest.json`
-- Create: `evals/artifact/one-file-input/a`, `evals/artifact/ART-ONEFILE-001.json`
-- Create: `evals/tests/artifact.test.mjs`
-
-**Interfaces:**
-- Produces: `packCanonicalUstar(entries): Buffer` and CLI `pack-ustar <artifact-manifest.json> <output.tar>`; the CLI reads only exact canonical paths in the manifest and cannot include its output file.
-
-- [ ] **Step 1: Decode the spec golden into a test**
-
-```js
-test('one-file ustar is byte exact', async () => {
-  const golden = JSON.parse(await readFile('evals/artifact/ART-ONEFILE-001.json'));
-  const bytes = packCanonicalUstar([{path:'a',content:Buffer.from(golden.file_base64,'base64')}]);
-  assert.equal(bytes.length, golden.archive_length);
-  assert.equal(bytes.toString('base64'), golden.archive_base64);
-  assert.equal(digest('ux-skill:artifact:v1', bytes), golden.artifact_digest);
-});
-```
-
-`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all nine named schemas from the file map/tasks, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all seven evaluator modules, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
-
-The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
-
-```json
-{"path":"a","file_base64":"eA==","archive_length":2048,"artifact_digest":"f6a0f180d997c4dcecf1bdf2aa17e0cfc2aa05ea1c7161f26fa7a4df5b0954a3","archive_base64":"YQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAwMDA2NDQAMDAwMDAwMAAwMDAwMDAwADAwMDAwMDAwMDAxADAwMDAwMDAwMDAwADAwNjA3NwAgMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB1c3RhcgAwMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}
-```
-
-- [ ] **Step 2: Confirm RED, implement headers byte-by-byte, verify**
-
-Run: `node --test evals/tests/artifact.test.mjs`
-
-Expected before: FAIL; after: PASS. Do not shell out to `tar`; reject directories, links, PAX, long names, and non-canonical paths.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add scripts/pack-ustar.mjs knowledge/artifact-manifest.json evals/artifact evals/tests/artifact.test.mjs
-git commit -m "feat: add canonical UX Skill artifact packer"
-```
-
-### Task 12: Fail-Closed Public-Site Snapshot Closure Harness
+### Task 9: Fail-Closed Public-Site Snapshot Closure Harness
 
 **Files:**
 - Create: `scripts/capture-snapshot-closure.mjs`
-- Create: `schemas/core/real-world-case.schema.json`
+- Consume: `schemas/core/real-world-case.schema.json`
 - Create: `evals/public-cases/govuk.json`, `apple.json`, `ikea.json`, `stripe.json`
 - Create: `evals/tests/snapshot-closure.test.mjs`
 - Create: executable fixtures for `RW-SNAPSHOT-DRIFT-001`, `RW-SNAPSHOT-HEADERS-001`, `RW-REPLAY-PROFILE-001`, `RW-BLACKBOX-EFFECT-001`
@@ -663,6 +537,133 @@ Expected: PASS with every miss mapping to `target_unavailable + RunIssue + no_re
 ```bash
 git add scripts/capture-snapshot-closure.mjs schemas/core/real-world-case.schema.json evals/public-cases evals/tests/snapshot-closure.test.mjs evals/red
 git commit -m "feat: add fail-closed website regression harness"
+```
+
+### Task 10: Sole Evaluator Entry Point and Semantic Projection
+
+**Files:**
+- Create: `evaluator/projection.mjs`, `evaluator/index.mjs`
+- Consume: `schemas/evaluator/semantic-projection.schema.json`, `schemas/manifest.json`
+- Create: `evaluator/manifest.json` with exact evaluator file digests and the finalized schema/knowledge/policy manifest digests
+- Create: `evals/tests/evaluator.test.mjs`
+- Create: `evals/golden/high-risk-delete.json`
+
+**Interfaces:**
+- Produces: `evaluate(bundle,{adapterEvidence=[]}): EvaluationResult`.
+- `EvaluationResult` contains `assurance`, `inquiry`, `semantic_projection`, `semantic_digest`, and non-semantic `audit_sidecar`.
+
+- [ ] **Step 1: Write the end-to-end failing test**
+
+```js
+test('same normalized delete bundle replays to one semantic digest', async () => {
+  const outputs = await Promise.all(Array.from({length:5}, () => evaluate(deleteBundle(), {adapterEvidence:[]})));
+  assert.equal(new Set(outputs.map((x) => x.semantic_digest)).size, 1);
+  assert.match(outputs[0].assurance.warning, /does not mean UX is good/i);
+  assert.equal(outputs[0].inquiry.authoritative, false);
+});
+```
+
+- [ ] **Step 2: Confirm RED**
+
+Run: `node --test evals/tests/evaluator.test.mjs`
+
+Expected: FAIL with missing evaluator entry point.
+
+- [ ] **Step 3: Implement the pipeline**
+
+Before evaluation, verify `schemas/manifest.json` and `knowledge/manifest.json`, then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the eight evaluator modules plus schema, knowledge, and decision-policy manifest digests. Execute stages in this order: parse/I-JSON → NFC → schema → collection/ref validation → policy semantics → rules/tools → claims/risk/recommendation → projection/digests. Derive output arrays with registry ordering; exclude timestamps, localized prose, MCP text, and Inquiry text from semantic projection.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `node --test evals/tests/evaluator.test.mjs`
+
+Expected: PASS with five identical digests and byte-equal golden projection.
+
+```bash
+git add evaluator/index.mjs evaluator/projection.mjs evaluator/manifest.json evals/tests/evaluator.test.mjs evals/golden/high-risk-delete.json
+git commit -m "feat: compose deterministic UX evaluator"
+```
+
+### Task 11: CLI Transport and Four Request Modes
+
+**Files:**
+- Create: `scripts/ux-evaluate.mjs`
+- Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
+- Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
+
+**Interfaces:**
+- CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
+- `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
+- Produces stdout JSON only; diagnostics go to stderr.
+
+- [ ] **Step 1: Write CLI contract tests**
+
+```js
+test('unknown and multiple modes are invalid_input', async () => {
+  assert.equal((await runCli(['--mode','audit+verify'])).json.run_status, 'invalid_input');
+});
+
+test('transport metadata does not change semantic digest', async () => {
+  const a = await runCli(['--mode','scan','--input','evals/parity/scan.json']);
+  const b = await runCliWithDifferentRequestId(['--mode','scan','--input','evals/parity/scan.json']);
+  assert.equal(a.json.semantic_digest, b.json.semantic_digest);
+});
+```
+
+- [ ] **Step 2: Confirm RED, implement thin transport, verify**
+
+Run: `node --test evals/tests/cli.test.mjs`
+
+Expected before: FAIL; after: PASS. The CLI must call `evaluate()` and contain no UX rule or recommendation table.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/ux-evaluate.mjs evals/tests/cli.test.mjs evals/parity
+git commit -m "feat: expose UX evaluator CLI transport"
+```
+
+### Task 12: Canonical ustar Artifact
+
+**Files:**
+- Create: `scripts/pack-ustar.mjs`, `knowledge/artifact-manifest.json`
+- Create: `evals/artifact/one-file-input/a`, `evals/artifact/ART-ONEFILE-001.json`
+- Create: `evals/tests/artifact.test.mjs`
+
+**Interfaces:**
+- Produces: `packCanonicalUstar(entries): Buffer` and CLI `pack-ustar <artifact-manifest.json> <output.tar>`; the CLI reads only exact canonical paths in the manifest and cannot include its output file.
+
+- [ ] **Step 1: Decode the spec golden into a test**
+
+```js
+test('one-file ustar is byte exact', async () => {
+  const golden = JSON.parse(await readFile('evals/artifact/ART-ONEFILE-001.json'));
+  const bytes = packCanonicalUstar([{path:'a',content:Buffer.from(golden.file_base64,'base64')}]);
+  assert.equal(bytes.length, golden.archive_length);
+  assert.equal(bytes.toString('base64'), golden.archive_base64);
+  assert.equal(digest('ux-skill:artifact:v1', bytes), golden.artifact_digest);
+});
+```
+
+`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all nine named domain schemas plus `schemas/manifest.json`, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
+
+The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
+
+```json
+{"path":"a","file_base64":"eA==","archive_length":2048,"artifact_digest":"f6a0f180d997c4dcecf1bdf2aa17e0cfc2aa05ea1c7161f26fa7a4df5b0954a3","archive_base64":"YQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAwMDA2NDQAMDAwMDAwMAAwMDAwMDAwADAwMDAwMDAwMDAxADAwMDAwMDAwMDAwADAwNjA3NwAgMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB1c3RhcgAwMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}
+```
+
+- [ ] **Step 2: Confirm RED, implement headers byte-by-byte, verify**
+
+Run: `node --test evals/tests/artifact.test.mjs`
+
+Expected before: FAIL; after: PASS. Do not shell out to `tar`; reject directories, links, PAX, long names, and non-canonical paths.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/pack-ustar.mjs knowledge/artifact-manifest.json evals/artifact evals/tests/artifact.test.mjs
+git commit -m "feat: add canonical UX Skill artifact packer"
 ```
 
 ### Task 13: Semantic Parity and Release Gate
