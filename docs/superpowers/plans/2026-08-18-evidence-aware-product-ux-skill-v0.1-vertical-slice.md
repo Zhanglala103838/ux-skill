@@ -53,6 +53,7 @@ adapters/hulianui/adapter.mjs            MCP result to CanonicalAdapterEvidence 
 adapters/hulianui/fixture.json           Captured pinned response fixture
 scripts/ux-evaluate.mjs                  CLI transport
 scripts/check-vector-catalog.mjs         Design-table/catalog parity
+scripts/validate-skill.mjs               Frontmatter, metadata and route validation
 scripts/run-red-baseline.mjs             Pre-evaluator baseline recorder
 scripts/pack-ustar.mjs                   Canonical uncompressed ustar packer
 scripts/capture-snapshot-closure.mjs     Read-only black-box closure capture
@@ -109,7 +110,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `scripts/check-vector-catalog.mjs
 `package.json` must contain:
 
 ```json
-{"name":"ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","capture:closure":"node scripts/capture-snapshot-closure.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.1","yaml":"2.9.0"},"devDependencies":{"playwright":"1.62.1"}}
+{"name":"ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","capture:closure":"node scripts/capture-snapshot-closure.mjs","skill:check":"node scripts/validate-skill.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.1","yaml":"2.9.0"},"devDependencies":{"playwright":"1.62.1"}}
 ```
 
 Write `.nvmrc` as the single line `22.22.2`. Implement `loadVectorCatalog()` to reject duplicate IDs, missing `expected_contract`, and any difference between committed catalog IDs and the §18.1 Markdown table. Populate `evals/vector-catalog.json` with all 100 exact IDs and their full §18.1 contract text.
@@ -341,7 +342,7 @@ Expected: PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add evaluator/rules-runtime.mjs schemas/evaluator/rule.schema.json knowledge/rules.json evals/tests/rules-runtime.test.mjs evals/red
+git add evaluator/rules-runtime.mjs knowledge/rules.json evals/tests/rules-runtime.test.mjs evals/red
 git commit -m "feat: add deterministic UX rule runtime"
 ```
 
@@ -387,7 +388,7 @@ git commit -m "feat: add evidence-aware UX recommendation reducers"
 
 **Files:**
 - Create: `SKILL.md`, `agents/openai.yaml`, all eight `references/*.md`
-- Create: `knowledge/manifest.json`, `scripts/check-knowledge.mjs`
+- Create: `knowledge/manifest.json`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`
 - Create: `evals/tests/skill-contract.test.mjs`
 
 **Interfaces:**
@@ -414,7 +415,7 @@ Expected: FAIL because Skill and manifest are absent.
 
 - [ ] **Step 3: Write imperative Skill instructions and references**
 
-`SKILL.md` must normalize the request mode, collect/declare bundle gaps, load only the manifest route, call the evaluator, present Assurance and Inquiry separately, and ask authorization before any external effect. Put detailed schemas and source propositions in their single canonical files; do not duplicate them in SKILL.md.
+The approved repository root is already the Skill directory, so do not run a scaffolder that would create a nested skill. `scripts/validate-skill.mjs` must enforce two-field YAML frontmatter, name `improving-product-ux`, description length <=1024, quoted `agents/openai.yaml` strings, the 25-64 character short description, explicit `$improving-product-ux` default prompt, and exact route paths. `SKILL.md` must normalize the request mode, collect/declare bundle gaps, load only the manifest route, call the evaluator, present Assurance and Inquiry separately, and ask authorization before any external effect. Put detailed schemas and source propositions in their single canonical files; do not duplicate them in SKILL.md.
 
 Set `agents/openai.yaml` to:
 
@@ -429,12 +430,12 @@ policy:
 
 - [ ] **Step 4: Verify knowledge digests and commit**
 
-Run: `node scripts/check-knowledge.mjs && node --test evals/tests/skill-contract.test.mjs`
+Run: `node scripts/check-knowledge.mjs && pnpm skill:check && node --test evals/tests/skill-contract.test.mjs`
 
 Expected: PASS; changing one reference byte fails the manifest check.
 
 ```bash
-git add SKILL.md agents references knowledge/manifest.json scripts/check-knowledge.mjs evals/tests/skill-contract.test.mjs
+git add SKILL.md agents references knowledge/manifest.json scripts/check-knowledge.mjs scripts/validate-skill.mjs evals/tests/skill-contract.test.mjs
 git commit -m "feat: add evidence-aware Product UX Skill"
 ```
 
@@ -459,7 +460,7 @@ test('mismatch dominates stale and partial', () => {
 
 test('canonical evidence never asserts UX outcome', () => {
   const evidence = mapHulianComponentDoc(validFixture, contract);
-  assert.equal(digestJcs('ux-skill:manifest:v1', contract), 'f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c');
+  assert.equal(createHash('sha256').update(jcsBytes(contract)).digest('hex'), 'f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c');
   assert.deepEqual(evidence.prohibited_claims, ['complete-destructive-flow','user-success','ux-outcome','wcag-conformance']);
 });
 ```
@@ -473,7 +474,7 @@ Expected before: FAIL. Expected after: all adapter vectors PASS and shuffled exp
 - [ ] **Step 3: Commit**
 
 ```bash
-git add adapters schemas/adapters evals/tests/hulianui-adapter.test.mjs evals/red evals/golden
+git add adapters evals/tests/hulianui-adapter.test.mjs evals/red evals/golden
 git commit -m "feat: add pinned HulianUI evidence adapter"
 ```
 
@@ -535,7 +536,7 @@ Run: `node --test evals/tests/snapshot-closure.test.mjs`
 Expected: PASS with every miss mapping to `target_unavailable + RunIssue + no_release`.
 
 ```bash
-git add scripts/capture-snapshot-closure.mjs schemas/core/real-world-case.schema.json evals/public-cases evals/tests/snapshot-closure.test.mjs evals/red
+git add scripts/capture-snapshot-closure.mjs evals/public-cases evals/tests/snapshot-closure.test.mjs evals/red
 git commit -m "feat: add fail-closed website regression harness"
 ```
 
@@ -645,7 +646,7 @@ test('one-file ustar is byte exact', async () => {
 });
 ```
 
-`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all nine named domain schemas plus `schemas/manifest.json`, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
+`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all nine named domain schemas plus `schemas/manifest.json`, all six knowledge JSON files plus `knowledge/artifact-manifest.json`, all eight evaluator modules plus `evaluator/manifest.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
 
 The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
 
@@ -674,7 +675,7 @@ git commit -m "feat: add canonical UX Skill artifact packer"
 - Create: `evals/holdout-commitments.json`
 
 **Interfaces:**
-- `evals/helpers/transports.mjs` produces `evaluateThreeTransports(path)` by evaluating the fixture directly, through the CLI helper, and through `evaluateHulianMcpResult`; it strips audit sidecars before parity comparison.
+- `evals/helpers/transports.mjs` produces `evaluateThreeTransports(path)` as `{skill,cli,mcp}`: `skill` validates the SKILL route then invokes its declared CLI command, `cli` invokes the CLI directly, and `mcp` invokes `evaluateHulianMcpResult`. The helper also evaluates the bundle directly as an oracle and strips audit sidecars before byte comparison.
 - Produces: `checkParity(transports): ParityReport`, `checkRelease(inputs): ReleaseGateReport`.
 
 - [ ] **Step 1: Write release-failure tests**
