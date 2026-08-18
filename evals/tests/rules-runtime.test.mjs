@@ -227,10 +227,10 @@ test('unregistered AST paths and required pointers outside registry are invalid 
  for(const code of ['CHECK_PASS','RULE_CHECK_FAILED','FINDING_REASON_INVALID'])assert.equal(reduceRunStatus([issue(code)]),'failed',code);
  const validIssue=issue('RULE_EVALUATION_ERROR');
  assert.equal(reduceRunStatus([validIssue]),'completed_clear');
- const noncritical={terminal:'completed',outcome:'evaluation_error',reason_code:'CHECK_EVALUATION_ERROR',release_critical:false};
- assert.equal(reduceRunStatus([validIssue,noncritical]),'completed_with_gaps');
- const critical={...noncritical,release_critical:true};
- assert.equal(reduceRunStatus([validIssue,critical]),'failed');
+ const noncritical=evalRule({check:eq('check','/target/passes',true)},{target:{passes:[]}});
+ assert.equal(reduceRunStatus([noncritical.run_issue,noncritical]),'completed_with_gaps');
+ const critical=evalRule({release_critical:true,check:eq('check','/target/passes',true)},{target:{passes:[]}});
+ assert.equal(reduceRunStatus([critical.run_issue,critical]),'failed');
 });
 test('TASK5_FULL_PART_UNION_RED',()=>{
  const enrich=(evaluation)=>({...evaluation,schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'ui/target',target_snapshot_digest:'4'.repeat(64),scenario_binding_ids:['z','a'],claim_key:null});
