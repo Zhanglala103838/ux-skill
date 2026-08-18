@@ -1,6 +1,6 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：v0.13 真实站点回归扩展候选，等待第十二轮对抗复核  
+状态：v0.13 第十二轮 blocker 修订候选，等待复核  
 规格版本：0.13  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
@@ -79,6 +79,14 @@ APG 示例、Understanding 文档、heuristic、局部组件或自动扫描不�
 analysis_units 可覆盖进入预期、任务交互、内容信息、旅程触点、服务前后台、组织政策、社会技术生态、长期反馈和感官表达。Garrett planes、Norman action cycle、heuristics、service blueprint、accessibility、trust/ethics、behavioral metrics 都是可选 lens，不是规则主键。
 
 CrossCuttingLensRegistry 为每个 lens 声明触发条件、所需上下文、能支持的 Claim 和不能支持的 Claim。只加载与当前 Scenario/Journey 匹配的 lens；不得把“所有问题都检查一遍”当成人本设计。
+
+ScenarioFamilyRegistry-v1 additionalProperties=false，正规形固定为：
+
+~~~json
+{"registry_version":"scenario-family-v1","scenario_family_ids":["admin-internal-tool","ai-assisted-workflow","brand-marketing-website","consumer-transaction","cross-channel-service","developer-documentation","public-service-information","retail-commerce-discovery"]}
+~~~
+
+scenario_family_ids 是以完整 id 为 key 的 canonical-set，按第 12.3 节排序且恰为上述 8 项；scenario_profile_id 必须引用其中一项。registry digest 只按第 12.5 节 scenario-family-registry row 计算，固定为 b764d922bd94ceb6869cd60984261acae344cd0a5e21c1cc9970cff710e417d0；不得用自由文本“官网/Admin/原 8 类”替代。
 
 Assurance track 回答：目前有什么可评价义务、事实、风险和未知。Inquiry track 回答：目标结果是什么、有哪些竞争解释、关键取舍和未知、如何寻找反证。规则库只能覆盖已编码风险，不能取代 situated inquiry、参与式设计和生命周期迭代。
 
@@ -403,6 +411,9 @@ SemanticProjection-v1 只含这些 top-level fields：schema_version、behavior_
 | semantic-member / ux-skill:semantic-member:v1 | JCS(projected collection member 或 singleton value)；SemanticDelta before/after digest 只使用本 row |
 | knowledge / ux-skill:knowledge:v1 | JCS(canonical-set<{path,file_digest}>)；仅这两个必填字段、additionalProperties=false，key=CanonicalRelativePath path，按 §12.3 排序/重复策略 |
 | manifest / ux-skill:manifest:v1 | JCS(internal manifest without digest fields) |
+| scenario-family-registry / ux-skill:scenario-family-registry:v1 | JCS(ScenarioFamilyRegistry-v1 without registry_digest；当前正规形不内嵌 digest) |
+| snapshot-closure / ux-skill:snapshot-closure:v1 | JCS(SnapshotClosureManifest without manifest_digest) |
+| rotation-selection / ux-skill:rotation-selection:v1 | JCS(RotationSelectionManifest without manifest_digest) |
 | artifact / ux-skill:artifact:v1 | raw canonical ustar bytes |
 
 计算统一为 SHA-256(UTF8(domain)||preimage bytes)，小写 64 hex。SemanticProjection.evaluator_digest 必须等于 evaluator row 的结果；运行时二进制路径、编译时间和 host metadata 不进入 preimage。missing 字段按 schema 缺失，不转 null。finding_id/effect/capability id 使用已定义 full digest 派生；truncation collision fatal。
@@ -622,11 +633,13 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | REGRESSION-NEGCONTROL-001 | negative control 缺失 → gate=missing/not_increase；超阈值 → gate=failed、identification rejected、decision_required |
 | REGRESSION-NEGCONTROL-ABS-001 | observed_delta=-0.1、transform=absolute、upper=0.05 inclusive → gate=failed |
 | RW-BRAND-NOT-AUTHORITY-001 | 仅给出“Apple 是知名品牌/设计标杆”，没有 case evidence → 不生成 SourceAssertion、ClaimAssessment 提升、正向 Finding 或 Recommendation |
-| RW-SNAPSHOT-DRIFT-001 | black-box body bytes 与 SnapshotRecord.response/body digest 不符 → target_unavailable+RunIssue；不得改读 live page、沿用旧结论或把漂移判作 UX 回归 |
+| RW-SNAPSHOT-DRIFT-001 | SnapshotClosureManifest 任一 captured response/observation bytes digest 不符，或 replay 出现未登记 network event → target_unavailable+RunIssue+no_release；不得改读 live page、沿用旧结论或把漂移判作 UX 回归 |
 | RW-BLACKBOX-EFFECT-001 | task_script 试图登录、加入购物车、提交表单、调用真实 API 或进入 checkout → prohibited_effect+no effect+completed_blocked |
-| RW-ROTATION-SELECT-001 | sorted_candidate_case_ids=[IKEA,STRIPE]、generation_sequence=0/1 → selected_case_id 唯一为 IKEA/STRIPE；输入次序不改变选择 |
+| RW-ROTATION-SELECT-001 | exact ids 按 UTF8(JCS(id)) 排序为 [RW-DOCS-STRIPE-001,RW-WEBSITE-IKEA-001]；generation_sequence=0/1 唯一选择 STRIPE/IKEA，输入次序不改变选择 |
+| RW-ROTATION-DIGEST-001 | generation_commitment=64 个 0、generation_id=gen-000、sequence=0、portfolio=real-world-portfolio-v1 的第 18.3 节正规形 preimage 唯一产生 manifest_digest=e01f97c0db9a39b9bd3f61c187ce9892a962a953328eb3cdac67658974a3bfcd |
 | RW-ROTATION-SKIP-001 | current generation 未运行预提交 selected_case_id、运行非所选 case 或所选目标 unavailable → HoldoutReleaseGate=no_release，不得临时替换 |
 | RW-CROSS-SITE-RANK-001 | Apple/IKEA/Stripe 的异构任务 measure 不可聚合为跨站总分、排行榜或“谁的 UX 最好”；只允许 within-case baseline/candidate delta |
+| SCENARIO-FAMILY-REGISTRY-001 | 第 4 节 exact 8 ids 的 JCS preimage 唯一产生 registry digest=b764d922bd94ceb6869cd60984261acae344cd0a5e21c1cc9970cff710e417d0；缺失、额外或自由文本 alias 均 invalid |
 | KNOWLEDGE-ONEFILE-001 | preimage=[{"file_digest":"0000000000000000000000000000000000000000000000000000000000000000","path":"a"}]；knowledge digest=d9262071a41bf6991251f5cf572e8ba14d73b3ef7cc023b15887899c1d9b9c9a |
 | DELTA-REPLACE-NORMAL-001 | 同 locator d0→d1 只编码一个 replace；remove+add 非正规输入 |
 | ART-ONEFILE-001 | exact uncompressed ustar raw bytes/base64/length/digest |
@@ -645,24 +658,36 @@ RealWorldRegressionCase 必须含：
 
 - case_id、scenario_profile_id、request_mode；
 - target_kind=black_box_site|pinned_repository|hulianui_contract；
-- canonical locator、immutable ref 或 SnapshotRecord；
+- canonical locator、immutable ref 或 snapshot_closure_digest；black_box_site 必须是 snapshot_closure_digest，其他两类不得伪装成 snapshot；
 - task_script、entry_state、seed_state、actor/party inventory、allowed_effects、prohibited_effects；
 - EvidenceCapability 声明：page/content、runtime、code、component-contract、research 中哪些可用；
 - baseline_bundle_digest、intervention_manifest_digest、candidate_bundle_digest；
 - preregistered hypotheses、至少一个 disconfirming/negative-control intervention、success/guardrail measures、SemanticDelta-v1 和 forbidden claims；
 - replay_oracle=semantic-delta-v1、environment digest、outbound-effect sink、cleanup contract。
 
-SnapshotRecord 固定 final_url、captured_at、response/body digest、content type、locale、viewport、authenticated=false|true、capture tool/version，以及受访问/许可策略约束的 content-addressed snapshot_artifact locator；oracle 必须能按 digest 取回相同 bytes，不能只依赖仍会漂移的 live URL。pinned_repository 固定 owner/repo、commit、license、build/run recipe digest、seed digest；branch 名只能作说明，不能作 ref。
+black_box_site 必须提供 SnapshotClosureManifest，不能只固定首页。SnapshotClosureManifest additionalProperties=false，必填 closure_version=snapshot-closure-v1、entry_url、task_script_digest、capture_environment_digest、captured_at、locale、viewport_profile、authenticated=false、network_records、observation_records、outbound_effect_ledger_digest、completeness_status=complete|incomplete、manifest_digest。manifest_digest 只用第 12.5 节 snapshot-closure row。
+
+network_records 是 ordered-list，sequence 从 0 连续；每项 additionalProperties=false，必填 sequence、task_step_id、request_method=GET|HEAD、request_url、redirect_chain、final_url、network_kind=document|script|style|image|font|xhr|fetch|sse|websocket_frame|other、disposition=captured|blocked_by_policy、response_status|null、content_type|null、response_header_digest|null、raw_body_digest|null、content_addressed_artifact_locator|null。captured 必须有 status/header/body/artifact 且 locator 取回 bytes 与 digest 相同；blocked_by_policy 的四项必须全为 null。redirect_chain 是 ordered-list，逐 hop 固定 status、url、location。任何非 GET/HEAD 请求、未登记 request/redirect/response/SSE/WebSocket frame、取不回 bytes、digest mismatch 或浏览器读取 live network 都使 completeness_status=incomplete。
+
+observation_records 是 canonical-set，key=[task_step_id,evidence_kind,viewport_profile,ordinal]；evidence_kind=screenshot|dom_snapshot|accessibility_tree|interaction_trace|performance_trace|content_extract，每项固定 content digest 和 content-addressed locator。每个 task step、每个预注册 viewport/input condition 的所需 observation 必须存在。replay 只从 closure 返回 captured bytes 或重现 blocked_by_policy，不执行 live network；任何 miss 固定 target_unavailable+RunIssue+no_release。这样冻结的是任务可达的页面、子资源、重定向和动态响应闭包，不是声称第三方站点永久不变。
+
+pinned_repository 固定 owner/repo、commit、license、build/run recipe digest、seed digest；branch 名只能作说明，不能作 ref。
 
 每个 case 另含 portfolio_role=fixed_anchor|rotation_candidate、scenario_stratum 和 comparison_policy=within_case_only。fixed_anchor 用于同一任务的纵向可比性；rotation_candidate 用于检测对固定案例的过拟合。品牌声誉、获奖、流行度、视觉风格相似度和第三方“最佳网站”名单都不是 EvidenceArtifact，也不得提高 EvidenceGrade、Finding 严重度或 Recommendation strength。不同 case 的任务、主体与 measure 不同，禁止跨站总分、排行榜和“谁的 UX 最好”结论。
 
-RotationSelectionManifest additionalProperties=false，固定 portfolio_version、generation_id、generation_sequence、sorted_candidate_case_ids、selected_case_id、committed_at、custodian_signature、manifest_digest。candidate ids 按 UTF8(JCS(id)) unsigned bytes 排序，N>0，selected index=generation_sequence mod N；generation_sequence 是 holdout custodian 在 generation commitment 中签名的单调递增整数。manifest 必须在 candidate artifact digest 产生前提交，同 generation 不可改变。所选目标 unavailable、未运行或改跑其他 case 一律 no_release；不得临时替换。pool 变化创建新 portfolio_version，旧 manifest 保留。
+RotationSelectionManifest additionalProperties=false，必填 portfolio_version、generation_id、generation_sequence、generation_commitment、sorted_candidate_case_ids、selected_case_id、manifest_digest。manifest_digest 只按第 12.5 节 rotation-selection row 计算。candidate ids 来自该 portfolio_version registry，按 UTF8(JCS(id)) unsigned bytes 排序，N>0，selected index=generation_sequence mod N；selected_case_id 必须等于该项。generation_sequence 是 holdout custodian 在 generation_commitment 中预先绑定的单调递增整数；generation commitment 必须先于 candidate artifact digest 注册，custodian 在 overall gate 中复验 commitment、sequence、pool 和选择。验证失败或同 generation 变化一律 no_release。所选目标 unavailable、未运行或改跑其他 case 同样 no_release；不得临时替换。pool 变化创建新 portfolio_version，旧 manifest 保留。
+
+RW-ROTATION-DIGEST-001 的 JCS preimage 固定为：
+
+~~~json
+{"generation_commitment":"0000000000000000000000000000000000000000000000000000000000000000","generation_id":"gen-000","generation_sequence":0,"portfolio_version":"real-world-portfolio-v1","selected_case_id":"RW-DOCS-STRIPE-001","sorted_candidate_case_ids":["RW-DOCS-STRIPE-001","RW-WEBSITE-IKEA-001"]}
+~~~
 
 证据边界是硬约束：
 
 | 可用证据 | 可以支持 | 不能支持 |
 |---|---|---|
-| 公开页面快照 | 当时可观察的内容、结构、入口和交互 affordance | 源码事实、完整旅程、真实用户结果、WCAG conformant |
+| 公开页面 snapshot closure | 闭包中当时可观察的内容、结构、入口和已捕获只读交互行为 | 闭包外页面/网络、源码事实、完整生产旅程、真实用户结果、WCAG conformant |
 | 固定仓库源码 | 该 commit 的实现结构和静态路径 | 已部署行为、用户成功、生产数据 |
 | 隔离运行态 | 固定环境内观测到的任务行为 | 其他部署、长期结果、代表性人群效果 |
 | HulianUI component contract | 第 13 节固定 scope | 产品旅程完成、可访问性合规、UX outcome |
@@ -672,19 +697,19 @@ intervention hypothesis 永远不是 evidence。black_box_site 默认 read-only�
 
 ### 18.4 首批真实目标注册表
 
-以下 ref 是 v0.1 的发现基线；正式运行仍要生成完整 RegressionCase、可取回 SnapshotRecord 与环境 digest。2026-08-18 的 curl 摘要只证明当次公开响应，不是正式可复放 snapshot_artifact。任务均从匿名、无个人数据 seed 开始。
+以下 ref 是 v0.1 的发现基线；正式运行仍要生成完整 RegressionCase、可取回 SnapshotClosureManifest 与环境 digest。2026-08-18 的 curl 摘要只证明当次公开响应，不是正式可复放 snapshot_artifact。任务均从匿名、无个人数据 seed 开始。
 
 | case_id / 场景 / role | 固定目标 | 无副作用任务 | 预注册 UX 假设 | 证据与回归边界 |
 |---|---|---|---|---|
-| RW-WEBSITE-GOVUK-001 / 公共服务官网 / fixed_anchor | https://www.gov.uk/register-to-vote；captured_at=2026-08-18T04:49:40Z；HTML SHA-256=411fa11837c5ba87f7aed35903ca7fa5d0a47048709930448466394d69393a3c | 判断用途、资格分支、所需材料、预计耗时、线上入口与纸质/求助替代；不进入提交 | 信息架构可能帮助用户在开始前形成正确预期；是否对不同资格人群同样成立必须转 Inquiry | black-box page/content only；不得声称完整登记旅程、代码事实或用户成功 |
-| RW-WEBSITE-APPLE-001 / 品牌与产品决策官网 / fixed_anchor | https://www.apple.com.cn/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=f853dfb57dd9305aa5656f604e91f96974b152a3d2fa88dc3ed763eaec07ecfb | 从首页找到 iPhone 产品族，说明至少两个可观察的选择因素，找到比较、购买与支持路径；以 desktop/mobile、keyboard、reduced-motion 条件复放；停在 checkout/login/form 前 | 渐进叙事、导航和产品比较入口可能帮助形成购买选择；动效、信息密度和路径命名也可能造成理解或操作成本，必须由任务证据判定 | black-box page/content+read-only runtime；Apple 声誉不是证据；不得声称真实购买成功、总体满意、源码事实或 WCAG conformant |
-| RW-ADMIN-APPSMITH-001 / Admin 与内部工具 / fixed_anchor | appsmithorg/appsmith@03266b555b5451e91614840ec5b2577538bd8e6e，Apache-2.0 | 在固定 seed 的隔离实例创建内部 CRUD 页面、连接 sample datasource、配置表格与表单、预览并恢复一次输入错误；禁用外发连接 | 数据绑定与编辑/预览上下文切换可能影响可发现性、错误恢复和效率 | code+isolated runtime；初次 baseline 不改 upstream；候选干预只在派生副本 |
-| RW-TRANSACTION-CAL-001 / 消费者交易流程 / fixed_anchor | calcom/cal.diy@176037d0afbe572f870a3c702985e7cd83fe6c0c，MIT | 在固定时区/日历 seed 选择 30 分钟时段、识别时区、处理时段冲突并取消；邮件/日历写入只到 fake sink | 时区可见性和冲突恢复可能降低误订与回退成本；需任务证据验证 | code+isolated runtime；零真实邀请、零真实日历/支付 effect |
-| RW-HULIAN-DELETE-001 / HulianUI 迁移目标 / fixed_anchor | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v1；row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
-| RW-WEBSITE-IKEA-001 / 零售商品发现 / rotation_candidate | https://www.ikea.cn/cn/zh/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=fb9bcdb69f2c7f90bb5db9b03bee0507e50b17c2ec8752fe593989bbd31428d8 | 在固定“中国/北京、匿名、拒绝定位”seed 下查找宽度不超过 120cm、价格不超过 ¥1500 的书桌，比较两个候选并识别配送/库存信息；不登录、不加购、不结算 | 搜索、筛选、比较和履约信息可能支持约束型选择；库存地域依赖和过滤反馈也可能增加不确定性 | black-box page/content+read-only runtime；价格/库存仅属于快照时点；不得推断实际可配送或购买成功 |
-| RW-DOCS-STRIPE-001 / 开发者文档 / rotation_candidate | https://docs.stripe.com/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=19c3a909d2be6d6336a73679b6370a15aa8b2b1d33ef1f7ad08b603b9d9e45b7 | 从文档首页定位服务端支付集成路径、前置条件、失败/恢复说明和对应 API reference；不登录、不创建 key、不调用 API | 信息气味、概念分层和示例到 reference 的路径可能降低实现成本；是否能完成真实集成必须由独立隔离任务验证 | black-box page/content+read-only runtime；动态 HTML 漂移即新 snapshot；不得声称 API 可用、实现正确或开发者成功 |
+| RW-WEBSITE-GOVUK-001 / 公共服务官网 / fixed_anchor / public-service-information | https://www.gov.uk/register-to-vote；captured_at=2026-08-18T04:49:40Z；HTML SHA-256=411fa11837c5ba87f7aed35903ca7fa5d0a47048709930448466394d69393a3c | 判断用途、资格分支、所需材料、预计耗时、线上入口与纸质/求助替代；不进入提交 | 信息架构可能帮助用户在开始前形成正确预期；是否对不同资格人群同样成立必须转 Inquiry | black-box page/content only；不得声称完整登记旅程、代码事实或用户成功 |
+| RW-WEBSITE-APPLE-001 / 品牌与产品决策官网 / fixed_anchor / brand-marketing-website | https://www.apple.com.cn/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=f853dfb57dd9305aa5656f604e91f96974b152a3d2fa88dc3ed763eaec07ecfb | 从首页找到 iPhone 产品族，说明至少两个可观察的选择因素，找到比较、购买与支持路径；以 desktop/mobile、keyboard、reduced-motion 条件复放；停在 checkout/login/form 前 | 渐进叙事、导航和产品比较入口可能帮助形成购买选择；动效、信息密度和路径命名也可能造成理解或操作成本，必须由任务证据判定 | black-box page/content+read-only runtime；Apple 声誉不是证据；不得声称真实购买成功、总体满意、源码事实或 WCAG conformant |
+| RW-ADMIN-APPSMITH-001 / Admin 与内部工具 / fixed_anchor / admin-internal-tool | appsmithorg/appsmith@03266b555b5451e91614840ec5b2577538bd8e6e，Apache-2.0 | 在固定 seed 的隔离实例创建内部 CRUD 页面、连接 sample datasource、配置表格与表单、预览并恢复一次输入错误；禁用外发连接 | 数据绑定与编辑/预览上下文切换可能影响可发现性、错误恢复和效率 | code+isolated runtime；初次 baseline 不改 upstream；候选干预只在派生副本 |
+| RW-TRANSACTION-CAL-001 / 消费者交易流程 / fixed_anchor / consumer-transaction | calcom/cal.diy@176037d0afbe572f870a3c702985e7cd83fe6c0c，MIT | 在固定时区/日历 seed 选择 30 分钟时段、识别时区、处理时段冲突并取消；邮件/日历写入只到 fake sink | 时区可见性和冲突恢复可能降低误订与回退成本；需任务证据验证 | code+isolated runtime；零真实邀请、零真实日历/支付 effect |
+| RW-HULIAN-DELETE-001 / HulianUI 迁移目标 / fixed_anchor / admin-internal-tool | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v1；row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
+| RW-WEBSITE-IKEA-001 / 零售商品发现 / rotation_candidate / retail-commerce-discovery | https://www.ikea.cn/cn/zh/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=fb9bcdb69f2c7f90bb5db9b03bee0507e50b17c2ec8752fe593989bbd31428d8 | 在固定“中国/北京、匿名、拒绝定位”seed 下查找宽度不超过 120cm、价格不超过 ¥1500 的书桌，比较两个候选并识别配送/库存信息；不登录、不加购、不结算 | 搜索、筛选、比较和履约信息可能支持约束型选择；库存地域依赖和过滤反馈也可能增加不确定性 | black-box page/content+read-only runtime；价格/库存仅属于快照时点；不得推断实际可配送或购买成功 |
+| RW-DOCS-STRIPE-001 / 开发者文档 / rotation_candidate / developer-documentation | https://docs.stripe.com/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=19c3a909d2be6d6336a73679b6370a15aa8b2b1d33ef1f7ad08b603b9d9e45b7 | 从文档首页定位服务端支付集成路径、前置条件、失败/恢复说明和对应 API reference；不登录、不创建 key、不调用 API | 信息气味、概念分层和示例到 reference 的路径可能降低实现成本；是否能完成真实集成必须由独立隔离任务验证 | black-box page/content+read-only runtime；动态 HTML 漂移即新 snapshot；不得声称 API 可用、实现正确或开发者成功 |
 
-fixed_anchor 不是“金标准”，也不预写正负 Finding。rotation pool v0.1 按 case_id 的 UTF8(JCS(id)) 排序含 IKEA、STRIPE 两例，由 RotationSelectionManifest 每 generation 唯一选择一例。若任一目标更新，旧 case/ref 保留，新建 case version；不得移动 ref 或替换 snapshot 后继续沿用 baseline。
+fixed_anchor 不是“金标准”，也不预写正负 Finding。portfolio_version=real-world-portfolio-v1 的 rotation candidate exact ids 为 RW-DOCS-STRIPE-001、RW-WEBSITE-IKEA-001；按 UTF8(JCS(id)) 排序也恰为此顺序，由 RotationSelectionManifest 每 generation 唯一选择一例。若任一目标更新，旧 case/ref 保留，新建 case version；不得移动 ref 或替换 snapshot 后继续沿用 baseline。
 
 ### 18.5 Baseline → intervention → verify
 
@@ -707,7 +732,7 @@ oracle 首先按 InputCollectionRegistry 对 baseline/candidate normalized bundl
 
 ### 18.6 发布门槛
 
-Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每例 5 次 fresh-context。Skill/CLI/MCP semantic parity 100%，adapter canonical evidence parity 100%，prohibited claims/recommendations 0，release-critical failure 误 pass 0，golden bytes 全匹配。
+Canonical 至少覆盖第 18.1 所有 vectors，并覆盖 ScenarioFamilyRegistry-v1 digest=b764d922bd94ceb6869cd60984261acae344cd0a5e21c1cc9970cff710e417d0 的 exact 8 ids；每例 5 次 fresh-context。Skill/CLI/MCP semantic parity 100%，adapter canonical evidence parity 100%，prohibited claims/recommendations 0，release-critical failure 误 pass 0，golden bytes 全匹配。
 
 HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才通过；missing、failed、QUERY_BUDGET_EXHAUSTED、contaminated 或非当前 generation 一律 no_release。真实回归必须完成 fixed anchors 中的 HulianUI、Apple、GOV.UK 和至少一个非 HulianUI pinned repository，并完成 RotationSelectionManifest 为当前 generation 选中的一个 rotation_candidate；每例均有 baseline 与 verify。任一必需目标 unavailable 时记录 RunIssue 并 no_release，不得换站、换 live bytes 或用第三方品牌声誉替代证据。稳定阶段再要求独立专家/用户代表按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty。只报告 within-case 观察结果、样本边界和残余风险，不宣称永不漏报，不输出跨站总分或排行榜。
 
@@ -738,9 +763,9 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 当前仍只做设计。
 
 1. 提交 v0.13 真实站点回归扩展到 design/v0；
-2. 自检所有 MUST/唯一表与 95 个 vectors；
+2. 自检所有 MUST/唯一表与 97 个 vectors；
 3. 第十一轮已完成：release/holdout 与 adapter 评审 GO；综合评审的 SelectionDecision/ReleaseRecommendation 命名冲突已闭合；
-4. 第十二轮只复核 portfolio role、品牌非权威、SnapshotRecord 漂移、无副作用任务、rotation 唯一选择与 release gate；
+4. 第十二轮首次复核发现 snapshot closure 与 scenario-family/rotation identity blocker；本候选已补 closure manifest、exact registry/digest 和 golden vectors，等待重验；
 5. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户审阅并进入 implementation plan；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
 7. 首纵切不修改 HulianUI MCP、不写第三方 upstream、不扩第二个实现 adapter、不宣称 stable。
