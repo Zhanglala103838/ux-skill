@@ -168,6 +168,20 @@ const inputReferenceRelations=Object.freeze([
    const targetInvalid=schemaErrorAt(schemaRows,'/scenario_profiles')||!Array.isArray(value.scenario_profiles);
    if(sourceInvalid||targetInvalid)out.push(normalizedError('collections','SUPPRESSED_BY_STAGE','/scenario_profile_id','ScenarioProfileRef-v1',{prerequisite_stage:'schema'}));
    else if(typeof value.scenario_profile_id==='string'&&!value.scenario_profiles.some((row)=>row?.scenario_profile_id===value.scenario_profile_id))out.push(normalizedError('collections','REF_MISSING','/scenario_profile_id','ScenarioProfileRef-v1',{ref:value.scenario_profile_id}));
+ }
+ },
+ {
+  check(value,schemaRows,out){
+   if(!Array.isArray(value.evidence))return;
+   const targetInvalid=schemaErrorAt(schemaRows,'/source_registry_refs')||!Array.isArray(value.source_registry_refs);
+   const sourceIds=targetInvalid?new Set():new Set(value.source_registry_refs);
+   value.evidence.forEach((artifact,index)=>{
+    if(!isPlainObject(artifact))return;
+    const sourcePointer=`/evidence/${index}/source_ref`;
+    const sourceInvalid=schemaErrorAt(schemaRows,sourcePointer)||typeof artifact.source_ref!=='string';
+    if(sourceInvalid||targetInvalid)out.push(normalizedError('collections','SUPPRESSED_BY_STAGE',sourcePointer,'SourceRegistryRef-v1',{prerequisite_stage:'schema'}));
+    else if(!sourceIds.has(artifact.source_ref))out.push(normalizedError('collections','REF_MISSING',sourcePointer,'SourceRegistryRef-v1',{ref:artifact.source_ref}));
+   });
   }
  },
  {
