@@ -1,0 +1,1 @@
+Task 5 final RunIssue domain candidate GREEN; inspect diagnostic_test_exit_code before cleanup.

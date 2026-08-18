@@ -128,7 +128,7 @@ function validFindingPart(value){
  const requiredType=FINDING_PAIRS[value.emission_reason_code];
  return requiredType===null||value.finding_type===requiredType;
 }
-function validRunIssuePart(value){return typeof value.code==='string'&&REASONS.has(value.code)&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||typeof value.dependency_id==='string');}
+function validRunIssuePart(value){return value.code==='RULE_EVALUATION_ERROR'&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||typeof value.dependency_id==='string');}
 function validRunPart(value){
  if(!object(value))return false;
  if(Object.hasOwn(value,'terminal')||Object.hasOwn(value,'outcome')||Object.hasOwn(value,'reason_code')||Object.hasOwn(value,'release_critical'))return validRulePart(value);
