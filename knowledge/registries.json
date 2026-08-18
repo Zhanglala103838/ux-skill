@@ -1,0 +1,28 @@
+{
+  "registry_version": "authority-registries-v1",
+  "authority_root_registry": [
+    {
+      "authority_root_id": "ux-skill-local-admin-root-v1",
+      "issuer_id": "ux-skill",
+      "effective_at": "2026-08-18T00:00:00Z",
+      "expires_at": null,
+      "revoked": false,
+      "allowed_actions": ["delete"],
+      "allowed_resource_types": ["admin_account"],
+      "allowed_purposes": ["account_deletion"]
+    }
+  ],
+  "action_policy_registry": [
+    {
+      "action": "delete",
+      "resource_type": "admin_account",
+      "risk": "high",
+      "tenant_join": "all",
+      "required_tenant_relationships": ["target", "controller"],
+      "party_inventory_required": true,
+      "approval_required": true,
+      "capability_required": true
+    }
+  ],
+  "party_inventory_statuses": ["unknown", "verified_complete", "verified_no_affected_party"]
+}

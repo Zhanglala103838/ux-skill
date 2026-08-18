@@ -1,0 +1,23 @@
+{
+  "policy_version": "destructive-authority-policy-v1",
+  "authority_decision_statuses": ["block", "continue", "escalation", "invalid_input"],
+  "hard_constraint_result_table": {
+    "E": "evaluation_error",
+    "F": "infeasible",
+    "T": "feasible",
+    "U": "indeterminate"
+  },
+  "hard_global_priority": ["E", "U", "feasible", "zero_feasible"],
+  "zero_feasible_escalation_classes": ["high_risk", "legal", "rights"],
+  "soft_tie_table": {
+    "complete_safe": {"release_recommendation": "undecided", "next_action": "ask_decision_owner"},
+    "authority_incomplete": {"release_recommendation": "escalation", "next_action": "escalate_authority"},
+    "party_incomplete": {"release_recommendation": "escalation", "next_action": "escalate_party_inventory"},
+    "safety_or_rights_floor": {"release_recommendation": "escalation", "next_action": "escalate_safety_or_rights"}
+  },
+  "required_runtime_features": [
+    {"feature": "execution_envelope", "coverage_gap_id": "execution-envelope-binding-v1"},
+    {"feature": "time_authority", "coverage_gap_id": "time-authority-commit-v1"},
+    {"feature": "commit_revalidation", "coverage_gap_id": "composite-guard-revalidation-v1"}
+  ]
+}
