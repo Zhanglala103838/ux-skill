@@ -259,3 +259,32 @@ test("candidate and core order use unsigned UTF8 JCS bytes",()=>{
  ]));
  assert.deepEqual(unsat.unsat_cores,[["","😀"]]);
 });
+
+const fullContractDelete=()=>{
+ const value=highRiskDelete();
+ const scope={actions:["delete"],resource_types:["admin_account"],tenant_ids:["tenant-a"],purposes:["account_deletion"]};
+ const envelopeDigest="a".repeat(64),capabilityDigest="b".repeat(64);
+ value.grant={grant_id:"grant-1",issuer:actor("authority-root"),subject:actor("admin"),parent_grant_id:null,scope,effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z",status:"active",delegable:false,remaining_depth:0,epoch:1,version:"1",proof_digest:"f".repeat(64)};
+ value.execution_envelope={envelope_digest:envelopeDigest};
+ value.approval={approval_decision_id:"approval-1",sequence:1,approver_context_digest:"c".repeat(64),approver_authority_ref:"approver-grant",envelope_digest:envelopeDigest,decision:"approved",effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z",consumed:false};
+ value.capability={capability_id:"cap-1",capability_digest:capabilityDigest,body:{run_id:"run-1",step_id:"step-1",acting_chain_digest:"d".repeat(64),session_id:"session-1",channel:"admin",audience:"operator",tenant_set_digest:"e".repeat(64),resource_versions:[{resource_id:"admin-1",version:"1"}],authorization_purpose:"account_deletion",envelope_digest:envelopeDigest,nonce:"nonce-1",expires_at:"2026-08-19T00:00:00Z",issuer_id:"ux-skill",key_version:"1",capability_use:"execute"},authenticator:"not-executable",ledger_ref:"ledger-1"};
+ value.capability_ledger_entry={capability_digest:capabilityDigest,status:"unused",consumed_at:null,consumption_effect_digest:null};
+ return value;
+};
+
+test("grant approval capability and envelope bindings each fail closed in isolation",()=>{
+ const full=fullContractDelete();
+ assert.deepEqual(evaluateAuthority(full),{status:"escalation",reason_code:"GRANT_VALIDITY_UNKNOWN",coverage_gap_id:"grant-chain-verification-v1"});
+ const grant=fullContractDelete(); grant.grant={status:"active",scope_coverage:"verified",effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z"};
+ assert.deepEqual(evaluateAuthority(grant),{status:"escalation",reason_code:"GRANT_VALIDITY_UNKNOWN",coverage_gap_id:"grant-contract-v1"});
+ const approval=fullContractDelete(); approval.approval={status:"verified"};
+ assert.deepEqual(evaluateAuthority(approval),{status:"escalation",reason_code:"APPROVAL_PREREQUISITE_UNKNOWN",coverage_gap_id:"approval-envelope-binding-v1"});
+ const approvalUnbound=fullContractDelete(); approvalUnbound.approval.envelope_digest="0".repeat(64);
+ assert.deepEqual(evaluateAuthority(approvalUnbound),{status:"escalation",reason_code:"APPROVAL_PREREQUISITE_UNKNOWN",coverage_gap_id:"approval-envelope-binding-v1"});
+ const capability=fullContractDelete(); capability.capability={status:"verified",ledger_status:"unused"};
+ assert.deepEqual(evaluateAuthority(capability),{status:"escalation",reason_code:"CAPABILITY_UNKNOWN",coverage_gap_id:"capability-contract-v1"});
+ const capabilityUnbound=fullContractDelete(); capabilityUnbound.capability.body.envelope_digest="0".repeat(64);
+ assert.deepEqual(evaluateAuthority(capabilityUnbound),{status:"escalation",reason_code:"CAPABILITY_UNKNOWN",coverage_gap_id:"capability-envelope-binding-v1"});
+ const party=fullContractDelete(); party.party_proof={verification_status:"verified",effective_at:"2026-08-17T00:00:00Z",expires_at:"2026-08-19T00:00:00Z"};
+ assert.deepEqual(evaluateAuthority(party),{status:"escalation",reason_code:"PARTY_INVENTORY_UNKNOWN"});
+});
