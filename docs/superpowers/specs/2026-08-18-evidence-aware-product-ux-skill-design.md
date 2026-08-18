@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：对抗评审后修订，等待第二轮独立评审  
-规格版本：0.2  
+状态：第二轮对抗评审后修订，等待第三轮独立评审  
+规格版本：0.3  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -55,43 +55,41 @@ UX 包括用户因实际使用、预期使用、拒绝使用、中途放弃以�
 - 用组件覆盖率、采用率、审美偏好或单一评分代表 UX；
 - 把启发式风险或相关性数据包装成已验证因果结论。
 
+
 ## 3. 来源、权威与适用性
 
-知识来源不是单一排行榜。每条规则分别记录四组属性：
+规则不得把“某本书这样说”直接转换成普遍义务。知识库保存来源及其中的逐条断言；权威属于断言边，而不是整本来源或整条规则。
 
-### 3.1 权威状态 `authority_status`
+### 3.1 SourceAssertion
 
-- `law`
-- `contract`
-- `standard-requirement`
-- `standard-recommendation`
-- `organizational-policy`
-- `advisory`
-- `none`
+~~~yaml
+assertion_id: string
+source_ref: string
+locator: string
+relation: defines | requires | recommends | supports | motivates | exemplifies
+authority_status: normative | adopted-policy | empirical | expert-synthesis | practitioner
+normative_scope:
+  object: string
+  conformance_level: string | null
+  technology: string | null
+  jurisdiction: string | null
+  adoption_basis: string | null
+claim_scope: string
+applicability: condition_ast
+superseded_by: assertion_id | null
+~~~
 
-标准只有在具体版本、章节、对象范围和义务来源成立时才能产生 violation。WCAG Success Criterion、Understanding、Technique 和 APG 不得被视为相同规范等级。
+同一来源可包含规范要求、解释、例子和作者观点，必须拆成不同 assertion。定位至少到章节、成功准则、条款或稳定 URL 片段。
 
-### 3.2 实证基础 `evidence_basis`
+只有同时满足以下条件，Finding 才能使用 violation 或 non_conformance：
 
-- `systematic-review`
-- `replicated-research`
-- `single-study`
-- `expert-consensus`
-- `practice-report`
-- `heuristic`
-- `unverified-hypothesis`
+1. 至少一个适用的 normative 或 adopted-policy assertion；
+2. 来源版本、对象、符合级别、技术范围、辖区和采纳依据均已解析；
+3. 已区分必须达到的结果和某种实现，并检查等价替代；
+4. 目标证据满足断言要求的观察方法；
+5. 没有被取代，也没有未解决的同级义务冲突。
 
-研究机构名称不能替代方法质量和复现证据。
-
-### 3.3 适用范围 `applicability`
-
-记录 jurisdiction、domain、technology、population、language、conformance scope、included conditions 和 excluded conditions。
-
-### 3.4 来源状态 `source_status`
-
-记录 publisher、title、edition/version、section locator、issued_at、accessed_at、reviewed_at、stable_url、normative/informative、superseded_by 和 rights。
-
-一条规则可以同时关联多个来源，并通过 `defines | requires | supports | motivates | exemplifies` 描述来源作用。第三方内容只保存必要书目信息、短摘要与链接；MIT 只覆盖本仓库原创表达和代码。
+否则只能报告 risk、heuristic、opportunity、unknown 或 escalation。多个义务相撞时，裁决只能是 resolved、infeasible、unknown 或 escalated。
 
 ## 4. 分析单元与可选镜头
 
@@ -122,419 +120,282 @@ Garrett 五层适合从抽象到具体定位数字界面问题，但不能覆盖
 
 所有分析单元都需考虑：无障碍、内容、信任、隐私、性能、弱网、低端设备、响应式、状态完整性、恢复、国际化、熟练度和长期效率。
 
+
 ## 5. 请求模式与场景实例
 
-### 5.1 请求模式
+每次运行只选一个主模式：guide、scan、refactor 或 verify。模式决定输出目的，不决定规则适用性或严重度。
 
-`request_mode` 是顶层单值：
+### 5.1 ScenarioInstance
 
-- `design`
-- `audit`
-- `migrate`
-- `improve`
-- `verify`
+场景是有身份、授权、资源、目的和风险边界的实例，不是 website/admin/mobile 标签数组。
 
-它描述 Agent 当前任务，不属于用户场景。
-
-### 5.2 场景实例
-
-分析对象使用 `scenario_instances[]`。每个实例将用户、目标、任务、权限、频率、渠道与风险绑定，避免多个数组形成错误笛卡尔积。
-
-```yaml
-scenario_id: refund-customer-review
-scope: journey-step
-actor:
-  relationship: customer
-  role: purchaser
-  authority: own-order
-  proficiency: occasional
-  frequency: monthly
-goal: understand refund status and next action
+~~~yaml
+scenario_id: string
+principal: { actor_id: string, actor_type: human | service | agent }
+represented_party: actor_ref | null
+account_or_tenant: resource_ref | null
+resource: { resource_id: string, owner_or_subject: actor_ref | null }
+role_assignments:
+  - { role: string, assignee: actor_ref, scope: resource_ref }
+authority_grants:
+  - grant_id: string
+    grantee: actor_ref
+    action_scope: [string]
+    resource_scope: [resource_ref]
+    source: contract | policy | consent | delegation | law | system
+    delegated_by: actor_ref | null
+    effective_at: datetime
+    expires_at: datetime | null
+beneficiaries: [actor_ref]
+affected_parties: [actor_ref]
+goal: string
 task:
-  family: transact
-  operation: review
-  object: refund
-  phase: post-submission
-channel:
-  shell: web
-  device: mobile
-  input_modes: [touch, screen-reader]
+  intent: string
+  action: string
+  object: resource_ref
+  lifecycle_phase: create | read | update | approve | revoke | delete | export | recover
+channel: web | mobile | desktop | terminal | api | multimodal
 environment:
-  connectivity: variable
-  interruption: possible
-risk:
-  consequence_domains: [financial, privacy]
-  operation_properties: [reversible]
-  affected_scope: individual
-  recovery_cost: medium
-  uncertainty: low
-classification:
-  evidence_refs: [evidence-context-1]
-  confidence: high
-```
+  place: string
+  device: string
+  input_output: [string]
+  connectivity: string
+risk_context:
+  domain: general | finance | health | safety | employment | education | legal | identity
+  reversibility: reversible | costly | irreversible
+  vulnerability_factors: [string]
+  data_sensitivity: public | internal | personal | sensitive | highly_sensitive
+~~~
 
-每个 finding 必须引用一个或多个 `scenario_id`。
+principal、represented_party、resource owner/subject、beneficiary 和 affected_party 可以不同。系统分别检查谁在操作、代表谁、影响谁、谁承担后果，以及权限来自哪里。
 
-### 5.3 正交分类轴
+### 5.2 Typed facets
 
-- `channel.shell`：web、mobile-web、native-mobile、desktop、mini-program、email、phone、paper、in-person；
-- `actor.relationship`：public、customer、employee、operator、administrator、partner、affected-non-user；
-- `task.family`：inform、discover、compare、transact、create、operate、configure、review、approve、recover、collaborate；
-- `capability_overlays`：ai-assisted、data-dense、real-time、offline-capable、multilingual；
-- `environment`：设备、输入模式、带宽、时间压力、中断、环境隐私和辅助技术；
-- `risk`：后果、操作属性、影响范围、可逆性、持续时间、可检测性、恢复成本和不确定性。
+page_family、surface、channel、audience 等只作为带类型和基数的 facet。registry 声明值域、0..1/1/0..n/1..n 基数、canonical owner、推导来源和不变量。同一事实只有一个 canonical owner，派生值必须回溯至 ScenarioInstance。
 
-`ai-assisted`、`data-dense` 和 `desktop` 是 overlay 或 channel，不与 Admin、官网等任务场景并列。
+website、admin、commerce、onboarding 等 Profile 只建议待确认的 facet 和问题。未经解析的 Profile 不得激活或排除规则，不得改变严重度、优先级或发布判断，也不得替代 actor、authority、resource、journey 或 risk_context。
 
-### 5.4 Profile
+### 5.3 多场景绑定与演化
 
-Profile 只是低优先级默认值，由场景实例推导，不直接驱动结论：
+Finding 的 scenario_bindings 为数组，每项 relation 只能是 target、affected_party、comparator 或 evidence_context。
 
-- `public-marketing`
-- `public-content`
-- `transactional-service`
-- `consumer-product`
-- `admin-operations`
-- `data-operations`
-- `configuration-tool`
-- `ai-assisted-product`
+ScenarioLineage 记录 previous_scenario_id、change_event、before/after authority digest、before/after risk digest、preserved/invalidated invariants，以及是否需重新认证或批准。权限默认不继承；主体、资源、租户、时间、目的或风险变化都重新求值，执行前再次验证授权以防 TOCTOU。
 
-路由名、仓库名、页面标题和视觉外观只能产生低置信度候选。缺少 actor、goal、task 或 consequence 时，Agent必须输出候选分支或请求必要信息，不能确定 Profile。
-
-### 5.5 场景重算
-
-actor、goal、task phase、authority、risk、channel 或服务责任方变化时创建新场景实例。迁移项目还需记录 `source_scenario`、`target_scenario` 和必须保持的业务状态。
 
 ## 6. 旅程与服务系统
 
-跨端不是平台数组，而是有顺序和交接的 journey：
+Journey 是可验证的有向状态图，而不是页面列表。
 
-```yaml
-journey:
-  journey_id: identity-verification
-  user_outcome: verification completed without duplicate submission
-  steps:
-    - step_id: enter-details
-      scenario_ref: applicant-web-entry
-      owner: product-team
-    - step_id: capture-document
-      scenario_ref: applicant-mobile-camera
-      owner: identity-provider
-    - step_id: manual-review
-      scenario_ref: operator-admin-review
-      owner: operations-team
-  transitions:
-    - from: enter-details
-      to: capture-document
-      handoff: qr-code
-      persisted_state: application-id
-      timeout: 24h
-      resume_path: emailed-link
-      failure_recovery: return-to-enter-details
-```
+~~~yaml
+journey_id: string
+entry_steps: [step_id]
+terminal_outcomes:
+  - { outcome_id: string, kind: success | safe_exit | cancelled | failed | escalated }
+steps:
+  - step_id: string
+    preconditions: [condition_ast]
+    postconditions: [condition_ast]
+transitions:
+  - transition_id: string
+    from: step_id
+    to: step_id | outcome_id
+    trigger: string
+    guard: condition_ast
+    carried_state:
+      - { name: string, type: string, source_step: step_id, classification: string, version: string }
+    authority_context: [grant_id]
+    consent_context: [string]
+    idempotency_key: string | null
+    timeout_ms: integer | null
+    retry_policy: string | null
+    cancel_path: transition_id | null
+    recovery_path: transition_id | null
+    escalation_path: transition_id | null
+~~~
 
-对服务级 finding 还需记录：
+验证器拒绝：不存在的引用、入口不可达步骤、没有可达 terminal 的路径、歧义 transition、缺失的取消/超时/重试/恢复语义、跨主体/租户/资源/目的非法携带权限或同意、不可逆重试无幂等保护，以及失败后只剩死路、循环或假成功。端内、跨端与人工服务触点统一入图。
 
-- actors 与 affected non-users；
-- channels 与 touchpoints；
-- frontstage、backstage、support systems；
-- policy constraints 和 ownership；
-- handoffs、wait states、failure demand；
-- 数据和状态由谁持有；
-- 人工支持、升级和恢复路径；
-- 运营指标与用户结果的关系。
-
-高风险交易服务必须验证至少一个跨渠道或跨角色闭环，不能只验证数字页面。
 
 ## 7. 规则适用与冲突裁决
 
-规则解析顺序固定为：
+裁决固定分三阶段：
 
-1. 已确认适用的法律、合同、标准要求和无障碍基线；
-2. 人身、授权、隐私、财务、数据、服务连续性和完全排除等伤害后果；
-3. 用户自主权、可拒绝性、可逆性与真实替代路径；
-4. 当前 actor 的明确目标和 task；
-5. 当前 journey step、system state 与责任方；
-6. 熟练度、频率、输入方式、设备和环境；
-7. Profile 默认值和视觉表达偏好。
+1. Applicability：只根据 ScenarioInstance、Journey、运行上下文、辖区和 SourceAssertion 计算 applicable、not_applicable 或 unknown。不得读取测试成功、截图存在或样本量等证据状态。
+2. Hard-constraint feasibility：对已适用硬约束建立无环关系图，边为 overrides、cannot_override、requires_together、incompatible_with；结果为 feasible、infeasible、unknown 或 escalated。法律、生命安全、重大经济后果、弱势群体权利或组织权限冲突必须升级给有权限的人。
+3. Soft preference：只在可行集合内按任务成功、伤害降低、可逆性、组织约束和用户偏好选择建议。品牌、视觉和组件便利性不得覆盖硬约束。
 
-规则包含：
+每次输出 resolution_trace：候选断言、适用结果、图边、排除原因、剩余方案、未决信息和升级责任人。缺少 trace 的结论不能进入发布判断。证据不足不能伪装成不适用。
 
-- `priority_class`
-- `conflicts_with`
-- `override_conditions`
-- `cannot_override`
-- `resolution_strategy`
-
-解析器必须输出 `matched_rules`、`excluded_rules` 和 `resolution_trace`。无法裁决时返回分支或 `unknown`，禁止任意合并。
-
-成本只参与排期，不降低伤害严重度。即使只影响少数用户，完全阻断关键服务仍可为 blocker。
 
 ## 8. Claim–Evidence 模型
 
-删除单一 E0–E6 证据阶梯。证据不能压成一个“最高等级”。
+### 8.1 Claim
 
-### 8.1 Claim 类型
+共同字段为 claim_id、claim_type、subject、population、context、outcome、time_window、statement、scope_limit。claim_type 为 descriptive、normative、causal、predictive、affective 或 recommendation_rationale。
 
-- `implementation-state`
-- `runtime-behavior`
-- `task-reachability`
-- `accessibility-barrier`
-- `usability-problem`
-- `prevalence`
-- `mechanism`
-- `causal-effect`
-- `longitudinal-outcome`
-- `affective-response`
-- `ethical-harm`
+因果 Claim 还声明 treatment、comparator、unit、estimand、assignment_mechanism、interference_assumption；不能识别 comparator 或 estimand 时降级为描述性关联。Affective Claim 区分 reported_experience 和 inferred_signal，不得把点击、停留、面部、语音或情绪分类直接当作用户感受、诊断、脆弱性或意图。
 
-### 8.2 Evidence 描述
+### 8.2 Evidence 与关系
 
-每个 evidence item 记录：
+Evidence 保存 evidence_id、kind、provenance、collected_at、population、context、method、quality_limits、target_digest。kind 可为 code、screenshot、runtime、accessibility_tree、user_report、analytics、experiment、policy、expert_review。
 
-- `modality`：artifact、runtime、expert-review、user-observation、self-report、telemetry、experiment；
-- `study_design`：exploratory、descriptive、observational、controlled、quasi-experimental、longitudinal；
-- `population`、sampling、inclusion/exclusion；
-- `context_fidelity`；
-- `instrument`、measurement quality 和 missing data；
-- quantitative fields：denominator、effect size、interval、power、assignment、duration、predeclared metrics、multiple comparisons、interference；
-- qualitative fields：recruitment、researcher role、prompting risk、analysis procedure、negative cases、transfer limits；
-- `causal_identification`；
-- `uncertainty`；
-- `limitations`；
-- producer、tool/version、captured_at、artifact hash 和 redaction status。
+ClaimEvidenceLink 独立保存 claim_id、evidence_id、relation、strength、rationale。relation 为 supports、contradicts、inconclusive 或 limits。系统必须显示反证，不得只选支持项。
 
-只有与 claim 类型匹配的证据组合才能支持该 claim。例如：
+### 8.3 兼容性与前置条件
 
-- DOM 和自动化只能支持部分 implementation/accessibility claim；
-- scripted interaction 可以支持 task reachability，不能证明真实可用性；
-- telemetry 可描述发生率，但通常不能解释机制；
-- 用户观察可发现机制与问题，但样本不足时不能推断总体发生率；
-- A/B 必须满足实验完整性要求，显著性不能替代效应大小、实际重要性或伦理判断；
-- 长期相关改善没有反事实时不能写成设计造成的因果效果。
+知识库维护 claim_type × evidence_kind 兼容矩阵。例如：代码存在不能证明用户成功；截图不能证明键盘顺序、动态播报或恢复；自动工具无报错不等于 WCAG 合规；可用性观察不能独证长期业务/健康结果；组件合规不等于旅程有效。
 
-报告分别输出 `supported_claims`、`unsupported_claims`、`contradictory_evidence` 和 `not_evaluated`。
+evaluation_preconditions 与 applicability 分开。缺少所需证据时只能是 not_run、partial 或 unknown，不能是 not_applicable 或 pass。
+
 
 ## 9. 发现、伤害与优先级
 
-### 9.1 Finding 类型
+Finding 类型为 violation、non_conformance、risk、heuristic、opportunity、unknown、escalation。规则评价的 pass、fail、partial、not_run、not_applicable、unknown、evaluation_error 是另一维度，不能互换。
 
-- `violation`：具体义务、版本和适用范围均已确认；
-- `scenario-mismatch`
-- `usability-risk`
-- `observed-problem`
-- `optimization-hypothesis`
-- `ethical-risk`
-- `not-applicable`
-- `upstream-gap`
+风险分解保存 harm_magnitude、likelihood、exposure、affected_party_count、reversibility、detectability_before_harm、evidence_confidence。unknown 不得自动折算为低风险。
 
-### 9.2 Finding 状态
+分别输出：
 
-- `pass`
-- `fail`
-- `unknown`
-- `not-applicable`
-- `not-run`
-- `partial`
-- `tool-failed`
+- severity：问题影响强度；
+- risk_priority：结合可能性、暴露、人数、可逆性和置信度的排序；
+- release_decision：allow、allow_with_conditions、block、escalate 或 undecided。
 
-工具失败单独报告，不能伪装成产品通过或失败。
+禁止用总分掩盖高伤害尾部风险。
 
-### 9.3 伤害模型
-
-记录：
-
-- `harm_magnitude`
-- `exclusion`
-- `affected_population`
-- `vulnerable_population`
-- `affected_non_users`
-- `power_asymmetry`
-- `coercion_or_manipulation`
-- `distributional_harm`
-- `reversibility`
-- `duration`
-- `detectability`
-- `exposure`
-- `recovery_cost`
-
-严重度为 blocker、major、moderate 或 minor；置信度另记。触达、修复成本和证据置信度参与排期，但不改变伤害本身。
-
-转化率、留存或统计显著性不能覆盖以下红线：欺骗、强迫、报复性退出、无真实替代路径、隐私过度采集、危险默认、对脆弱群体的剥削，以及关键服务的完全排除。
 
 ## 10. Finding 与运行报告契约
 
-顶层 report 包含：
+RunReport 记录 run_id、request_mode、started_at、evaluator_version/digest、knowledge_digest、adapter_digest、input_digest、带 content_digest/dirty/included_artifacts 的 targets、excluded_targets、environment_facts 和 findings。
 
-- `run_id`、started_at、completed_at；
-- target repository、commit、dirty state、scope 和 exclusions；
-- request_mode、scenario instances、journey refs；
-- Skill、knowledge、schema、adapter、MCP 和 UI 的版本与摘要；
-- tool execution summary；
-- report status：complete、partial、degraded、failed；
-- redaction policy 与 artifact index。
+Finding 最小契约：
 
-每个 finding 至少包含：
+~~~yaml
+finding_id: string
+fingerprint: sha256
+type: violation | non_conformance | risk | heuristic | opportunity | unknown | escalation
+rule_id: string
+rule_version: string
+evaluation_outcome: pass | fail | partial | not_run | not_applicable | unknown | evaluation_error
+scenario_bindings:
+  - { scenario_id: string, relation: target | affected_party | comparator | evidence_context }
+target_locator: string
+target_digest: sha256
+claim_refs: [claim_id]
+evidence_links: [claim_evidence_link_id]
+source_links: [assertion_id]
+severity: string
+risk_priority: string
+release_decision: string
+message: string
+recommendation:
+  action: string
+  rationale_claims: [claim_id]
+  evidence_links: [claim_evidence_link_id]
+  applicability: condition_ast
+  contraindications: [string]
+  alternatives: [string]
+  mechanism: string
+  uncertainty: string
+trace:
+  evaluator_digest: sha256
+  input_digest: sha256
+  applicability_nodes: [node_id]
+  resolution_nodes: [string]
+  evaluation_nodes: [node_id]
+tags: [string]
+~~~
 
-```json
-{
-  "finding_id": "uxf-...",
-  "fingerprint": "stable-hash",
-  "rule_ref": {"rule_id": "UX-...", "version": "1.0.0"},
-  "source_refs": ["SRC-WCAG-22"],
-  "scenario_refs": ["refund-customer-review"],
-  "analysis_units": ["task-and-interaction"],
-  "lenses": [{"id": "garrett-planes", "values": ["structure"]}],
-  "type": "usability-risk",
-  "status": "fail",
-  "claim": {
-    "type": "task-reachability",
-    "statement": "..."
-  },
-  "evidence_refs": ["ev-..."],
-  "user_impact": "...",
-  "harm": {},
-  "severity": "major",
-  "confidence": "medium",
-  "recommendation": {
-    "intent_id": "INTENT-RECOVERABLE-DESTRUCTIVE-ACTION",
-    "user_outcome": "...",
-    "vendor_neutral_approach": "...",
-    "design_system_mapping": [],
-    "tradeoffs": []
-  },
-  "verification": {
-    "claim_to_test": "...",
-    "method": "...",
-    "success_criteria": [],
-    "prohibited_claims": []
-  },
-  "upstream_gap": false
-}
-```
+fingerprint 由 canonical target locator、target digest、rule id/version、scenario binding 和 claim key 生成；只改文案不能隐藏或制造问题。上游缺口使用 type 或 tag，不维护重复布尔字段。
 
-finding fingerprint 由 rule、scenario、目标位置和 claim 类型的规范化表示生成。Rule ID 永不复用；废止规则保留 tombstone、`deprecated_at` 和 `superseded_by`。
 
 ## 11. 可执行规则契约
 
-规则不是自然语言字段目录。v1 条件语言采用封闭 AST：
+### 11.1 条件 AST
 
-```json
-{
-  "all": [
-    {"path": "scenario.task.family", "op": "eq", "value": "configure"},
-    {"path": "scenario.risk.operation_properties", "op": "contains", "value": "destructive"},
-    {"path": "evidence.runtime.confirmation", "op": "exists"}
-  ]
-}
-```
+condition_ast_version 首版为 1。路径只能引用版本化 registry 中的 RFC 6901 JSON Pointer；每个节点有 node_id。
 
-允许操作仅包括：`eq`、`neq`、`in`、`contains`、`exists`、`lt`、`lte`、`gt`、`gte`，并通过 `all/any/not` 组合。
+允许 literal、exists(path)、eq(path, typed_literal)、in(path, typed_literal_array)、compare(path, lt/lte/gt/gte, typed_literal)、all(children)、any(children)、not(child)。禁止脚本、正则执行、动态遍历、隐式转换和任意代码。eq(1, "1") 是 type_error。
 
-每条规则包含：
+### 11.2 missing、null 与三值逻辑
 
-- stable `rule_id`、version、status；
-- intent/capability IDs；
-- authority、evidence basis、applicability 和 source refs；
-- applicability AST 与 exclusion AST；
-- `automation_capability`：automated、assisted、manual、user-research；
-- `enforcement`：blocking、advisory、informational；
-- required claim–evidence combination；
-- evaluator/check ID、inputs 和 outputs；
-- pass/fail/unknown/not-applicable/not-run 条件；
-- conflict metadata；
-- repair intent 和 verification contract。
+- missing：路径不存在，除 exists 外返回 unknown；
+- null：路径存在且值为 null；exists 返回 true；
+- type_error：返回 evaluation_error；
+- all 空集合为 true，any 空集合为 false；
+- not 只能有一个 child。
 
-只有确定性、适用范围明确的 violation 可以 blocking。Heuristic、research-backed 和 product hypothesis 默认 advisory。写文件、创建 Issue、外部消息或不可逆操作不属于规则评估，必须是用户明确授权的独立动作。
+Kleene 逻辑：T AND U=U，F AND U=F，T OR U=T，F OR U=U，U AND U=U，U OR U=U；not(T)=F、not(F)=T、not(U)=U。
 
-无法确定化的规则在 v1 标记为 manual，不使用伪机器条件。
+### 11.3 条件分槽
+
+每条规则分别保存 applicability_condition、exclusion_condition、evaluation_preconditions。证据缺失只能影响 evaluation_preconditions，不能改写 applicability。
+
+### 11.4 状态与结果
+
+execution_state 为 scheduled、running、completed、tool_failed、invalid_input、invalid_rule、cancelled。evaluation_outcome 为 pass、fail、partial、not_run、not_applicable、unknown、evaluation_error。
+
+completed 可产生 pass/fail/partial/unknown；前置证据缺失产生 not_run；阶段 A 为 false 产生 not_applicable；tool_failed/invalid_* 产生 evaluation_error；cancelled 产生 not_run。tool_failed、unknown 和 not_run 永远不能聚合成 pass。
+
+### 11.5 单一 evaluator
+
+Skill CLI、未来 MCP 和 CI 必须调用同一 evaluator 核心模块，禁止重写规则语义。仓库保存 parity vectors；同一输入在各入口的 Finding JSON、trace 与 digest 必须一致。
+
 
 ## 12. Schema 与兼容性
 
-以下对象均有独立 JSON Schema：
+所有核心对象提供 JSON Schema 2020-12：ScenarioInstance、ScenarioLineage、Journey、SourceAssertion、Claim、Evidence、ClaimEvidenceLink、Rule、Finding、RunReport、AdapterHandshake、ArtifactManifest。
 
-- context/scenario；
-- journey/service；
-- source；
-- rule；
-- evidence；
-- report/finding；
-- manifest；
-- adapter；
-- eval case/result。
+默认 additionalProperties: false。扩展只能放入 extensions，并使用反向域名命名空间。
 
-使用固定 JSON Schema draft。核心对象默认拒绝未知字段；扩展只能进入带命名空间的 `extensions`。消费者通过 manifest 协商 minor 版本后才能忽略未知扩展，拼写错误不得静默通过。
+版本轴独立：schema_version、knowledge_behavior_version、evaluator_version、rule_version、adapter_version、artifact_format_version、skill_version。兼容矩阵明确 producer/consumer 范围。任何改变适用性、裁决、结果聚合、严重度、建议或 Finding 身份的修复，即使名为 bugfix，也必须提升行为版本并完整重新认证。
 
-语义版本规则：
-
-- Patch：不改变判断的措辞、来源链接或错误修复；
-- Minor：向后兼容的规则、Profile、可选字段或扩展；
-- Major：改变规则意义、必填字段、裁决、enforcement 或兼容性。
 
 ## 13. HulianUI 适配器
 
-核心 UX 定义不依赖 HulianUI。Skill 判断用户问题和设计意图；MCP 判断组件存在性、版本和 Hulian 硬规则；adapter 只做语义与能力转换。
+HulianUI 是首个适配器，不是 UX 真理来源。无 HulianUI 时核心 Skill 仍离线运行；MCP 只增加证据与实现映射。
 
-适配器包含：
+AdapterHandshake 精确记录 server_identity、每个 tool 的 name/version/input_schema_digest/output_schema_digest、data_source_mode、snapshot_id、freshness、project_root、adapter_version 和 adapter_digest。
 
-- `adapter_version`
-- `knowledge_range`
-- `hulian_mcp_range`
-- `hulian_ui_range`
-- supported tools 与 tool schema digests；
-- core `intent_id/capability_id` 到 Hulian capability 的映射；
-- core scenario 到 Hulian surface/modifier/workflow 的 conversion table；
-- lossless、degraded 和 unmappable 状态；
-- fallback 和 prohibited mappings。
+要求：
 
-调用前执行 capability/tool-schema 协商。不能把核心枚举直接传给 MCP。推荐组件必须位于实际安装版本边界内。
+1. project_root 显式提供并规范化，禁止回退当前目录；
+2. Eval 使用固定 local_registry 或 captured_fixture，不依赖漂移远端；
+3. 逐工具解析 success、partial、not_found、invalid_request、server_error；
+4. MCP 失败保留 execution_state=tool_failed，不能生成“未发现问题”；
+5. 组件建议附适用条件、替代方案及仍需验证的旅程结果；
+6. Skill、CLI、MCP 对 parity vectors 的结构、Finding 集合和 trace 100% 一致。
 
-适配器可指导调用 `inspect_project`、`recommend_ui`、`get_component_doc`、`get_conventions`、`validate_hulian_usage` 等能力，但必须保留它们各自的证据边界。
-
-发现上游缺口时记录最小复现、scenario、user impact、intent、期望 API、版本、证据与验证要求。不得强迫使用不适合场景的组件，不得以组件数量衡量 UX，不得用消费端 CSS/行为补丁长期隐藏上游缺口。
 
 ## 14. 知识制品与离线状态
 
-v1 选择 GitHub Release 作为知识制品：
+发布单位是 GitHub Release 中不可变的离线制品，运行时无需联网。
 
-- `ux-knowledge-<version>.tgz`
-- `ux-knowledge-<version>.manifest.json`
-- `SHA256SUMS`
+JSON 使用 RFC 8785 JCS。分别计算 knowledge_digest（规则/断言/registry）、manifest_digest（去除自身 digest 字段的 manifest）和 artifact_digest（最终压缩字节），三者不得混用。
 
-制品使用排序后的路径、规范化 JSON、固定时间戳和 SHA-256，manifest 记录 build commit、schema versions、文件路径、字节数与摘要。manifest 不包含自身摘要。
+首版固定 ustar + gzip：
 
-HulianUI MCP 在构建时固定精确版本并内嵌快照；运行时不静默联网更新。启动时校验 schema、adapter 和摘要。
+- 文件按 UTF-8 路径字节排序；
+- 文件 mode 0644，目录 0755；
+- uid/gid 为 0，uname/gname 为空，mtime 为 0；
+- 禁止 symlink、hardlink、PAX header 和扩展属性；
+- gzip mtime 0、OS byte 255、level 9；
+- 打包器及版本进入 toolchain lock。
 
-运行状态：
+归档内 manifest 与 Release sidecar manifest 字节一致。两次全新干净环境构建必须得到相同 artifact_digest。tag 与 asset 不覆盖；撤回通过带 supersedes/revokes 的新版本表达。
 
-- `ready`
-- `degraded`
-- `incompatible`
-- `corrupt`
-- `unavailable`
-
-规范性或自动化判断在知识无效时 fail closed，不得报告 pass。供应商中立的启发式分析可以 degraded，但必须列出未执行项。若存在校验通过的 last-known-good，可显式回退并报告其版本；不得静默 fallback。
 
 ## 15. Skill 渐进披露
 
-`SKILL.md` frontmatter 只包含：
+SKILL.md 只承担路由、边界和最短流程。description 写正向触发与负向边界，并声明 allow_implicit_invocation: true。
 
-- `name: improving-product-ux`
-- description 以 `Use when...` 开始，只描述设计、审查、迁移、改进或验证数字产品体验的触发情境，不摘要流程。
-
-路由契约：
-
-| request_mode | 必读 |
+| 模式 | 必读 |
 |---|---|
-| design | UX foundations、context、service、ethics |
-| audit | context、claim–evidence、finding/report |
-| migrate | context、journey、implementation、目标 adapter |
-| improve | 原 finding/evidence、implementation、目标 adapter |
-| verify | claim–evidence、verification、目标 adapter |
+| guide | context-model、service-journey、claim-evidence、ethics-harm、reporting |
+| scan | context-model、service-journey、rules-runtime、claim-evidence、ethics-harm、reporting |
+| refactor | context-model、service-journey、rules-runtime、claim-evidence、ethics-harm、hulianui-adapter、reporting |
+| verify | context-model、service-journey、rules-runtime、claim-evidence、ethics-harm、reporting |
 
-当存在 HulianUI 或用户要求 HulianUI 时完整读取 adapter；否则不得加载 HulianUI 细节污染核心判断。
-
-触发 eval 包含正例、负例、相邻 Skill 冲突、描述截短、隐式调用和显式调用。Skill 必须能在没有 MCP 时独立输出供应商中立结果。
+所有模式读取 context-model 与 service-journey；给出严重度、发布判断或面向人的建议时读取 ethics-harm。MCP 是可选能力，不是启动条件。
 
 ## 16. 仓库结构
 
@@ -571,116 +432,87 @@ ux-skill/
 
 不添加会进入 Skill 上下文的重复 README 或长 CHANGELOG。规则变更写入机器可读 `rule-history.json`；发布级兼容变化写入 GitHub Release notes。
 
+
 ## 17. 失败、安全与研究伦理
 
-- 缺少 actor、goal、task 或 context：返回候选分支或 unknown，不编造用户需求；
-- 缺少运行环境或鉴权：列出 not-run，不声称登录后体验已验证；
-- 自动工具冲突：保留原始证据并要求人工复核；
-- adapter/MCP 缺失：供应商中立分析降级运行；
-- 不可逆、隐私、财务、授权、医疗或安全任务：提高验证要求并检查恢复、审计和人工升级；
-- 研究材料：最小化采集、知情同意、可撤回、无报复、脱敏和访问控制；
-- 研究活动如果构成人类参与研究，遵守适用机构、伦理与法律要求；
-- 公开报告和 Issue 不包含敏感用户、研究或凭据数据；
-- 本 Skill 不提供合规认证。
+输入、规则、适配器、工具或证据错误必须在运行状态和 Finding 中可见。不得用空结果掩盖失败、把没执行写成通过、把 unknown 降为低风险、虚构证据，或把组件合规/自动检查/专家直觉冒充完整 UX 结果。
+
+### 17.1 ResearchProtocol
+
+涉及用户研究、实验、遥测、访谈、可用性测试或行为干预时，先记录：
+
+- research_type、decision_need、why_humans_are_needed、minimum_data_required；
+- risk_probability、risk_magnitude、vulnerability_factors；
+- recruitment_and_power_relation、compensation；
+- consent_process、withdrawal_and_non_retaliation；
+- privacy_retention_and_access；
+- distress_stop_rule、crisis_or_support_referral；
+- deception（none/proposed）与 debrief_plan；
+- reviewer_role、approval_status、jurisdiction_and_policy。
+
+若涉及未成年人、认知/经济脆弱性、创伤、医疗或心理危机、胁迫权力关系、欺骗、不可逆干预或高度敏感数据，默认 evaluation_outcome=not_run 且 type=escalation，直到有权限的独立审核批准。Skill 不扮演伦理委员会、法律顾问或临床专业人员。
+
 
 ## 18. Eval 与开发机验证
 
-### 18.1 RED 基线
+### 18.1 RED/GREEN
 
-在 Skill 实现前，用独立 Agent 运行压力场景，记录没有 Skill 时的原始输出和具体失败：伪证据、错误 Profile、组件先行、总分、静态扫描冒充 UX、无场景强结论等。
+实现前冻结 RED suite，记录输入、预期、实际、失败原因、case digest 和时间。GREEN 逐项关闭原失败，不得删除、弱化或改写预期制造通过。
 
-### 18.2 GREEN 与 REFACTOR
+Canonical suite 至少 32 例：官网、后台、交易/审批、上手/登录、内容/搜索、跨端接续、错误恢复、辅助技术 8 个场景族各 4 例；至少 12 例覆盖高风险、弱势主体、权限变化、研究伦理或不可逆后果。
 
-使用 Skill 重跑相同场景，修复已观察失败；随后用未见 holdout 和组合压力测试寻找新漏洞。测试 Agent 只获得 Skill 与原始任务，不获得预期答案或缺陷诊断。
+Private holdout 至少 16 例。公开仓库只存 id 与 digest，题面和 gold 隔离在开发机受控位置。任何因查看 holdout 而改变规则、提示、evaluator 或适配器的用例立即退役并补新盲例。
 
-### 18.3 Case 契约
+每例固定 case_id/digest、ScenarioInstance、Journey、inputs，以及 expected execution_state、evaluation_outcomes、finding_contracts、prohibited_claims、prohibited_recommendations、escalation_required、rationale、strata。
 
-每个 case 包含：
+### 18.2 新鲜上下文与门槛
 
-- input artifact、scope 和允许信息；
-- gold scenario instances 与分类依据；
-- expected matched/excluded rules；
-- conflict resolution assertions；
-- required claims、allowed claims 和 prohibited claims；
-- expected degradation 和 tool failure；
-- structural assertions；
-- high-risk unsafe recommendations that must never appear。
+每个公开用例至少 5 次 fresh-context 运行，不携带作者对话、失败解释或 gold，只给发布制品、固定入口和输入。
 
-记录模型、版本、设置、Skill commit、knowledge digest、重复次数与原始输出。
+实验门槛：
 
-### 18.4 必测对抗案例
+- schema、Finding 集合、trace、digest 跨 Skill/CLI/MCP 100% parity；
+- 结构有效率 100%；
+- prohibited claims/recommendations 为 0；
+- tool failure 误判 pass 为 0；
+- RED 全关闭；
+- 两次干净构建 artifact bytes 一致。
 
-- 30 列高密表格：专家 Admin 与首次移动官网；
-- 即时自动保存：消费者笔记与全局权限配置；
-- 无限滚动：内容发现与审批审计；
-- Chat-only：低风险 AI 创作与金融/医疗；
-- hover-only 操作：桌面专家与移动客户；
-- 同一订单页的客户、客服与管理员三个 scenario instances；
-- `/admin/billing` 客户自助付费标签陷阱；
-- Web → 手机 → 邮件 → 人工审核的跨渠道 KYC；
-- AI 生成 → 主管审批 → 管理员发布配置的场景迁移；
-- 少数读屏用户被完全阻断与多数用户轻微延迟的严重度比较；
-- 埋点缺失、样本污染、统计显著但效应无实际意义；
-- 转化提高但存在欺骗、强迫或退出报复；
-- 快照损坏、schema major 不兼容、adapter 缺失、MCP 部分工具失败；
-- 旧项目迁移与已使用 HulianUI 的项目改进；
-- 真正 upstream gap 与消费端误用的区分。
+稳定阶段还要求：独立专家盲评并按场景/风险 strata 报 precision、recall、unknown、escalation 和严重度一致性；当前观察到的 high-risk 集合 0 漏报且明确样本边界与残余风险；三个真实项目（至少一个非 HulianUI）验证。任何行为改变触发完整 recertification。
 
-### 18.5 阻断门槛
-
-experimental 发布必须全部满足：
-
-- schema、摘要、ID、source 和引用完整性：100%；
-- canonical case 的 scenario binding、规则适用和 conflict trace 结构断言：100%；
-- prohibited claims：0；
-- high-risk unsafe recommendation：0；
-- tool-failed/not-run 被误报为 pass：0；
-- heuristic 被提升为 blocking violation：0；
-- 触发正负例与 adapter 兼容的确定性测试：100%；
-- 至少 5 次独立 Agent 重跑，所有硬门槛均通过；
-- 至少一个公开场景和一个 Admin 场景完成真实项目纵向验证。
-
-stable 发布另需：
-
-- 覆盖所有主要 task family、混合场景、场景迁移、服务、伦理、无障碍和 AI 的分层案例集；
-- 未见 holdout 全部通过硬门槛；
-- 至少两名独立 UX/HCI 评审者盲评关键 finding，分歧有记录和裁决；
-- finding-level 误报/漏报、严重度一致性和证据校准公开记录；
-- 高风险规则不存在已知危险漏报；
-- 至少三个不同类型真实项目，其中包含一个跨渠道或跨角色服务；
-- 所有失败证据、起始 SHA、dirty state、日志、重放和恢复记录可复核。
-
-不以总体平均值掩盖任何高风险硬门槛。
 
 ## 19. 首版验收标准
 
-- UX、可用性、UI、无障碍、服务体验和社会影响边界明确；
-- 官网、Admin 和混合页面按 scenario instance 而不是路由标签分类；
-- 相同设计在不同任务、权限、风险下产生可解释的不同结论；
-- matched/excluded rules 与 conflict resolution 可追踪；
-- claim 与 evidence 类型匹配，不使用伪线性等级；
-- normative 判断可追溯到具体版本、章节、范围和义务来源；
-- Garrett 只作为可选 lens；
-- finding 可追溯到 rule、source、knowledge digest 和原始 evidence；
-- 不生成总分，不把静态扫描、Guard 或组件采用率写成用户结果；
-- 自动化与 enforcement 分离；
-- Skill 无 HulianUI 时可独立工作；
-- HulianUI adapter 版本感知、能力协商且不越权解释 UX；
-- 离线、损坏、缺失和部分失败不会静默通过；
-- RED、GREEN、holdout 与真实项目证据完整；
-- 验证达标后才向 HulianUI 提交 MCP 集成 Issue。
+v0.1 可试验发布必须同时满足：
+
+1. 场景区分主体、代表、资源权属、受益/受影响方和带范围/时效的授权；
+2. Profile 不参与适用性、严重度或发布裁决；
+3. Journey 校验引用、可达性、终点、状态携带、幂等、取消、超时、重试、恢复与权限再验证；
+4. applicability、hard feasibility、soft preference 分阶段可追溯；
+5. SourceAssertion 的权威、范围、采纳和更新位于断言边；
+6. Claim、Evidence、supports/contradicts/inconclusive/limits 及反证可机器验证；
+7. 缺证据、工具失败、不适用、未知和评价错误不互相伪装；
+8. Finding、建议、target/input/evaluator digest 与 fingerprint 可复现；
+9. Skill、CLI、MCP 共享 evaluator 并通过 parity；
+10. 离线 Release 制品字节可复现，manifest 与 sidecar 一致；
+11. ResearchProtocol 在高风险情形停止并升级；
+12. RED/GREEN、private holdout、防泄漏、fresh-context、recertification 有证据；
+13. Canonical、holdout 和三个真实项目达到第 18 节门槛；
+14. 本机资料目录未写入项目文件；
+15. 用户批准最终设计后才进入实施计划。
+
 
 ## 20. 实施与发布顺序
 
-1. 本修订规格在 `design/v0` 接受第二轮独立对抗评审；
-2. 处理阻断问题并由用户审阅最终规格；
-3. 审阅通过后编写远程实施计划；
-4. 先实现最小纵向切片：一个 scenario、一个确定性规则、一个 claim–evidence 链、一个 Hulian mapping、一个离线制品和一个完整 finding；
-5. 纵向切片通过 RED/GREEN 与契约测试后扩展知识；
-6. 合入默认分支并标记 experimental；
-7. 开发机拉取，完成真实项目验证与迭代；
-8. 达到 stable 门槛后发布稳定制品；
-9. 用验证证据向 HulianUI 提交 MCP 集成 Issue。
+当前只做设计，不实现。
+
+1. 提交 v0.3 到 design/v0；
+2. 第三轮全新上下文对抗评审分别检查：认识论/证据/伦理；场景/授权/旅程/冲突；AST/状态/evaluator/适配器/制品/Eval；
+3. 只有 GO，或 CONDITIONAL GO 且无核心 schema/语义阻塞，才交用户最终审阅；
+4. 用户明确批准后，使用 writing-plans 形成远端实施计划；
+5. 首个最小纵切仅含一个高风险后台配置/审批场景、一条确定性 advisory 规则、一个结构化 Claim 与正反证、共享 evaluator、一项 HulianUI 映射、一个离线制品和完整 Finding；
+6. 同时覆盖路径缺失、null、类型错、MCP partial/tool_failed、权限过期、场景变化、研究 stop gate、重复构建；
+7. 纵切通过 RED、parity、artifact、fresh-context 门槛后再扩展。
 
 ## 21. 初始权威来源
 
