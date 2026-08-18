@@ -12,8 +12,8 @@ dependencies:
     specifier: 3.0.1
     version: 3.0.1(ajv@8.20.0)
   json-canonicalize:
-    specifier: 2.0.1
-    version: 2.0.1
+    specifier: 2.0.0
+    version: 2.0.0
   yaml:
     specifier: 2.9.0
     version: 2.9.0
@@ -61,8 +61,8 @@ packages:
     dev: true
     optional: true
 
-  /json-canonicalize@2.0.1:
-    resolution: {integrity: sha512-TuGrLM400c1VN8bQsSOiyDEEmRjIVgFvcSehWC+0JJaV4BGl1vYNxHBPVsN5ADUZIcWp75IN1yf+vCZyDjPt1Q==}
+  /json-canonicalize@2.0.0:
+    resolution: {integrity: sha512-yyrnK/mEm6Na3ChbJUWueXdapueW0p380RUyTW87XGb1ww8l8hU0pRrGC3vSWHe9CxrbPHX2fGUOZpNiHR0IIg==}
     engines: {node: '>=8.5', npm: '>=6.0', yarn: ^1.0}
     dev: false
 
