@@ -1,7 +1,7 @@
 # Evidence-aware Product UX Skill 设计规格
 
-状态：第十一轮最终复核后闭合，等待用户审阅  
-规格版本：0.12  
+状态：v0.13 真实站点回归扩展候选，等待第十二轮对抗复核  
+规格版本：0.13  
 日期：2026-08-18  
 目标 Skill：`improving-product-ux`  
 首个适配器：HulianUI  
@@ -621,6 +621,12 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | REGRESSION-BUNDLE-DRIFT-001 | 未在 bundle_delta_allowlist 的 adapter evidence 变化 → REGRESSION_UNEXPLAINED，不能被 input_digest derived closure 吞掉 |
 | REGRESSION-NEGCONTROL-001 | negative control 缺失 → gate=missing/not_increase；超阈值 → gate=failed、identification rejected、decision_required |
 | REGRESSION-NEGCONTROL-ABS-001 | observed_delta=-0.1、transform=absolute、upper=0.05 inclusive → gate=failed |
+| RW-BRAND-NOT-AUTHORITY-001 | 仅给出“Apple 是知名品牌/设计标杆”，没有 case evidence → 不生成 SourceAssertion、ClaimAssessment 提升、正向 Finding 或 Recommendation |
+| RW-SNAPSHOT-DRIFT-001 | black-box body bytes 与 SnapshotRecord.response/body digest 不符 → target_unavailable+RunIssue；不得改读 live page、沿用旧结论或把漂移判作 UX 回归 |
+| RW-BLACKBOX-EFFECT-001 | task_script 试图登录、加入购物车、提交表单、调用真实 API 或进入 checkout → prohibited_effect+no effect+completed_blocked |
+| RW-ROTATION-SELECT-001 | sorted_candidate_case_ids=[IKEA,STRIPE]、generation_sequence=0/1 → selected_case_id 唯一为 IKEA/STRIPE；输入次序不改变选择 |
+| RW-ROTATION-SKIP-001 | current generation 未运行预提交 selected_case_id、运行非所选 case 或所选目标 unavailable → HoldoutReleaseGate=no_release，不得临时替换 |
+| RW-CROSS-SITE-RANK-001 | Apple/IKEA/Stripe 的异构任务 measure 不可聚合为跨站总分、排行榜或“谁的 UX 最好”；只允许 within-case baseline/candidate delta |
 | KNOWLEDGE-ONEFILE-001 | preimage=[{"file_digest":"0000000000000000000000000000000000000000000000000000000000000000","path":"a"}]；knowledge digest=d9262071a41bf6991251f5cf572e8ba14d73b3ef7cc023b15887899c1d9b9c9a |
 | DELTA-REPLACE-NORMAL-001 | 同 locator d0→d1 只编码一个 replace；remove+add 非正规输入 |
 | ART-ONEFILE-001 | exact uncompressed ustar raw bytes/base64/length/digest |
@@ -648,6 +654,10 @@ RealWorldRegressionCase 必须含：
 
 SnapshotRecord 固定 final_url、captured_at、response/body digest、content type、locale、viewport、authenticated=false|true、capture tool/version，以及受访问/许可策略约束的 content-addressed snapshot_artifact locator；oracle 必须能按 digest 取回相同 bytes，不能只依赖仍会漂移的 live URL。pinned_repository 固定 owner/repo、commit、license、build/run recipe digest、seed digest；branch 名只能作说明，不能作 ref。
 
+每个 case 另含 portfolio_role=fixed_anchor|rotation_candidate、scenario_stratum 和 comparison_policy=within_case_only。fixed_anchor 用于同一任务的纵向可比性；rotation_candidate 用于检测对固定案例的过拟合。品牌声誉、获奖、流行度、视觉风格相似度和第三方“最佳网站”名单都不是 EvidenceArtifact，也不得提高 EvidenceGrade、Finding 严重度或 Recommendation strength。不同 case 的任务、主体与 measure 不同，禁止跨站总分、排行榜和“谁的 UX 最好”结论。
+
+RotationSelectionManifest additionalProperties=false，固定 portfolio_version、generation_id、generation_sequence、sorted_candidate_case_ids、selected_case_id、committed_at、custodian_signature、manifest_digest。candidate ids 按 UTF8(JCS(id)) unsigned bytes 排序，N>0，selected index=generation_sequence mod N；generation_sequence 是 holdout custodian 在 generation commitment 中签名的单调递增整数。manifest 必须在 candidate artifact digest 产生前提交，同 generation 不可改变。所选目标 unavailable、未运行或改跑其他 case 一律 no_release；不得临时替换。pool 变化创建新 portfolio_version，旧 manifest 保留。
+
 证据边界是硬约束：
 
 | 可用证据 | 可以支持 | 不能支持 |
@@ -662,16 +672,19 @@ intervention hypothesis 永远不是 evidence。black_box_site 默认 read-only�
 
 ### 18.4 首批真实目标注册表
 
-以下 ref 是 v0.1 的发现基线；正式运行仍要生成完整 RegressionCase 与环境 digest。
+以下 ref 是 v0.1 的发现基线；正式运行仍要生成完整 RegressionCase、可取回 SnapshotRecord 与环境 digest。2026-08-18 的 curl 摘要只证明当次公开响应，不是正式可复放 snapshot_artifact。任务均从匿名、无个人数据 seed 开始。
 
-| case_id / 场景 | 固定目标 | 无副作用任务 | 预注册 UX 假设 | 证据与回归边界 |
+| case_id / 场景 / role | 固定目标 | 无副作用任务 | 预注册 UX 假设 | 证据与回归边界 |
 |---|---|---|---|---|
-| RW-WEBSITE-GOVUK-001 / 公共服务官网 | https://www.gov.uk/register-to-vote；captured_at=2026-08-18T04:49:40Z；HTML SHA-256=411fa11837c5ba87f7aed35903ca7fa5d0a47048709930448466394d69393a3c | 判断用途、资格分支、所需材料、预计耗时、线上入口与纸质/求助替代；不进入提交 | 信息架构可能帮助用户在开始前形成正确预期；是否对不同资格人群同样成立必须转 Inquiry | black-box page/content only；不得声称完整登记旅程、代码事实或用户成功 |
-| RW-ADMIN-APPSMITH-001 / Admin 与内部工具 | appsmithorg/appsmith@03266b555b5451e91614840ec5b2577538bd8e6e，Apache-2.0 | 在固定 seed 的隔离实例创建内部 CRUD 页面、连接 sample datasource、配置表格与表单、预览并恢复一次输入错误；禁用外发连接 | 数据绑定与编辑/预览上下文切换可能影响可发现性、错误恢复和效率 | code+isolated runtime；初次 baseline 不改 upstream；候选干预只在派生副本 |
-| RW-TRANSACTION-CAL-001 / 消费者交易流程 | calcom/cal.diy@176037d0afbe572f870a3c702985e7cd83fe6c0c，MIT | 在固定时区/日历 seed 选择 30 分钟时段、识别时区、处理时段冲突并取消；邮件/日历写入只到 fake sink | 时区可见性和冲突恢复可能降低误订与回退成本；需任务证据验证 | code+isolated runtime；零真实邀请、零真实日历/支付 effect |
-| RW-HULIAN-DELETE-001 / HulianUI 迁移目标 | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v1；row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
+| RW-WEBSITE-GOVUK-001 / 公共服务官网 / fixed_anchor | https://www.gov.uk/register-to-vote；captured_at=2026-08-18T04:49:40Z；HTML SHA-256=411fa11837c5ba87f7aed35903ca7fa5d0a47048709930448466394d69393a3c | 判断用途、资格分支、所需材料、预计耗时、线上入口与纸质/求助替代；不进入提交 | 信息架构可能帮助用户在开始前形成正确预期；是否对不同资格人群同样成立必须转 Inquiry | black-box page/content only；不得声称完整登记旅程、代码事实或用户成功 |
+| RW-WEBSITE-APPLE-001 / 品牌与产品决策官网 / fixed_anchor | https://www.apple.com.cn/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=f853dfb57dd9305aa5656f604e91f96974b152a3d2fa88dc3ed763eaec07ecfb | 从首页找到 iPhone 产品族，说明至少两个可观察的选择因素，找到比较、购买与支持路径；以 desktop/mobile、keyboard、reduced-motion 条件复放；停在 checkout/login/form 前 | 渐进叙事、导航和产品比较入口可能帮助形成购买选择；动效、信息密度和路径命名也可能造成理解或操作成本，必须由任务证据判定 | black-box page/content+read-only runtime；Apple 声誉不是证据；不得声称真实购买成功、总体满意、源码事实或 WCAG conformant |
+| RW-ADMIN-APPSMITH-001 / Admin 与内部工具 / fixed_anchor | appsmithorg/appsmith@03266b555b5451e91614840ec5b2577538bd8e6e，Apache-2.0 | 在固定 seed 的隔离实例创建内部 CRUD 页面、连接 sample datasource、配置表格与表单、预览并恢复一次输入错误；禁用外发连接 | 数据绑定与编辑/预览上下文切换可能影响可发现性、错误恢复和效率 | code+isolated runtime；初次 baseline 不改 upstream；候选干预只在派生副本 |
+| RW-TRANSACTION-CAL-001 / 消费者交易流程 / fixed_anchor | calcom/cal.diy@176037d0afbe572f870a3c702985e7cd83fe6c0c，MIT | 在固定时区/日历 seed 选择 30 分钟时段、识别时区、处理时段冲突并取消；邮件/日历写入只到 fake sink | 时区可见性和冲突恢复可能降低误订与回退成本；需任务证据验证 | code+isolated runtime；零真实邀请、零真实日历/支付 effect |
+| RW-HULIAN-DELETE-001 / HulianUI 迁移目标 / fixed_anchor | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v1；row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
+| RW-WEBSITE-IKEA-001 / 零售商品发现 / rotation_candidate | https://www.ikea.cn/cn/zh/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=fb9bcdb69f2c7f90bb5db9b03bee0507e50b17c2ec8752fe593989bbd31428d8 | 在固定“中国/北京、匿名、拒绝定位”seed 下查找宽度不超过 120cm、价格不超过 ¥1500 的书桌，比较两个候选并识别配送/库存信息；不登录、不加购、不结算 | 搜索、筛选、比较和履约信息可能支持约束型选择；库存地域依赖和过滤反馈也可能增加不确定性 | black-box page/content+read-only runtime；价格/库存仅属于快照时点；不得推断实际可配送或购买成功 |
+| RW-DOCS-STRIPE-001 / 开发者文档 / rotation_candidate | https://docs.stripe.com/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=19c3a909d2be6d6336a73679b6370a15aa8b2b1d33ef1f7ad08b603b9d9e45b7 | 从文档首页定位服务端支付集成路径、前置条件、失败/恢复说明和对应 API reference；不登录、不创建 key、不调用 API | 信息气味、概念分层和示例到 reference 的路径可能降低实现成本；是否能完成真实集成必须由独立隔离任务验证 | black-box page/content+read-only runtime；动态 HTML 漂移即新 snapshot；不得声称 API 可用、实现正确或开发者成功 |
 
-发现基线不是“金标准网站”名单，也不预写正负 Finding。若目标更新，旧 case/ref 保留，新建 case version；不得移动 ref 后继续沿用 baseline。
+fixed_anchor 不是“金标准”，也不预写正负 Finding。rotation pool v0.1 按 case_id 的 UTF8(JCS(id)) 排序含 IKEA、STRIPE 两例，由 RotationSelectionManifest 每 generation 唯一选择一例。若任一目标更新，旧 case/ref 保留，新建 case version；不得移动 ref 或替换 snapshot 后继续沿用 baseline。
 
 ### 18.5 Baseline → intervention → verify
 
@@ -696,7 +709,7 @@ oracle 首先按 InputCollectionRegistry 对 baseline/candidate normalized bundl
 
 Canonical 至少覆盖第 18.1 所有 vectors 和原 8 个产品场景族；每例 5 次 fresh-context。Skill/CLI/MCP semantic parity 100%，adapter canonical evidence parity 100%，prohibited claims/recommendations 0，release-critical failure 误 pass 0，golden bytes 全匹配。
 
-HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才通过；missing、failed、QUERY_BUDGET_EXHAUSTED、contaminated 或非当前 generation 一律 no_release。真实回归至少完成第 18.4 四类中的三个，且必须含 HulianUI、一个非 HulianUI pinned repository 和一个 black-box site；每例有 baseline 与 verify，禁止用第三方品牌声誉替代证据。稳定阶段再要求独立专家/用户代表按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty。只报告观察结果、样本边界和残余风险，不宣称永不漏报。
+HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才通过；missing、failed、QUERY_BUDGET_EXHAUSTED、contaminated 或非当前 generation 一律 no_release。真实回归必须完成 fixed anchors 中的 HulianUI、Apple、GOV.UK 和至少一个非 HulianUI pinned repository，并完成 RotationSelectionManifest 为当前 generation 选中的一个 rotation_candidate；每例均有 baseline 与 verify。任一必需目标 unavailable 时记录 RunIssue 并 no_release，不得换站、换 live bytes 或用第三方品牌声誉替代证据。稳定阶段再要求独立专家/用户代表按 strata 盲评 relevance、contextual fit、alternatives、harm、uncertainty。只报告 within-case 观察结果、样本边界和残余风险，不宣称永不漏报，不输出跨站总分或排行榜。
 
 
 ## 19. v0.1 试验验收
@@ -714,8 +727,8 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 9. NFC、CanonicalRelativePath、normative errors、UTF8(JCS(key)) collection order、semantic projection/trace、evaluator/finding DigestRegistry 均有 golden；
 10. HulianUI 首行固定 contract、request、artifact digest、exports/props/events/slots normalization 和 prohibited claims；canonical evidence 与 transport sidecar 分离；
 11. ART-ONEFILE-001 匹配 canonical uncompressed ustar bytes；
-12. 第 18 节全部 RED/golden/holdout 门槛通过，CanonicalDeltaOperationV1、bundle allowlist、derived closure、negative-control/DecisionOwner gate 唯一，真实回归达到 18.6 最低组合并生成可复放 evidence；
-13. Profile、组件库、自动扫描、第三方品牌与 0 Finding 均不冒充 UX 成功；
+12. 第 18 节全部 RED/golden/holdout 门槛通过，CanonicalDeltaOperationV1、bundle allowlist、derived closure、negative-control/DecisionOwner/rotation gate 唯一，真实回归达到 18.6 最低组合并生成可复放 evidence；
+13. Profile、组件库、自动扫描、第三方品牌、跨站总分与 0 Finding 均不冒充 UX 成功；
 14. 本机资料目录无项目写入；
 15. 用户批准最终规格后才写 implementation plan。
 
@@ -724,11 +737,11 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 
 当前仍只做设计。
 
-1. 提交 v0.12 到 design/v0；
-2. 自检所有 MUST/唯一表与 89 个 vectors；
+1. 提交 v0.13 真实站点回归扩展到 design/v0；
+2. 自检所有 MUST/唯一表与 95 个 vectors；
 3. 第十一轮已完成：release/holdout 与 adapter 评审 GO；综合评审的 SelectionDecision/ReleaseRecommendation 命名冲突已闭合；
-4. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户最终审阅；
-5. 用户明确批准后才调用 writing-plans；
+4. 第十二轮只复核 portfolio role、品牌非权威、SnapshotRecord 漂移、无副作用任务、rotation 唯一选择与 release gate；
+5. 只有 GO，或 CONDITIONAL GO 且无 core schema/semantic blocker，才交用户审阅并进入 implementation plan；
 6. 首纵切仍限制为一个高风险 Admin 审批场景、一条 advisory rule、一组 Claim/Recommendation Assessment、共享 evaluator、一个 HulianUI candidate mapping、Assurance+Inquiry validation、ART-ONEFILE-001 和第 18.4 真实回归 harness 契约；
 7. 首纵切不修改 HulianUI MCP、不写第三方 upstream、不扩第二个实现 adapter、不宣称 stable。
 
@@ -766,8 +779,11 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 首批回归目标（不是 UX 权威来源）：
 
 - GOV.UK Register to vote: https://www.gov.uk/register-to-vote
+- Apple 中国官网: https://www.apple.com.cn/
 - Appsmith pinned repository: https://github.com/appsmithorg/appsmith/tree/03266b555b5451e91614840ec5b2577538bd8e6e
 - Cal.com/cal.diy pinned repository: https://github.com/calcom/cal.diy/tree/176037d0afbe572f870a3c702985e7cd83fe6c0c
 - HulianUI pinned contract：见第 13 节。
+- IKEA 中国官网（rotation）: https://www.ikea.cn/cn/zh/
+- Stripe Docs（rotation）: https://docs.stripe.com/
 
 经典著作只作为综合知识输入，不复制受版权保护正文。首批包括 Jesse James Garrett、Don Norman、Steve Krug、Giles Colborne、Marty Cagan 及本地提供的产品设计资料。
