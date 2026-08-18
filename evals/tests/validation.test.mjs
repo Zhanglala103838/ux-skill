@@ -6,7 +6,7 @@ import { canonicalSet } from '../../evaluator/canonical.mjs';
 import { validateBySchema, validateInput } from '../../evaluator/validation.mjs';
 import { fixtureWithRedirectHop, deleteBundle } from '../helpers/fixtures.mjs';
 
-const paths=['schemas/adapters/hulian-component-doc-v1.schema.json','schemas/adapters/hulian-evaluation-request-v1.schema.json','schemas/core/authority.schema.json','schemas/core/claims.schema.json','schemas/core/evaluation-input.schema.json','schemas/core/real-world-case.schema.json','schemas/core/snapshot-closure.schema.json','schemas/evaluator/output.schema.json','schemas/evaluator/rule.schema.json','schemas/evaluator/semantic-projection.schema.json'];
+const paths=['schemas/adapters/hulian-component-doc-v1.schema.json','schemas/adapters/hulian-evaluation-request-v1.schema.json','schemas/core/authority.schema.json','schemas/core/candidate-solver-input.schema.json','schemas/core/claims.schema.json','schemas/core/evaluation-input.schema.json','schemas/core/real-world-case.schema.json','schemas/core/snapshot-closure.schema.json','schemas/evaluator/output.schema.json','schemas/evaluator/rule.schema.json','schemas/evaluator/semantic-projection.schema.json'];
 
 test('headers is required and nested objects reject unknown fields',()=>{
  const missing=validateBySchema('CanonicalResponseHeaders',{});

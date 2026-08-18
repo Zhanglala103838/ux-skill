@@ -5,7 +5,7 @@ import { assertIJson, assertCanonicalRelativePath, canonicalSet, jcsBytes } from
 
 const schemaPaths=[
  '../schemas/adapters/hulian-component-doc-v1.schema.json','../schemas/adapters/hulian-evaluation-request-v1.schema.json',
- '../schemas/core/authority.schema.json','../schemas/core/claims.schema.json','../schemas/core/evaluation-input.schema.json',
+ '../schemas/core/authority.schema.json','../schemas/core/claims.schema.json','../schemas/core/evaluation-input.schema.json','../schemas/core/candidate-solver-input.schema.json',
  '../schemas/core/real-world-case.schema.json','../schemas/core/snapshot-closure.schema.json','../schemas/evaluator/output.schema.json',
  '../schemas/evaluator/rule.schema.json','../schemas/evaluator/semantic-projection.schema.json'
 ];
@@ -17,6 +17,7 @@ for(const schema of schemas)ajv.addSchema(schema);
 
 const schemaIds=Object.freeze({
  EvaluationInputBundle:'https://ux-skill.invalid/schemas/core/evaluation-input.schema.json',
+ CandidateSolverInput:'https://ux-skill.invalid/schemas/core/candidate-solver-input.schema.json',
  CanonicalResponseHeaders:'https://ux-skill.invalid/schemas/core/snapshot-closure.schema.json#/$defs/CanonicalResponseHeaders',
  HeaderItem:'https://ux-skill.invalid/schemas/core/snapshot-closure.schema.json#/$defs/HeaderItem',
  ReplayProfile:'https://ux-skill.invalid/schemas/core/snapshot-closure.schema.json#/$defs/ReplayProfile',

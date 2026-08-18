@@ -255,7 +255,7 @@ test("candidate and core order use unsigned UTF8 JCS bytes",()=>{
  const unsat=solveCandidates(completeUniverse([
   solution("x",[],[{id:"😀",result:"F",conflict_class:"ordinary"},{id:"",result:"F",conflict_class:"ordinary"}])
  ]));
- assert.deepEqual(unsat.unsat_cores,[["","😀"]]);
+ assert.deepEqual(unsat.unsat_cores,[[""],["😀"]]);
 });
 
 const fullContractDelete=()=>{

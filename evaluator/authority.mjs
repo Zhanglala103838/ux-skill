@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {canonicalSet,jcsBytes} from './canonical.mjs';
+import {validateBySchema} from './validation.mjs';
 
 const registries=JSON.parse(readFileSync(new URL('../knowledge/registries.json',import.meta.url),'utf8'));
 const policies=JSON.parse(readFileSync(new URL('../knowledge/decision-policies.json',import.meta.url),'utf8'));
@@ -234,6 +235,9 @@ const selectionGate=(universe,feasible_solution_ids)=>{
 export function solveCandidates(universeInput){
  let universe;
  try{universe=reducerSnapshot(universeInput);}catch{return invalidCandidates();}
+ const schemaResult=validateBySchema('CandidateSolverInput',universe);
+ if(!schemaResult.ok)return invalidCandidates();
+ universe=schemaResult.value;
  const universeKeys=['candidate_universe','candidate_evaluations','authority_status','party_inventory_status','safety_or_rights_floor_status'];
  if(!exactKeys(universe,universeKeys)||!Array.isArray(universe.candidate_universe)||universe.candidate_universe.length===0||!Array.isArray(universe.candidate_evaluations)||!['complete','unknown'].includes(universe.authority_status)||!['unknown','verified_complete','verified_no_affected_party'].includes(universe.party_inventory_status)||!['not_applicable','resolved','unresolved','triggered'].includes(universe.safety_or_rights_floor_status))return invalidCandidates();
  const solutionSeen=new Set();
