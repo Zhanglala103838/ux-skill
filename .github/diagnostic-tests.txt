@@ -1,1 +1,0 @@
-Task 5 review remediation candidate GREEN; inspect diagnostic_test_exit_code before cleanup.
