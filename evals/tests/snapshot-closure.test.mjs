@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { createServer, request as httpRequest } from 'node:http';
 import { canonicalize } from 'json-canonicalize';
 import { validateBySchema } from '../../evaluator/validation.mjs';
 
@@ -21,7 +22,7 @@ if (importFailure) {
     assert.fail(`TASK9_SNAPSHOT_CLOSURE_RED:${importFailure?.code ?? importFailure?.name ?? 'IMPORT_FAILED'}`);
   });
 } else {
-  const { captureClosure, replayClosure, snapshotClosureDigest } = closureApi;
+  const { captureClosure, replayClosure, runCaptureCli, snapshotClosureDigest } = closureApi;
   const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
   const b64 = (value) => Buffer.from(value).toString('base64');
   const d = (char) => char.repeat(64);
@@ -429,5 +430,134 @@ if (importFailure) {
     }
 
     assert.deepEqual(issues, [], `TASK9_REPLAY_ELIGIBILITY_RED:${issues.join(',')}`);
+  });
+
+  test('TASK9_TASK_RUNNER_RED', async () => {
+    const issues = [];
+    const serverPaths = [];
+    const server = createServer((request, response) => {
+      serverPaths.push(request.url);
+      const bodies = {
+        '/': '<main>ENTRY_ONLY</main>',
+        '/one': '<main>STEP_ONE</main>',
+        '/two': '<main>STEP_TWO UNIQUE_MARKER</main>',
+      };
+      const body = bodies[request.url] ?? '<main>NOT_FOUND</main>';
+      response.writeHead(bodies[request.url] ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'x-route': request.url });
+      response.end(body);
+    });
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    const origin = `http://127.0.0.1:${address.port}`;
+    const root = await mkdtemp(join(tmpdir(), 'task9-runner-red-'));
+    const publicDir = join(root, 'evals', 'public-cases');
+    const fixtureDir = join(root, 'evals', 'fixtures');
+    const localProfile = profile('local-runner-profile', { browser_engine_digest: d('e') });
+    const taskScript = {
+      task_script_id: 'local-two-route-v1',
+      steps: [
+        { step_id: 'visit-one', instruction: 'Navigate to /one and observe STEP_ONE.', required_replay_profile_ids: [localProfile.replay_profile_id] },
+        { step_id: 'visit-two', instruction: 'Navigate to /two and observe UNIQUE_MARKER.', required_replay_profile_ids: [localProfile.replay_profile_id] },
+      ],
+    };
+    const fixture = {
+      closure_version: 'snapshot-closure-v1',
+      entry_url: `${origin}/`,
+      task_script_digest: d('1'),
+      capture_environment_digest: d('2'),
+      captured_at: '2026-08-20T00:00:00Z',
+      authenticated: false,
+      replay_profiles: [localProfile],
+      network_records: [],
+      observation_records: [],
+      outbound_effect_ledger_digest: d('3'),
+      completeness_status: 'incomplete',
+      manifest_digest: '',
+    };
+    fixture.manifest_digest = snapshotClosureDigest(fixture);
+    const localCase = { case_id: 'RW-LOCAL-TWO-ROUTE-001', canonical_locator: `${origin}/`, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript };
+    const transport = {
+      async request({ method, url }) {
+        assert.ok(['GET', 'HEAD'].includes(method));
+        return await new Promise((resolve, reject) => {
+          const request = httpRequest(url, { method }, (response) => {
+            const chunks = [];
+            response.on('data', (chunk) => chunks.push(chunk));
+            response.on('end', () => resolve({
+              status: response.statusCode,
+              final_url: url,
+              headers: response.rawHeaders.reduce((rows, value, index, all) => index % 2 === 0 ? [...rows, { sequence: rows.length, name: value, value_bytes_base64: Buffer.from(all[index + 1], 'latin1').toString('base64') }] : rows, []),
+              body: Buffer.concat(chunks),
+            }));
+          });
+          request.once('error', reject);
+          request.end();
+        });
+      },
+    };
+    const runner = async ({ profiles, steps, executeStep }) => {
+      for (const row of profiles) {
+        for (const step of steps) {
+          const route = step.step_id === 'visit-one' ? '/one' : '/two';
+          await executeStep({ replay_profile_id: row.replay_profile_id, task_step_id: step.step_id }, async ({ request, observe }) => {
+            const response = await request({ method: 'GET', url: `${origin}${route}` });
+            await observe({ evidence_kind: 'dom_snapshot', bytes: response.body });
+          });
+        }
+      }
+    };
+    const partialRunner = async ({ profiles, executeStep }) => {
+      await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: 'visit-one' }, async ({ request, observe }) => {
+        const response = await request({ method: 'GET', url: `${origin}/one` });
+        await observe({ evidence_kind: 'dom_snapshot', bytes: response.body });
+      });
+    };
+    try {
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      const casePath = join(publicDir, 'local.json');
+      await writeFile(casePath, `${JSON.stringify(localCase)}\n`);
+      await writeFile(join(fixtureDir, `${localCase.case_id}.snapshot-closure.json`), `${JSON.stringify(fixture)}\n`);
+      const invoke = async (name, selectedRunner) => {
+        const casPath = join(root, `cas-${name}`), outputPath = join(root, `output-${name}.json`);
+        const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], {
+          taskRunners: selectedRunner ? new Map([[localCase.case_id, selectedRunner]]) : new Map(),
+          transport,
+        });
+        let wrapper;
+        try { wrapper = JSON.parse(await readFile(outputPath, 'utf8')); } catch {}
+        return { casPath, exitCode, wrapper };
+      };
+      serverPaths.length = 0;
+      const positive = await invoke('positive', runner);
+      if (positive.exitCode !== 0 || positive.wrapper?.completeness_status !== 'complete' || positive.wrapper?.run_status !== 'completed' || positive.wrapper?.release_gate !== 'no_release') issues.push('registered-runner-did-not-complete');
+      if (serverPaths.join(',') !== '/one,/two') issues.push(`registered-runner-paths:${serverPaths.join(',')}`);
+      const positiveSteps = positive.wrapper?.closure?.network_records?.map((row) => row.task_step_id);
+      if (JSON.stringify(positiveSteps) !== JSON.stringify(['visit-one', 'visit-two'])) issues.push('network-not-bound-to-active-step');
+      const observations = positive.wrapper?.closure?.observation_records ?? [];
+      if (observations.length !== 2 || observations[0]?.artifact_digest === observations[1]?.artifact_digest) issues.push('step-observations-not-distinct');
+      const markerObservation = observations.find((row) => row.task_step_id === 'visit-two');
+      let markerBytes = '';
+      try { markerBytes = await readFile(join(positive.casPath, markerObservation.content_addressed_artifact_locator.slice(4)), 'utf8'); } catch {}
+      if (!markerBytes.includes('UNIQUE_MARKER')) issues.push('step-two-marker-not-captured');
+
+      serverPaths.length = 0;
+      const partial = await invoke('partial', partialRunner);
+      if (partial.exitCode !== 2 || partial.wrapper?.completeness_status !== 'incomplete' || partial.wrapper?.run_status !== 'target_unavailable' || partial.wrapper?.release_gate !== 'no_release') issues.push('skipped-step-not-closed');
+      if (serverPaths.join(',') !== '/one') issues.push(`partial-runner-synthesized-navigation:${serverPaths.join(',')}`);
+      if (partial.wrapper?.closure?.observation_records?.some((row) => row.task_step_id === 'visit-two')) issues.push('skipped-step-observation-synthesized');
+
+      serverPaths.length = 0;
+      const absent = await invoke('absent', null);
+      if (absent.exitCode !== 2 || absent.wrapper?.closure !== null || absent.wrapper?.run_status !== 'target_unavailable' || absent.wrapper?.release_gate !== 'no_release') issues.push('missing-runner-not-closed');
+      if (serverPaths.length !== 0) issues.push('missing-runner-touched-target');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_TASK_RUNNER_RED:${issues.join(',')}`);
   });
 }
