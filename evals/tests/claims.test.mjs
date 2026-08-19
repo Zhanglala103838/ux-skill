@@ -107,3 +107,46 @@ test('TASK6_RED_HOSTILE public reducers are total, closed, Unicode-safe, and fai
  }
  const proto={claim_id:'x'};assert.equal(runtime.assessClaim(Object.assign(Object.create(proto),baseClaim()),evidence([]),policy('causal',[['x','validity']])).status,'unresolved');
 });
+
+test('TASK6_REVIEW_RED_INVALID_ASSESSMENT_ID binds complete body and avoids collection conflicts',async()=>{
+ const {assessClaim}=await loadRuntime();
+ const {validateBySchema}=await import('../../evaluator/validation.mjs');
+ const validEvidence=evidence([]);
+ const claimA=baseClaim({claim_id:'claim-gap-a',claim_kind:'normative',relation_kind:'normative'});
+ const claimB=baseClaim({claim_id:'claim-gap-b',claim_kind:'normative',relation_kind:'normative'});
+ const assessmentA=assessClaim(claimA,validEvidence,null);
+ const assessmentB=assessClaim(claimB,validEvidence,null);
+ const replayA=assessClaim(claimA,validEvidence,null);
+ assert.notEqual(assessmentA.claim_assessment_id,assessmentB.claim_assessment_id);
+ assert.equal(assessmentA.claim_assessment_id,replayA.claim_assessment_id);
+ assert.deepEqual(assessmentA,replayA);
+ const bundle={sources:[],fragments:[],proposition_assessments:[],policy_adoptions:[],claims:[claimA,claimB],claim_assessments:[assessmentA,assessmentB],claim_assessment_policies:[]};
+ const result=validateBySchema('ClaimsBundle',bundle);
+ assert.equal(result.errors?.some((row)=>row.code==='DUPLICATE_ID_CONFLICT'),false);
+});
+
+test('TASK6_REVIEW_RED_RISK_COHERENCE mandatory and hard facts cannot clear through none',async()=>{
+ const {assessRisk}=await loadRuntime();
+ const context={severity:'moderate',likelihood:'known',exposure:'known',reversibility:'reversible',key_factor_status:'verified',purpose:'other',materially_relies_on:false,inference_kind:'other',prohibition_status:'not_applicable',mandatory_check_status:'pass',other_hard_checks_status:'pass',signal_policy_row:null};
+ const finding=(mandatory_fail,hard_unsat,hard_decision)=>({mandatory_fail,hard_unsat,hard_decision,release_critical:false,outcome:'pass'});
+ for(const flags of [[true,false],[false,true],[true,true]])assert.deepEqual(assessRisk(finding(flags[0],flags[1],'none'),context),{decision:'escalation',reason_code:'INVALID_INPUT'});
+ assert.deepEqual(assessRisk(finding(true,false,'block'),context),{decision:'block',reason_code:'HARD_DECISION_BLOCK'});
+ assert.deepEqual(assessRisk(finding(false,true,'escalation'),context),{decision:'escalation',reason_code:'HARD_DECISION_ESCALATION'});
+ assert.deepEqual(assessRisk(finding(false,false,'none'),context),{decision:'clear',reason_code:'RISK_CLEAR'});
+});
+
+test('TASK6_REVIEW_RED_MANDATE_DERIVATION ignores caller exact-mandatory claims and derives exact entailment',async()=>{
+ const {assessRecommendation}=await loadRuntime();
+ const a=action();
+ const base={action:a,evidence:{admissible_conclusion:'causal',overall:'high',assessed_action:a},risk_decision:'clear',reversibility:'irreversible',hard_decision:'clear',sensitive_decision:'continue'};
+ const neutral=assessRecommendation({...base,authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'none',required_action:null,outcome_equivalent_verified:false},exact_mandatory_action:true});
+ assert.equal(neutral.ceilings.reversibility,'conditional_advice');
+ assert.equal(neutral.strength,'conditional_advice');
+ const different=assessRecommendation({...base,authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'exact_requires',required_action:action('different'),outcome_equivalent_verified:false},exact_mandatory_action:true});
+ assert.equal(different.ceilings.reversibility,'conditional_advice');
+ assert.equal(different.strength,'conditional_advice');
+ const derived=assessRecommendation({...base,authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'exact_requires',required_action:a,outcome_equivalent_verified:false},exact_mandatory_action:false});
+ assert.equal(derived.ceilings.authority,'required');
+ assert.equal(derived.ceilings.reversibility,'required');
+ assert.equal(derived.strength,'strong_advice');
+});
