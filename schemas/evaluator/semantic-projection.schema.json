@@ -52,39 +52,7 @@
     "rule_evaluations": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "rule_id",
-          "outcome",
-          "reason_code",
-          "release_critical"
-        ],
-        "properties": {
-          "rule_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "outcome": {
-            "type": "string",
-            "enum": [
-              "pass",
-              "fail",
-              "partial",
-              "not_run",
-              "unknown",
-              "not_applicable",
-              "evaluation_error"
-            ]
-          },
-          "reason_code": {
-            "type": "string",
-            "minLength": 1
-          },
-          "release_critical": {
-            "type": "boolean"
-          }
-        }
+        "$ref": "#/$defs/RuleEvaluation"
       }
     },
     "findings": {
@@ -96,33 +64,7 @@
     "run_issues": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "code",
-          "instance_pointer",
-          "dependency_id"
-        ],
-        "properties": {
-          "code": {
-            "type": "string",
-            "minLength": 1
-          },
-          "instance_pointer": {
-            "type": "string"
-          },
-          "dependency_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
+        "$ref": "#/$defs/RunIssue"
       }
     },
     "claim_assessments": {
@@ -562,14 +504,41 @@
       "additionalProperties": false,
       "required": [
         "rule_id",
+        "rule_version",
+        "release_critical",
+        "finding_type",
+        "terminal",
         "outcome",
         "reason_code",
-        "release_critical"
+        "trace",
+        "dependency_trace",
+        "run_issue"
       ],
       "properties": {
         "rule_id": {
           "type": "string",
           "minLength": 1
+        },
+        "rule_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "release_critical": {
+          "type": "boolean"
+        },
+        "finding_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "terminal": {
+          "type": "string",
+          "enum": [
+            "invalid_input",
+            "invalid_rule",
+            "tool_failed",
+            "cancelled",
+            "completed"
+          ]
         },
         "outcome": {
           "type": "string",
@@ -585,12 +554,339 @@
         },
         "reason_code": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "INVALID_INPUT",
+            "INVALID_RULE",
+            "REQUIRED_TOOL_INVALID_REQUEST",
+            "REQUIRED_TOOL_AUTH_ERROR",
+            "REQUIRED_TOOL_INCOMPATIBLE_SOURCE",
+            "REQUIRED_TOOL_TIMEOUT",
+            "REQUIRED_TOOL_SERVER_ERROR",
+            "REQUIRED_TOOL_CANCELLED",
+            "CHECK_PASS",
+            "CHECK_FAILED",
+            "CHECK_PARTIAL",
+            "REQUIRED_INPUT_PARTIAL",
+            "REQUIRED_INPUT_NOT_FOUND",
+            "PRECONDITION_FALSE",
+            "PRECONDITION_UNKNOWN",
+            "APPLICABILITY_FALSE",
+            "EXCLUSION_TRUE",
+            "APPLICABILITY_UNKNOWN",
+            "EXCLUSION_UNKNOWN",
+            "CHECK_UNKNOWN",
+            "APPLICABILITY_EVALUATION_ERROR",
+            "PRECONDITION_EVALUATION_ERROR",
+            "CHECK_EVALUATION_ERROR"
+          ]
         },
-        "release_critical": {
-          "type": "boolean"
+        "trace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "node_id",
+              "parent_node_id",
+              "value"
+            ],
+            "properties": {
+              "node_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "parent_node_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "value": {
+                "type": "string",
+                "enum": [
+                  "T",
+                  "F",
+                  "U",
+                  "E"
+                ]
+              }
+            }
+          }
+        },
+        "dependency_trace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dependency_id",
+              "status",
+              "complete"
+            ],
+            "properties": {
+              "dependency_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "success",
+                  "partial",
+                  "not_found",
+                  "invalid_request",
+                  "auth_error",
+                  "timeout",
+                  "server_error",
+                  "incompatible_source",
+                  "cancelled"
+                ]
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "run_issue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunIssue"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "invalid_input"
+                },
+                "outcome": {
+                  "const": "evaluation_error"
+                },
+                "reason_code": {
+                  "enum": [
+                    "INVALID_INPUT"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "invalid_rule"
+                },
+                "outcome": {
+                  "const": "evaluation_error"
+                },
+                "reason_code": {
+                  "enum": [
+                    "INVALID_RULE"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "tool_failed"
+                },
+                "outcome": {
+                  "const": "evaluation_error"
+                },
+                "reason_code": {
+                  "enum": [
+                    "REQUIRED_TOOL_INVALID_REQUEST",
+                    "REQUIRED_TOOL_AUTH_ERROR",
+                    "REQUIRED_TOOL_INCOMPATIBLE_SOURCE",
+                    "REQUIRED_TOOL_TIMEOUT",
+                    "REQUIRED_TOOL_SERVER_ERROR"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "cancelled"
+                },
+                "outcome": {
+                  "const": "not_run"
+                },
+                "reason_code": {
+                  "enum": [
+                    "REQUIRED_TOOL_CANCELLED"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "pass"
+                },
+                "reason_code": {
+                  "enum": [
+                    "CHECK_PASS"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "fail"
+                },
+                "reason_code": {
+                  "enum": [
+                    "CHECK_FAILED"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "partial"
+                },
+                "reason_code": {
+                  "enum": [
+                    "CHECK_PARTIAL"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "not_run"
+                },
+                "reason_code": {
+                  "enum": [
+                    "REQUIRED_INPUT_PARTIAL",
+                    "REQUIRED_INPUT_NOT_FOUND",
+                    "PRECONDITION_FALSE",
+                    "PRECONDITION_UNKNOWN"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "not_applicable"
+                },
+                "reason_code": {
+                  "enum": [
+                    "APPLICABILITY_FALSE",
+                    "EXCLUSION_TRUE"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "unknown"
+                },
+                "reason_code": {
+                  "enum": [
+                    "APPLICABILITY_UNKNOWN",
+                    "EXCLUSION_UNKNOWN",
+                    "CHECK_UNKNOWN"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "terminal": {
+                  "const": "completed"
+                },
+                "outcome": {
+                  "const": "evaluation_error"
+                },
+                "reason_code": {
+                  "enum": [
+                    "APPLICABILITY_EVALUATION_ERROR",
+                    "PRECONDITION_EVALUATION_ERROR",
+                    "CHECK_EVALUATION_ERROR"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "const": "evaluation_error"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "run_issue": {
+                "$ref": "#/$defs/RunIssue"
+              }
+            }
+          },
+          "else": {
+            "type": "object",
+            "properties": {
+              "run_issue": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "Finding": {
       "type": "object",
@@ -598,7 +894,11 @@
       "required": [
         "finding_id",
         "fingerprint_full_digest",
-        "fingerprint"
+        "fingerprint",
+        "finding_type",
+        "emission_reason_code",
+        "rule_id",
+        "rule_version"
       ],
       "properties": {
         "finding_id": {
@@ -611,6 +911,31 @@
         },
         "fingerprint": {
           "$ref": "#/$defs/FindingFingerprintV1"
+        },
+        "finding_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "emission_reason_code": {
+          "type": "string",
+          "enum": [
+            "RULE_CHECK_FAILED",
+            "RULE_PARTIAL",
+            "RELEASE_CRITICAL_PARTIAL",
+            "RULE_NOT_RUN",
+            "RELEASE_CRITICAL_NOT_RUN",
+            "RULE_UNKNOWN",
+            "RELEASE_CRITICAL_UNKNOWN",
+            "RELEASE_CRITICAL_EVALUATION_ERROR"
+          ]
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_version": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -841,7 +1166,16 @@
         },
         "emission_reason_code": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "RULE_CHECK_FAILED",
+            "RULE_PARTIAL",
+            "RELEASE_CRITICAL_PARTIAL",
+            "RULE_NOT_RUN",
+            "RELEASE_CRITICAL_NOT_RUN",
+            "RULE_UNKNOWN",
+            "RELEASE_CRITICAL_UNKNOWN",
+            "RELEASE_CRITICAL_EVALUATION_ERROR"
+          ]
         },
         "canonical_target_locator": {
           "type": "string",
@@ -856,7 +1190,8 @@
           "items": {
             "type": "string",
             "minLength": 1
-          }
+          },
+          "uniqueItems": true
         },
         "claim_key": {
           "anyOf": [

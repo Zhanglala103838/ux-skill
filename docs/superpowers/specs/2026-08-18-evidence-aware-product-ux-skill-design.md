@@ -851,3 +851,5 @@ Task 10 recomputes source_material_digest from exact validated normalized source
 - ReleaseRecommendation preserves the core decision, conditions, and reason. Each condition uses `ux-skill:release-condition:v1`; `condition_ids 按 condition_id` bytewise ascending and `conditions` use the same order. `release_recommendation_id` uses `ux-skill:release-recommendation:v1` over the complete id-less public body.
 
 All generated ids have an exact type prefix followed by 32 lowercase hex characters. The Task 10 projection verifier re-derives the reducer core and byte-compares the complete materialized public object. This is a material integrity binding, not authenticity: SHA-256/JCS does not establish who supplied, approved, or observed the material.
+
+The Task 10 public projection preserves the exact full Task 5 producer contracts: RuleEvaluation carries all ten evaluator-owned fields, Finding carries all seven emitted owner fields, and RunIssue remains the exact closed three-field object. EvaluationOutput and SemanticProjection reference the same deep-equal definitions; legacy four-field RuleEvaluation and three-field Finding projections are invalid.
