@@ -122,7 +122,7 @@ test('TASK6_REVIEW_RED_INVALID_ASSESSMENT_ID binds complete body and avoids coll
  assert.deepEqual(assessmentA,replayA);
  const bundle={sources:[],fragments:[],proposition_assessments:[],policy_adoptions:[],claims:[claimA,claimB],claim_assessments:[assessmentA,assessmentB],claim_assessment_policies:[]};
  const result=validateBySchema('ClaimsBundle',bundle);
- assert.equal(result.errors?.some((row)=>row.code==='DUPLICATE_ID_CONFLICT'),false);
+ assert.equal(result.ok,true);
 });
 
 test('TASK6_REVIEW_RED_RISK_COHERENCE mandatory and hard facts cannot clear through none',async()=>{
