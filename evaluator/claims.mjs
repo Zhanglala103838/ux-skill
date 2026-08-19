@@ -16,14 +16,16 @@ const EVIDENCE_KEYS=Object.freeze(['checks','selection_status','contradiction_st
 const CHECK_KEYS=Object.freeze(['required_check_id','status','dependency_cluster_id','evidence_refs']);
 const POLICY_KEYS=Object.freeze(['policy_id','claim_kind','required_checks']);
 const POLICY_CHECK_KEYS=Object.freeze(['required_check_id','dimension','critical','evaluator_invariant']);
-const invalidClaim=(claim,reason='INVALID_INPUT')=>({
- claim_assessment_id:'ca_'+hash('ux-skill:claim-assessment:v1',{reason}),
- claim_id:claim&&text(claim.claim_id)?claim.claim_id:'invalid',
- policy_id:'unresolved',status:'unresolved',assessed_predicate:null,checks:[],
- dimension_scores:DIMS.map((dimension)=>({dimension,score:0,grade:'insufficient'})),
- evidence_grade:{validity:'insufficient',directness:'insufficient',precision:'insufficient',transportability:'insufficient',overall:'insufficient'},
- reason_codes:[reason]
-});
+const invalidClaim=(claim,reason='INVALID_INPUT')=>{
+ const body={
+  claim_id:claim&&text(claim.claim_id)?claim.claim_id:'invalid',
+  policy_id:'unresolved',status:'unresolved',assessed_predicate:null,checks:[],
+  dimension_scores:DIMS.map((dimension)=>({dimension,score:0,grade:'insufficient'})),
+  evidence_grade:{validity:'insufficient',directness:'insufficient',precision:'insufficient',transportability:'insufficient',overall:'insufficient'},
+  reason_codes:[reason]
+ };
+ return{claim_assessment_id:'ca_'+hash('ux-skill:claim-assessment:v1',body).slice(0,32),...body};
+};
 const validClaim=(claim)=>exact(claim,CLAIM_KEYS)&&text(claim.claim_id)&&oneOf(claim.claim_kind,CLAIM_KINDS)&&claim.relation_kind===claim.claim_kind&&text(claim.predicate_id)&&text(claim.population_id)&&text(claim.context_id)&&text(claim.time_scope_id)&&text(claim.subject_id)&&text(claim.value)&&Array.isArray(claim.evidence_refs)&&claim.evidence_refs.every(text);
 const validEvidence=(evidence)=>exact(evidence,EVIDENCE_KEYS)&&Array.isArray(evidence.checks)&&oneOf(evidence.selection_status,['verified','incomplete','unknown'])&&oneOf(evidence.contradiction_status,['resolved','unresolved','unknown'])&&['measured_covariation','verifiable_observation','prediction_observed_outcome_pair'].every((key)=>typeof evidence[key]==='boolean')&&['intervention_id','counterfactual_id','effect_estimand_id','future_target_id'].every((key)=>evidence[key]===null||text(evidence[key]))&&evidence.checks.every((row)=>exact(row,CHECK_KEYS)&&text(row.required_check_id)&&Object.hasOwn(SCORES,row.status)&&text(row.dependency_cluster_id)&&Array.isArray(row.evidence_refs)&&row.evidence_refs.every(text));
 const validPolicy=(policy,kind)=>exact(policy,POLICY_KEYS)&&text(policy.policy_id)&&policy.claim_kind===kind&&Array.isArray(policy.required_checks)&&policy.required_checks.length>0&&policy.required_checks.every((row)=>exact(row,POLICY_CHECK_KEYS)&&text(row.required_check_id)&&oneOf(row.dimension,DIMS)&&typeof row.critical==='boolean'&&text(row.evaluator_invariant))&&new Set(policy.required_checks.map((row)=>row.required_check_id)).size===policy.required_checks.length&&DIMS.every((dimension)=>policy.required_checks.some((row)=>row.dimension===dimension));
@@ -76,6 +78,7 @@ export function assessRisk(finding,context){
  try{
   const f=copy(finding),c=copy(context);
   if(!exact(f,FINDING_KEYS)||!exact(c,CONTEXT_KEYS)||!['block','escalation','none'].includes(f.hard_decision)||typeof f.mandatory_fail!=='boolean'||typeof f.hard_unsat!=='boolean'||typeof f.release_critical!=='boolean'||!['pass','fail','partial','not_run','unknown','evaluation_error'].includes(f.outcome)||!['low','moderate','severe','catastrophic','unknown'].includes(c.severity)||!['known','unknown'].includes(c.likelihood)||!['known','unknown'].includes(c.exposure)||!['reversible','irreversible','unknown'].includes(c.reversibility)||!['verified','unknown'].includes(c.key_factor_status)||!text(c.purpose)||typeof c.materially_relies_on!=='boolean'||!['observed_signal','reported_experience','derived','other'].includes(c.inference_kind)||!['applicable','not_applicable','unknown'].includes(c.prohibition_status)||!['pass','fail','unknown'].includes(c.mandatory_check_status)||!['pass','fail','unknown'].includes(c.other_hard_checks_status)||c.signal_policy_row!==null)return{decision:'escalation',reason_code:'INVALID_INPUT'};
+  if((f.mandatory_fail||f.hard_unsat)&&f.hard_decision==='none')return{decision:'escalation',reason_code:'INVALID_INPUT'};
   if(f.hard_decision==='block')return{decision:'block',reason_code:'HARD_DECISION_BLOCK'};
   if(f.hard_decision==='escalation')return{decision:'escalation',reason_code:'HARD_DECISION_ESCALATION'};
   if(f.release_critical&&['evaluation_error','not_run','unknown','partial'].includes(f.outcome))return{decision:'escalation',reason_code:'RELEASE_CRITICAL_GAP'};
@@ -101,6 +104,7 @@ const order=['none','explore','conditional_advice','strong_advice','required'];
 export function assessRecommendation(parts){
  try{
   const p=copy(parts);if(!exact(p,REC_KEYS)||!validAction(p.action)||!exact(p.authority,AUTH_KEYS)||!exact(p.evidence,REC_EVIDENCE_KEYS)||!['applicable','not_applicable'].includes(p.authority.prohibition)||!['known','unknown'].includes(p.authority.applicability)||!['none','unknown'].includes(p.authority.conflict)||!['none','exact_requires','outcome_only'].includes(p.authority.requirement_kind)||(p.authority.required_action!==null&&!validAction(p.authority.required_action))||typeof p.authority.outcome_equivalent_verified!=='boolean'||!CONCLUSIONS.includes(p.evidence.admissible_conclusion)||!GRADES.includes(p.evidence.overall)||(p.evidence.assessed_action!==null&&!validAction(p.evidence.assessed_action))||!['clear','block','escalation','investigate_immediately'].includes(p.risk_decision)||!['reversible','irreversible','unknown'].includes(p.reversibility)||typeof p.exact_mandatory_action!=='boolean'||!['clear','block','escalation'].includes(p.hard_decision)||!['continue','block','escalation'].includes(p.sensitive_decision))return invalidRecommendation();
+  const exactMandatoryAction=p.authority.requirement_kind==='exact_requires'&&sameAction(p.authority.required_action,p.action);
   let authority;
   if(p.authority.prohibition==='applicable')authority='none';
   else if(p.authority.applicability==='unknown'||p.authority.conflict==='unknown')authority='explore';
@@ -115,7 +119,7 @@ export function assessRecommendation(parts){
   else if(p.evidence.admissible_conclusion==='normative'&&sameAction(p.evidence.assessed_action,p.action))evidenceCeiling='required';
   else evidenceCeiling='conditional_advice';
   const risk=p.risk_decision==='block'?'none':(['escalation','investigate_immediately'].includes(p.risk_decision)?'explore':'required');
-  const reversibility=p.reversibility==='irreversible'&&!p.exact_mandatory_action?'conditional_advice':(p.reversibility==='unknown'?'explore':'required');
+  const reversibility=p.reversibility==='irreversible'&&!exactMandatoryAction?'conditional_advice':(p.reversibility==='unknown'?'explore':'required');
   const ceilings={authority,evidence:evidenceCeiling,risk,reversibility};
   let strength;
   if(p.hard_decision==='block'||p.sensitive_decision==='block'||authority==='none'||risk==='none')strength='none';
