@@ -1,0 +1,17 @@
+{
+  "vector_id": "RW-SNAPSHOT-DRIFT-001",
+  "behavior_version": "0.1.0",
+  "mutation_matrix": [
+    "header_missing",
+    "body_tamper",
+    "observation_missing",
+    "manifest_digest_tamper",
+    "network_reorder",
+    "unregistered_event"
+  ],
+  "expected": {
+    "run_status": "target_unavailable",
+    "run_issue_code": "SNAPSHOT_CLOSURE_UNAVAILABLE",
+    "release_gate": "no_release"
+  }
+}\n

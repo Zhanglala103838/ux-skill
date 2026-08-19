@@ -1,0 +1,23 @@
+{
+  "vector_id": "RW-BLACKBOX-EFFECT-001",
+  "behavior_version": "0.1.0",
+  "prohibited": [
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "beacon",
+    "sse",
+    "websocket",
+    "download",
+    "login",
+    "cart",
+    "key_creation",
+    "api_effect"
+  ],
+  "expected": {
+    "effect_count": 0,
+    "completeness_status": "incomplete",
+    "release_gate": "no_release"
+  }
+}\n

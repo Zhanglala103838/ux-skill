@@ -1,0 +1,17 @@
+{
+  "vector_id": "RW-REPLAY-PROFILE-001",
+  "behavior_version": "0.1.0",
+  "exact_profile_ids": [
+    "apple-desktop-keyboard-standard",
+    "apple-desktop-keyboard-reduced",
+    "apple-mobile-touch-standard"
+  ],
+  "network_key": [
+    "replay_profile_id",
+    "sequence"
+  ],
+  "expected": {
+    "identity_not_ordinal": true,
+    "all_step_profiles_required": true
+  }
+}\n

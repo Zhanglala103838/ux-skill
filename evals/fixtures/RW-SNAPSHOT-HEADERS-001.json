@@ -1,0 +1,18 @@
+{
+  "vector_id": "RW-SNAPSHOT-HEADERS-001",
+  "behavior_version": "0.1.0",
+  "canonical_response_headers": {
+    "headers": [
+      {
+        "sequence": 0,
+        "name_lower_ascii": "content-security-policy",
+        "value_bytes_base64": "c2NyaXB0LXNyYyAnbm9uZSc="
+      }
+    ]
+  },
+  "expected": {
+    "csp_restored_exactly": true,
+    "on_missing": "target_unavailable",
+    "release_gate": "no_release"
+  }
+}\n
