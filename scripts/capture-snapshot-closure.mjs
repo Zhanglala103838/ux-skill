@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { types as utilTypes } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { init as initModuleLexer, parse as parseModule } from 'es-module-lexer';
 import { canonicalize } from 'json-canonicalize';
 
@@ -210,13 +211,13 @@ const moduleClosureDigest=(role,rows)=>dsha(`ux-skill:${role}-module-closure:v1`
 const inspectModuleClosure=async(root,entryRelative,declaredInput,role)=>{
   const declared=moduleRows(declaredInput),declaredByPath=new Map(declared.map(row=>[row.relative_path,row])),entryPath=relativeModulePath(root,modulePath(root,entryRelative));if(!declaredByPath.has(entryPath))throw E('CAPTURE_MODULE_CLOSURE_INCOMPLETE');
   await initModuleLexer;
-  const queue=[entryPath],discovered=new Map(),edges=new Map(),realPaths=new Set();let total=0;
+  const queue=[entryPath],discovered=new Map(),edges=new Map(),realPaths=new Set();let total=0,entryExports=[];
   while(queue.length){
     const relativePath=queue.shift();if(discovered.has(relativePath))continue;const declaredRow=declaredByPath.get(relativePath);if(!declaredRow)throw E('CAPTURE_MODULE_UNREGISTERED');
     let absolutePath,rawBytes,actualPath;try{absolutePath=await registryPath(root,relativePath);actualPath=await realpath(absolutePath);rawBytes=await readFile(absolutePath)}catch{throw E('CAPTURE_MODULE_PATH_INVALID')}
     if(realPaths.has(actualPath))throw E('CAPTURE_MODULE_REALPATH_ALIAS');realPaths.add(actualPath);total+=rawBytes.length;if(rawBytes.length>L.maxArtifactBytes||total>L.maxTotalArtifactBytes)throw E('CAPTURE_MODULE_TOO_LARGE');if(sha(rawBytes)!==declaredRow.raw_sha256)throw E('CAPTURE_REGISTRY_DIGEST_MISMATCH');
-    let source,imports;try{source=new TextDecoder('utf-8',{fatal:true}).decode(rawBytes);[imports]=parseModule(source)}catch{throw E('CAPTURE_MODULE_PARSE_INVALID')}
-    if(role==='runner'&&/\b(?:fetch|WebSocket|EventSource|XMLHttpRequest|process|require)\b/u.test(source))throw E('CAPTURE_RUNNER_AMBIENT_AUTHORITY');
+    let source,imports,exports;try{source=new TextDecoder('utf-8',{fatal:true}).decode(rawBytes);[imports,exports]=parseModule(source)}catch{throw E('CAPTURE_MODULE_PARSE_INVALID')}
+    const ambient=role==='runner'?/\b(?:fetch|WebSocket|EventSource|XMLHttpRequest|process|require|globalThis|global|eval|Function)\b/u:/\b(?:WebSocket|EventSource|XMLHttpRequest|process|require|globalThis|global|eval|Function)\b/u;if(ambient.test(source))throw E('CAPTURE_MODULE_AMBIENT_AUTHORITY');if(relativePath===entryPath)entryExports=exports.map(row=>typeof row==='string'?row:row.n);
     const localTargets=[],localSeen=new Set();
     for(const item of imports){
       if(item.d===-2)throw E('CAPTURE_MODULE_IMPORT_INVALID');const specifier=item.n;if(typeof specifier!=='string'||specifier.length<1)throw E('CAPTURE_MODULE_DYNAMIC_IMPORT_INVALID');
@@ -225,7 +226,7 @@ const inspectModuleClosure=async(root,entryRelative,declaredInput,role)=>{
     }
     edges.set(relativePath,localTargets);discovered.set(relativePath,Object.freeze({relative_path:relativePath,absolute_path:absolutePath,raw_sha256:declaredRow.raw_sha256,raw_bytes:Buffer.from(rawBytes)}));for(const target of localTargets)if(!discovered.has(target))queue.push(target);
   }
-  if(discovered.size!==declared.length||declared.some(row=>!discovered.has(row.relative_path)))throw E('CAPTURE_MODULE_CLOSURE_INCOMPLETE');
+  if(discovered.size!==declared.length||declared.some(row=>!discovered.has(row.relative_path)))throw E('CAPTURE_MODULE_CLOSURE_INCOMPLETE');if(!entryExports.includes(role==='runner'?'run':'request'))throw E('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID');
   const indegree=new Map([...discovered.keys()].map(path=>[path,0]));for(const targets of edges.values())for(const target of targets)indegree.set(target,(indegree.get(target)??0)+1);const ready=[...indegree].filter(([,count])=>count===0).map(([path])=>path);let visited=0;while(ready.length){const path=ready.pop();visited+=1;for(const target of edges.get(path)??[]){const next=indegree.get(target)-1;indegree.set(target,next);if(next===0)ready.push(target)}}if(visited!==discovered.size)throw E('CAPTURE_MODULE_CYCLE');
   return Object.freeze({role,root,entry_path:entryPath,rows:Object.freeze(declared.map(row=>Object.freeze({...row}))),files:Object.freeze([...discovered.values()]),digest:moduleClosureDigest(role,declared)});
 };
@@ -236,15 +237,63 @@ const stageModuleClosure=async(closure)=>{
   const stageRoot=await realpath(await mkdtemp(join(tmpdir(),`ux-skill-${closure.role}-${closure.digest}-`)));let loaded=false;
   try{
     for(const file of closure.files){const destination=join(stageRoot,...file.relative_path.split('/'));await mkdir(dirname(destination),{recursive:true,mode:0o700});let handle;try{handle=await open(destination,fsConstants.O_CREAT|fsConstants.O_EXCL|fsConstants.O_WRONLY|fsConstants.O_NOFOLLOW,0o400);await handle.writeFile(file.raw_bytes);await handle.sync();await handle.close();handle=null}catch(error){if(handle)await handle.close().catch(()=>{});throw error}}
-    const staged=Object.freeze({root:stageRoot,entry_path:closure.entry_path,files:Object.freeze(closure.files.map(file=>Object.freeze({relative_path:file.relative_path,raw_sha256:file.raw_sha256,raw_bytes:Buffer.from(file.raw_bytes)}))),digest:closure.digest});await verifyStagedClosure(staged);const namespace=await import(`${pathToFileURL(join(stageRoot,...closure.entry_path.split('/'))).href}?closure=${closure.digest}`);await verifyStagedClosure(staged);loaded=true;return Object.freeze({namespace,staged});
+    const staged=Object.freeze({root:stageRoot,entry_path:closure.entry_path,files:Object.freeze(closure.files.map(file=>Object.freeze({relative_path:file.relative_path,raw_sha256:file.raw_sha256,raw_bytes:Buffer.from(file.raw_bytes)}))),digest:closure.digest});await verifyStagedClosure(staged);loaded=true;return staged;
   }finally{if(!loaded)await rm(stageRoot,{recursive:true,force:true}).catch(()=>{})}
 };
 const verifyStagedClosure=async(staged)=>{for(const file of staged.files){let absolutePath,rawBytes;try{absolutePath=await registryPath(staged.root,file.relative_path);rawBytes=await readFile(absolutePath)}catch{throw E('CAPTURE_MODULE_STAGE_CHANGED')};if(sha(rawBytes)!==file.raw_sha256||!rawBytes.equals(file.raw_bytes))throw E('CAPTURE_MODULE_STAGE_CHANGED')}};
-const disposeInvocation=async invocation=>{if(!invocation?.runnerStage||!invocation?.transportStage)return;await Promise.all([invocation.runnerStage.root,invocation.transportStage.root].map(root=>rm(root,{recursive:true,force:true}).catch(()=>{})))};
+const INVOCATION_WORKER_SOURCE=`
+const {parentPort,workerData}=require('node:worker_threads');
+const {AsyncLocalStorage}=require('node:async_hooks');
+const authority=new AsyncLocalStorage(),transportToken=Object.freeze({}),nativeFetch=globalThis.fetch.bind(globalThis),pending=new Map();let callSequence=0,runner,transport;
+const fault=value=>({name:value?.name??'Error',message:value?.message??String(value),code:value?.code??null});
+const denied=()=>Object.assign(new Error('CAPTURE_NETWORK_AUTHORITY_DENIED'),{code:'CAPTURE_NETWORK_AUTHORITY_DENIED'});
+Object.defineProperty(globalThis,'fetch',{value:(...args)=>authority.getStore()===transportToken?nativeFetch(...args):Promise.reject(denied()),writable:false,configurable:false});
+for(const name of ['WebSocket','EventSource','XMLHttpRequest'])if(name in globalThis)Object.defineProperty(globalThis,name,{value:function(){throw denied()},writable:false,configurable:false});
+const callMain=(kind,payload={})=>new Promise((resolve,reject)=>{const id=++callSequence;pending.set(id,{resolve,reject});parentPort.postMessage({type:'bridge',kind,id,...payload})});
+const executeStep=async(identity,work)=>{
+  const stepId=await callMain('step-open',{identity}),handles=new WeakMap();let workError;
+  const request=async input=>{const response=await callMain('step-request',{step_id:stepId,input}),opaque=response.observation_handle_ids.map(handleId=>{const handle=Object.freeze({});handles.set(handle,handleId);return handle});return Object.freeze({status:response.status,final_url:response.final_url,observation_handles:Object.freeze(opaque)})};
+  const observe=async input=>{const handleId=handles.get(input?.handle);if(!handleId)throw Object.assign(new Error('TASK_RUNNER_OBSERVATION_HANDLE_INVALID'),{code:'TASK_RUNNER_OBSERVATION_HANDLE_INVALID'});await callMain('step-observe',{step_id:stepId,evidence_kind:input.evidence_kind,handle_id:handleId})};
+  try{await work(Object.freeze({request,observe}))}catch(error){workError=error}
+  try{await callMain('step-close',{step_id:stepId,failed:Boolean(workError)})}catch(error){if(!workError)workError=error}if(workError)throw workError;
+};
+const respond=(id,ok,value)=>parentPort.postMessage(ok?{type:'result',id,ok:true,value}:{type:'result',id,ok:false,error:fault(value)});
+parentPort.on('message',message=>{
+  if(message.type==='bridge-result'){const waiter=pending.get(message.id);if(!waiter)return;pending.delete(message.id);message.ok?waiter.resolve(message.value):waiter.reject(Object.assign(new Error(message.error?.message??'CAPTURE_WORKER_BRIDGE_FAILED'),{code:message.error?.code??'CAPTURE_WORKER_BRIDGE_FAILED'}));return}
+  if(message.type==='transport-request'){authority.run(transportToken,()=>transport.request(message.input)).then(value=>respond(message.id,true,value),error=>respond(message.id,false,error));return}
+  if(message.type==='runner-run'){Promise.resolve(runner.run(Object.freeze({profiles:message.profiles,steps:message.steps,executeStep}))).then(()=>respond(message.id,true,null),error=>respond(message.id,false,error))}
+});
+(async()=>{runner=await import(workerData.runnerUrl);transport=await import(workerData.transportUrl);if(typeof runner.run!=='function'||typeof transport.request!=='function')throw Object.assign(new Error('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID'),{code:'CAPTURE_REGISTRY_IMPLEMENTATION_INVALID'});parentPort.postMessage({type:'ready'})})().catch(error=>{parentPort.postMessage({type:'load-error',error:fault(error)})});
+`;
+const startInvocationWorker=async(runnerStage,transportStage)=>{
+  const worker=new Worker(INVOCATION_WORKER_SOURCE,{eval:true,workerData:{runnerUrl:`${pathToFileURL(join(runnerStage.root,...runnerStage.entry_path.split('/'))).href}?closure=${runnerStage.digest}`,transportUrl:`${pathToFileURL(join(transportStage.root,...transportStage.entry_path.split('/'))).href}?closure=${transportStage.digest}`}}),pending=new Map(),sessions=new Map();let sequence=0,activeRun=null,closed=false;
+  const fail=error=>{if(closed)return;closed=true;for(const waiter of pending.values())waiter.reject(error);pending.clear();for(const session of sessions.values())session.finishReject(error);sessions.clear()};
+  const reply=(id,ok,value)=>worker.postMessage(ok?{type:'bridge-result',id,ok:true,value}:{type:'bridge-result',id,ok:false,error:{message:value?.message??String(value),code:value?.code??null}});
+  const bridge=async message=>{
+    try{
+      if(!activeRun)throw E('TASK_RUNNER_INACTIVE_STEP');
+      if(message.kind==='step-open'){
+        const stepId=`step-${++activeRun.stepSequence}`;let readyResolve,readyReject,finishResolve,finishReject;const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject}),finish=new Promise((resolve,reject)=>{finishResolve=resolve;finishReject=reject}),session={stepId,handles:new Map(),handleSequence:0,finishResolve,finishReject,capabilities:null,execution:null};sessions.set(stepId,session);
+        session.execution=Promise.resolve().then(()=>activeRun.executeStep(message.identity,async capabilities=>{session.capabilities=capabilities;readyResolve();await finish})).catch(error=>{readyReject(error);throw error});await ready;reply(message.id,true,stepId);return;
+      }
+      const session=sessions.get(message.step_id);if(!session?.capabilities)throw E('TASK_RUNNER_INACTIVE_STEP');
+      if(message.kind==='step-request'){const response=await session.capabilities.request(message.input),ids=response.observation_handles.map(handle=>{const id=`handle-${++session.handleSequence}`;session.handles.set(id,handle);return id});reply(message.id,true,{status:response.status,final_url:response.final_url,observation_handle_ids:ids});return}
+      if(message.kind==='step-observe'){const handle=session.handles.get(message.handle_id);if(!handle)throw E('TASK_RUNNER_OBSERVATION_HANDLE_INVALID');await session.capabilities.observe({evidence_kind:message.evidence_kind,handle});reply(message.id,true,null);return}
+      if(message.kind==='step-close'){message.failed?session.finishReject(E('TASK_RUNNER_WORK_FAILED')):session.finishResolve();try{await session.execution}catch(error){if(!message.failed)throw error}finally{sessions.delete(message.step_id)}reply(message.id,true,null);return}
+      throw E('TASK_RUNNER_WORKER_PROTOCOL_INVALID');
+    }catch(error){reply(message.id,false,error)}
+  };
+  worker.on('message',message=>{if(message.type==='result'){const waiter=pending.get(message.id);if(!waiter)return;pending.delete(message.id);message.ok?waiter.resolve(message.value):waiter.reject(Object.assign(E(message.error?.code??'CAPTURE_INVOCATION_FAILED'),{cause:message.error}));return}if(message.type==='bridge'){void bridge(message)}});
+  worker.on('error',fail);worker.on('exit',code=>{if(code!==0)fail(E('CAPTURE_INVOCATION_WORKER_EXIT'))});
+  try{await new Promise((resolve,reject)=>{const ready=message=>{if(message.type==='ready'){worker.off('message',ready);resolve()}else if(message.type==='load-error'){worker.off('message',ready);reject(Object.assign(E(message.error?.code??'CAPTURE_INVOCATION_LOAD_FAILED'),{cause:message.error}))}};worker.on('message',ready);worker.once('error',reject)})}catch(error){await worker.terminate().catch(()=>{});throw error}
+  const rpc=(type,payload)=>new Promise((resolve,reject)=>{if(closed){reject(E('CAPTURE_INVOCATION_CLOSED'));return}const id=++sequence;pending.set(id,{resolve,reject});worker.postMessage({type,id,...payload})});
+  return Object.freeze({worker,request:input=>rpc('transport-request',{input}),async run({profiles,steps,executeStep}){if(activeRun)throw E('TASK_RUNNER_CONCURRENT_RUN');activeRun={executeStep,stepSequence:0};try{await rpc('runner-run',{profiles,steps})}finally{activeRun=null}}});
+};
+const disposeInvocation=async invocation=>{if(!invocation)return;if(invocation.invocationWorker)await invocation.invocationWorker.terminate().catch(()=>{});await Promise.all([invocation.runnerStage?.root,invocation.transportStage?.root].filter(Boolean).map(root=>rm(root,{recursive:true,force:true}).catch(()=>{})))};
 const loadInvocation=async registration=>{
-  await verifyModuleClosure(registration.runnerClosure);await verifyModuleClosure(registration.transportClosure);const runnerLoaded=await stageModuleClosure(registration.runnerClosure);let transportLoaded;
-  try{transportLoaded=await stageModuleClosure(registration.transportClosure);await verifyModuleClosure(registration.runnerClosure);await verifyModuleClosure(registration.transportClosure);await verifyStagedClosure(runnerLoaded.staged);await verifyStagedClosure(transportLoaded.staged);if(typeof runnerLoaded.namespace.run!=='function'||typeof transportLoaded.namespace.request!=='function')throw E('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID');return Object.freeze({...registration,runnerStage:runnerLoaded.staged,transportStage:transportLoaded.staged,run:runnerLoaded.namespace.run,request:transportLoaded.namespace.request})}
-  catch(error){await Promise.all([runnerLoaded.staged.root,transportLoaded?.staged.root].filter(Boolean).map(stageRoot=>rm(stageRoot,{recursive:true,force:true}).catch(()=>{})));throw error}
+  await verifyModuleClosure(registration.runnerClosure);await verifyModuleClosure(registration.transportClosure);const runnerStage=await stageModuleClosure(registration.runnerClosure);let transportStage,client;
+  try{transportStage=await stageModuleClosure(registration.transportClosure);client=await startInvocationWorker(runnerStage,transportStage);await verifyModuleClosure(registration.runnerClosure);await verifyModuleClosure(registration.transportClosure);await verifyStagedClosure(runnerStage);await verifyStagedClosure(transportStage);return Object.freeze({...registration,runnerStage,transportStage,invocationWorker:client.worker,run:client.run,request:client.request})}
+  catch(error){if(client?.worker)await client.worker.terminate().catch(()=>{});await Promise.all([runnerStage.root,transportStage?.root].filter(Boolean).map(stageRoot=>rm(stageRoot,{recursive:true,force:true}).catch(()=>{})));throw error}
 };
 export async function createCaptureRegistry(manifestPath){
   const absolute=resolve(manifestPath),manifestStat=await lstat(absolute);if(!manifestStat.isFile()||manifestStat.isSymbolicLink()||manifestStat.size>L.maxArtifactBytes)throw E('CAPTURE_REGISTRY_INVALID');const root=await realpath(dirname(absolute)),manifest=snap(JSON.parse(await readFile(absolute,'utf8')));
@@ -253,7 +302,7 @@ export async function createCaptureRegistry(manifestPath){
   for(const entry of manifest.entries){
     if(!exact(entry,['case_id','task_script_digest','runner_path','runner_digest','runner_module_closure','transport_path','transport_digest','transport_module_closure'])||typeof entry.case_id!=='string'||!entry.case_id||!dg(entry.task_script_digest)||!dg(entry.runner_digest)||!dg(entry.transport_digest)||entries.has(entry.case_id))throw E('CAPTURE_REGISTRY_INVALID');
     const runnerClosure=await inspectModuleClosure(root,entry.runner_path,entry.runner_module_closure,'runner'),transportClosure=await inspectModuleClosure(root,entry.transport_path,entry.transport_module_closure,'transport');if(runnerClosure.rows.find(row=>row.relative_path===entry.runner_path)?.raw_sha256!==entry.runner_digest||transportClosure.rows.find(row=>row.relative_path===entry.transport_path)?.raw_sha256!==entry.transport_digest)throw E('CAPTURE_REGISTRY_DIGEST_MISMATCH');
-    const registration=Object.freeze({...entry,registry_digest:manifest.registry_digest,runner_closure_digest:runnerClosure.digest,transport_closure_digest:transportClosure.digest,runnerClosure,transportClosure}),validation=await loadInvocation(registration);await disposeInvocation(validation);entries.set(entry.case_id,registration);
+    const registration=Object.freeze({...entry,registry_digest:manifest.registry_digest,runner_closure_digest:runnerClosure.digest,transport_closure_digest:transportClosure.digest,runnerClosure,transportClosure});entries.set(entry.case_id,registration);
   }
   const registry=Object.freeze({registry_version:manifest.registry_version,registry_digest:manifest.registry_digest});registryState.set(registry,Object.freeze({entries}));return registry;
 }
