@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { canonicalize } from 'json-canonicalize';
 import { validateBySchema } from '../../evaluator/validation.mjs';
 
 let closureApi;
@@ -256,5 +260,174 @@ if (importFailure) {
       assert.equal(snapshotClosureDigest(closure), row.snapshot_closure_digest);
       assert.equal(closure.completeness_status, 'incomplete');
     }
+  });
+
+  test('TASK9_REPLAY_ELIGIBILITY_RED', async () => {
+    const issues = [];
+    const expect = (condition, label) => { if (!condition) issues.push(label); };
+    const one = profile('boundary-profile');
+    const oneCase = (taskScript) => ({
+      case_id: 'RW-BOUNDARY-001',
+      canonical_locator: 'https://example.invalid/',
+      task_script: taskScript,
+    });
+    const baseTask = (instruction = 'read') => ({
+      task_script_id: 'boundary-v1',
+      steps: [{ step_id: 'read', instruction, required_replay_profile_ids: [one.replay_profile_id] }],
+    });
+    const onePayload = (overrides = {}) => ({
+      ...capturePayload(),
+      replay_profiles: [structuredClone(one)],
+      network_events: [{
+        replay_profile_id: one.replay_profile_id,
+        sequence: 0,
+        task_step_id: 'read',
+        request_method: 'GET',
+        request_url: 'https://example.invalid/',
+        redirect_chain: [],
+        final_url: 'https://example.invalid/',
+        network_kind: 'document',
+        disposition: 'captured',
+        response_status: 200,
+        response_headers: [{ sequence: 0, name: 'x-boundary', value_bytes_base64: b64('ok') }],
+        raw_body_bytes_base64: b64('body'),
+      }],
+      observation_events: [{
+        replay_profile_id: one.replay_profile_id,
+        task_step_id: 'read',
+        evidence_kind: 'dom_snapshot',
+        ordinal: 0,
+        artifact_bytes_base64: b64('observation'),
+      }],
+      ...overrides,
+    });
+    const sizedTask = (size) => {
+      const empty = baseTask('');
+      const overhead = Buffer.byteLength(canonicalize(empty));
+      const result = baseTask('x'.repeat(size - overhead));
+      assert.equal(Buffer.byteLength(canonicalize(result)), size);
+      return result;
+    };
+    const sizedHeaders = (size) => {
+      for (let nameLength = 1; nameLength <= 32; nameLength += 1) {
+        for (let rawLength = Math.floor(size * 3 / 4) - 128; rawLength < Math.floor(size * 3 / 4) + 16; rawLength += 1) {
+          const rows = [{ sequence: 0, name: `x${'a'.repeat(nameLength - 1)}`, value_bytes_base64: Buffer.alloc(rawLength).toString('base64') }];
+          const normalized = { headers: rows.map((row) => ({ sequence: row.sequence, name_lower_ascii: row.name, value_bytes_base64: row.value_bytes_base64 })) };
+          if (Buffer.byteLength(canonicalize(normalized)) === size) return rows;
+        }
+      }
+      throw new Error(`unable to size headers to ${size}`);
+    };
+    const runCapture = async (taskScript, payload, cas = makeCas()) => {
+      try { return { manifest: await captureClosure(oneCase(taskScript), browser(cas, payload)), cas }; }
+      catch (error) { return { error, cas }; }
+    };
+    const artifactCases = [
+      ['task', (size) => [sizedTask(size), onePayload()]],
+      ['header', (size) => [baseTask(), onePayload({ network_events: [{ ...onePayload().network_events[0], response_headers: sizedHeaders(size) }] })]],
+      ['body', (size) => [baseTask(), onePayload({ network_events: [{ ...onePayload().network_events[0], raw_body_bytes_base64: Buffer.alloc(size).toString('base64') }] })]],
+      ['observation', (size) => [baseTask(), onePayload({ observation_events: [{ ...onePayload().observation_events[0], artifact_bytes_base64: Buffer.alloc(size).toString('base64') }] })]],
+    ];
+    for (const [kind, build] of artifactCases) {
+      const [boundaryTask, boundaryPayload] = build(1_048_576);
+      const boundary = await runCapture(boundaryTask, boundaryPayload);
+      expect(boundary.manifest?.completeness_status === 'complete', `${kind}:exact-limit-not-complete`);
+      if (boundary.manifest?.completeness_status === 'complete') {
+        try { await replayClosure(boundary.manifest, boundary.cas); }
+        catch { issues.push(`${kind}:exact-limit-not-replayable`); }
+      }
+      const [overTask, overPayload] = build(1_048_577);
+      const over = await runCapture(overTask, overPayload);
+      expect(over.manifest?.completeness_status === 'incomplete', `${kind}:over-limit-not-incomplete`);
+    }
+
+    const emptyNetwork = await runCapture(baseTask(), onePayload({ network_events: [] }));
+    expect(emptyNetwork.manifest?.completeness_status === 'incomplete', 'empty-network-certified-complete');
+
+    const casModes = {
+      noop: { async put() {}, async get() { return null; } },
+      mutate: { rows: new Map(), async put(locator, value) { this.rows.set(locator, Buffer.from(value).fill(0)); }, async get(locator) { return this.rows.get(locator) ?? null; } },
+      throw: { async put() { throw new Error('put failed'); }, async get() { return null; } },
+      readback_miss: { rows: new Map(), async put(locator, value) { this.rows.set(locator, Buffer.from(value)); }, async get() { return null; } },
+      digest_mismatch: { rows: new Map(), async put(locator, value) { this.rows.set(locator, Buffer.concat([Buffer.from(value), Buffer.from('x')])); }, async get(locator) { return this.rows.get(locator) ?? null; } },
+    };
+    for (const [mode, cas] of Object.entries(casModes)) {
+      const result = await runCapture(baseTask(), onePayload(), cas);
+      expect(result.manifest?.completeness_status === 'incomplete', `cas-${mode}-not-incomplete`);
+    }
+    const countingCas = makeCas();
+    const putCounts = new Map();
+    const originalPut = countingCas.put.bind(countingCas);
+    countingCas.put = async (locator, value) => { putCounts.set(locator, (putCounts.get(locator) ?? 0) + 1); await originalPut(locator, value); };
+    const counted = await runCapture(baseTask(), onePayload(), countingCas);
+    const taskLocator = `cas/${counted.manifest?.task_script_digest}`;
+    expect(putCounts.get(taskLocator) === 1, 'task-script-not-routed-once-through-put');
+    if (counted.manifest?.completeness_status === 'complete') {
+      try { await replayClosure(counted.manifest, countingCas); }
+      catch { issues.push('complete-does-not-imply-immediate-replay'); }
+    }
+
+    const shared = { leaf: 'x' };
+    let browserCalls = 0;
+    let casCalls = 0;
+    const guardedCas = { async put() { casCalls += 1; }, async get() { casCalls += 1; return null; } };
+    const guardedBrowser = { cas: guardedCas, async capture() { browserCalls += 1; return onePayload(); } };
+    const sharedCase = { ...oneCase(baseTask()), hostile: [shared, shared] };
+    await assert.rejects(() => captureClosure(sharedCase, guardedBrowser), /CAPTURE_INPUT_INVALID/).catch(() => issues.push('case-shared-dag-accepted'));
+    expect(browserCalls === 0 && casCalls === 0, 'case-preflight-ran-after-browser-or-cas');
+    const driverShared = [];
+    const sharedPayload = onePayload();
+    sharedPayload.network_events[0].redirect_chain = driverShared;
+    sharedPayload.hostile = driverShared;
+    casCalls = 0;
+    await assert.rejects(() => captureClosure(oneCase(baseTask()), { cas: guardedCas, async capture() { return sharedPayload; } }), /CAPTURE_INPUT_INVALID/).catch(() => issues.push('driver-shared-dag-accepted'));
+    expect(casCalls === 0, 'driver-preflight-ran-after-cas');
+    const good = await runCapture(baseTask(), onePayload());
+    const replayShared = structuredClone(good.manifest);
+    replayShared.network_records.push({ ...structuredClone(replayShared.network_records[0]), replay_profile_id: one.replay_profile_id, sequence: 1 });
+    const sharedRedirects = [];
+    replayShared.network_records[0].redirect_chain = sharedRedirects;
+    replayShared.network_records[1].redirect_chain = sharedRedirects;
+    replayShared.manifest_digest = snapshotClosureDigest(replayShared);
+    let replayGets = 0;
+    await assert.rejects(() => replayClosure(replayShared, { async get(locator) { replayGets += 1; return good.cas.get(locator); } }), /TARGET_UNAVAILABLE/).catch(() => issues.push('replay-shared-dag-accepted'));
+    expect(replayGets === 0, 'replay-preflight-ran-after-cas');
+
+    for (const [label, hostile] of [
+      ['cycle', (() => { const value = {}; value.self = value; return value; })()],
+      ['proxy', new Proxy({}, {})],
+      ['accessor', Object.defineProperty({}, 'value', { enumerable: true, get() { throw new Error('getter invoked'); } })],
+      ['depth', (() => { let value = {}; for (let index = 0; index < 80; index += 1) value = { child: value }; return value; })()],
+      ['nodes', Object.fromEntries(Array.from({ length: 33_000 }, (_, index) => [`k${index}`, null]))],
+      ['string-bytes', 'x'.repeat(1_500_000)],
+      ['typed-bytes', new Uint8Array(1_048_577)],
+    ]) {
+      browserCalls = 0;
+      await assert.rejects(() => captureClosure({ ...oneCase(baseTask()), hostile }, { ...guardedBrowser, async capture() { browserCalls += 1; return onePayload(); } }), /CAPTURE_INPUT_INVALID/).catch(() => issues.push(`preflight-${label}-accepted`));
+      expect(browserCalls === 0, `preflight-${label}-called-browser`);
+    }
+
+    const cliDir = await mkdtemp(join(tmpdir(), 'task9-cli-red-'));
+    try {
+      const casePath = join(cliDir, 'case.json');
+      const casPath = join(cliDir, 'cas');
+      const outputPath = join(cliDir, 'output.json');
+      await writeFile(casePath, `${JSON.stringify(oneCase(baseTask()))}\n`);
+      const child = await new Promise((resolve) => {
+        const proc = spawn(process.execPath, ['scripts/capture-snapshot-closure.mjs', '--case', casePath, '--cas', casPath, '--output', outputPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let stdout = ''; let stderr = '';
+        proc.stdout.on('data', (chunk) => { stdout += chunk; });
+        proc.stderr.on('data', (chunk) => { stderr += chunk; });
+        proc.on('close', (code) => resolve({ code, stdout, stderr }));
+      });
+      let wrapper;
+      try { wrapper = JSON.parse(await readFile(outputPath, 'utf8')); } catch {}
+      expect(child.code === 2, 'cli-target-unavailable-exit-not-2');
+      expect(wrapper?.closure === null && wrapper?.completeness_status === 'incomplete' && wrapper?.run_status === 'target_unavailable' && wrapper?.release_gate === 'no_release' && Array.isArray(wrapper?.run_issues) && wrapper.run_issues.length > 0, 'cli-target-unavailable-wrapper-not-closed');
+    } finally {
+      await rm(cliDir, { recursive: true, force: true });
+    }
+
+    assert.deepEqual(issues, [], `TASK9_REPLAY_ELIGIBILITY_RED:${issues.join(',')}`);
   });
 }
