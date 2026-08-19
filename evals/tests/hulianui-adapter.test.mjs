@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {init,parse} from 'es-module-lexer';
-import {jcsBytes} from '../../evaluator/canonical.mjs';
+import {assertCanonicalRelativePath,jcsBytes} from '../../evaluator/canonical.mjs';
 import * as adapter from '../../adapters/hulianui/adapter.mjs';
 
 const DIGEST='f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c';
@@ -279,4 +279,68 @@ test('TASK8_SCHEMA_TOTALITY_RED exact schema parity and bounded snapshots',async
   record('result-string-'+size,classify(r)==='server_error');
  }
  assert.deepEqual(issues,[],'TASK8_SCHEMA_TOTALITY_RED\n'+issues.join('\n'));
+});
+
+const task8NodeCount=(root)=>{
+ let count=0,stack=[root];
+ while(stack.length){
+  const value=stack.pop();count+=1;
+  if(value===null||typeof value!=='object')continue;
+  if(Array.isArray(value)){for(let index=0;index<value.length;index+=1)stack.push(value[index]);}
+  else for(const child of Object.values(value))stack.push(child);
+ }
+ return count;
+};
+const canonicalPathOracle=(value)=>{try{assertCanonicalRelativePath(value);return true;}catch{return false;}};
+
+test('TASK8_SCHEMA_DOMAIN_RED schema domain and canonical path parity',()=>{
+ const issues=[];
+ const record=(label,condition,detail='')=>{if(!condition)issues.push(label+(detail?':'+detail:''));};
+ const template=valid(),originalExports=template.structuredContent.components[0].exports.length;
+ const baseNodes=task8NodeCount(template)-originalExports;
+ const maximumExports=8_192-baseNodes;
+ record('maximum-exports-above-4097',maximumExports>4097,String(maximumExports));
+ for(const length of [4096,4097,maximumExports]){
+  const row=valid(),exports=Array.from({length},(_,index)=>'E'+String(index).padStart(4,'0'));
+  row.structuredContent.components[0].exports=exports;
+  record('exports-'+length+'-node-budget',task8NodeCount(row)<=8_192,String(task8NodeCount(row)));
+  record('exports-'+length+'-byte-budget',Buffer.byteLength(JSON.stringify(row),'utf8')<1_048_576);
+  record('exports-'+length+'-status',classify(row)==='success',classify(row));
+  try{
+   const evidence=map(row);
+   record('exports-'+length+'-map',evidence.exports.length===length,String(evidence.exports.length));
+   if(length!==maximumExports){
+    const reversed=valid();reversed.structuredContent.components[0].exports=[...exports].reverse();
+    record('exports-'+length+'-canonical',jcsBytes(evidence).equals(jcsBytes(map(reversed))));
+   }
+  }catch(cause){record('exports-'+length+'-map',false,String(cause?.code||cause));}
+ }
+ const corpus=[
+  ['cjk','目录/组件.json',true],
+  ['accent','café/é.json',true],
+  ['emoji','emoji/😀.json',true],
+  ['nfd','Cafe\u0301/file.json',false],
+  ['c0','bad\u0001/file.json',false],
+  ['c1','bad\u0085/file.json',false],
+  ['backslash','bad\\file.json',false],
+  ['absolute','/bad/file.json',false],
+  ['dot','bad/./file.json',false],
+  ['dotdot','bad/../file.json',false],
+  ['double-slash','bad//file.json',false],
+  ['trailing-slash','bad/file.json/',false],
+  ['encoded-slash','bad%2Ffile.json',false],
+  ['over-total-bytes','界'.repeat(34),false],
+  ['over-segment-bytes','a/'+'界'.repeat(34),false]
+ ];
+ for(const [label,path,want] of corpus){
+  const oracle=canonicalPathOracle(path);
+  record('path-'+label+'-oracle',oracle===want,String(oracle));
+  const row=valid();row.structuredContent.source_artifact.path=path;
+  record('path-'+label+'-result',classify(row)===(want?'incompatible_source':'server_error'),classify(row));
+  if(!want){
+   const changedContract=clone(contract);changedContract.source_artifact.path=path;
+   record('path-'+label+'-contract',classify(valid(),changedContract)==='invalid_request',classify(valid(),changedContract));
+  }
+ }
+ assert.deepEqual(issues,[],'TASK8_SCHEMA_DOMAIN_RED\n'+issues.join('\n'));
 });
