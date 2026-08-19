@@ -113,3 +113,168 @@ test('no non-success status can materialize evidence',()=>{
   assert.equal(classify(row),status);assert.throws(()=>map(row),/ADAPTER_RESULT_NOT_MAPPABLE|INCOMPATIBLE_SOURCE/);
  }
 });
+
+import {Worker} from 'node:worker_threads';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+
+const TASK8_SCHEMA_ID='https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json';
+const TASK8_SCHEMA_DIGEST='86a4dc87401cbc8c5bb12ac181e3f9aa06fa02b87ffa662dc6093c1279ea46bb';
+const task8SchemaUrl=new URL('../../schemas/adapters/hulian-component-doc-v1.schema.json',import.meta.url);
+const canonicalRelativePath=(value)=>typeof value==='string'&&Buffer.byteLength(value,'utf8')>=1&&Buffer.byteLength(value,'utf8')<=100&&/^[\x20-\x7e]+$/u.test(value)&&!value.includes('\\')&&!/%2f|%5c/iu.test(value)&&!value.startsWith('/')&&!value.endsWith('/')&&!value.includes('//')&&value.split('/').every((part)=>part!=='.'&&part!=='..'&&Buffer.byteLength(part,'utf8')>=1&&Buffer.byteLength(part,'utf8')<=100);
+const sharedDag=(depth)=>{let node={leaf:'x'};for(let index=0;index<depth;index+=1)node={left:node,right:node};return node;};
+const chain=(depth)=>{let node='x';for(let index=0;index<depth;index+=1)node={next:node};return node;};
+const wide=(size)=>{const value={};for(let index=0;index<size;index+=1)value['k'+String(index).padStart(5,'0')]=index;return value;};
+const isolatedClassification=(result,contract)=>new Promise((resolve)=>{
+ const workerSource=[
+  "import {parentPort,workerData} from 'node:worker_threads';",
+  "const subject=await import(workerData.adapterUrl);",
+  "try{parentPort.postMessage({status:subject.classifyHulianResult(workerData.result,workerData.contract)});}catch(cause){parentPort.postMessage({error:String(cause?.code||cause)});}"
+ ].join('\n');
+ const worker=new Worker(new URL('data:text/javascript,'+encodeURIComponent(workerSource)),{
+  workerData:{adapterUrl:new URL('../../adapters/hulianui/adapter.mjs',import.meta.url).href,result,contract},
+  resourceLimits:{maxOldGenerationSizeMb:32,stackSizeMb:2}
+ });
+ let settled=false;
+ const finish=(value)=>{if(settled)return;settled=true;clearTimeout(timer);void worker.terminate();resolve(value);};
+ const timer=setTimeout(()=>finish({timeout:true}),750);
+ worker.once('message',finish);
+ worker.once('error',(cause)=>finish({worker_error:String(cause?.code||cause?.message||cause)}));
+ worker.once('exit',(code)=>finish({worker_exit:code}));
+});
+
+test('TASK8_SCHEMA_TOTALITY_RED exact schema parity and bounded snapshots',async()=>{
+ const issues=[];
+ const record=(label,condition,detail='')=>{if(!condition)issues.push(label+(detail?':'+detail:''));};
+ const schemaRaw=await readFile(task8SchemaUrl);
+ const schema=JSON.parse(schemaRaw);
+ record('schema-raw-digest',sha(schemaRaw)===TASK8_SCHEMA_DIGEST,sha(schemaRaw));
+ record('schema-id',schema.$id===TASK8_SCHEMA_ID,String(schema.$id));
+ record('contract-schema-binding',contract.result_schema?.id===TASK8_SCHEMA_ID&&contract.result_schema?.raw_sha256===TASK8_SCHEMA_DIGEST);
+
+ const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});
+ addFormats(ajv);
+ ajv.addFormat('canonical-relative-path',{type:'string',validate:canonicalRelativePath});
+ const validateDocument=ajv.compile(schema);
+ const schemaAccepts=(document)=>validateDocument(clone(document))===true;
+ const adapterAccepts=(row)=>{
+  const status=classify(row);
+  if(status!=='success'&&status!=='partial')return false;
+  try{map(row);return true;}catch{return false;}
+ };
+ const validCase=(label,mutate,wantStatus)=>{
+  const row=valid();mutate(row.structuredContent);
+  record(label+'-schema',schemaAccepts(row.structuredContent),JSON.stringify(validateDocument.errors||[]));
+  record(label+'-adapter',adapterAccepts(row),classify(row));
+  if(wantStatus)record(label+'-status',classify(row)===wantStatus,classify(row));
+ };
+ validCase('schema-valid-empty-import',(doc)=>{doc.components[0].import='';},'success');
+ validCase('schema-valid-empty-description',(doc)=>{doc.components[0].props[0].description='';},'success');
+ validCase('schema-valid-null-description',(doc)=>{doc.components[0].props[0].description=null;},'success');
+ validCase('schema-valid-long-missing',(doc)=>{doc.missing=Array.from({length:1025},(_,index)=>'m'+index);},'partial');
+ validCase('schema-valid-long-fallbacks',(doc)=>{doc.fallbacks=Array.from({length:1025},(_,index)=>'f'+index);},'partial');
+ for(const length of [1024,1025,2048]){
+  const row=valid();
+  const exports=Array.from({length},(_,index)=>'Export'+String(index).padStart(4,'0'));
+  row.structuredContent.components[0].exports=exports;
+  record('exports-'+length+'-within-total',Buffer.byteLength(JSON.stringify(row),'utf8')<1_048_576);
+  record('exports-'+length+'-schema',schemaAccepts(row.structuredContent),JSON.stringify(validateDocument.errors||[]));
+  record('exports-'+length+'-status',classify(row)==='success',classify(row));
+  try{
+   const forward=map(row),reversed=valid();
+   reversed.structuredContent.components[0].exports=[...exports].reverse();
+   record('exports-'+length+'-canonical',forward.exports.length===length&&jcsBytes(forward).equals(jcsBytes(map(reversed))));
+  }catch(cause){record('exports-'+length+'-map',false,String(cause?.code||cause));}
+ }
+
+ const invalidCases=[];
+ const addInvalid=(label,mutate)=>invalidCases.push([label,mutate]);
+ for(const [label,path] of [['root','root'],['source','source'],['component','component'],['member','member']]){
+  addInvalid('closed-'+label,(doc)=>{
+   if(path==='root')doc.unexpected=true;
+   else if(path==='source')doc.source_artifact.unexpected=true;
+   else if(path==='component')doc.components[0].unexpected=true;
+   else doc.components[0].props[0].unexpected=true;
+  });
+ }
+ for(const field of ['source_artifact','components','missing','versionSkew','stale','fallbacks'])addInvalid('required-root-'+field,(doc)=>{delete doc[field];});
+ for(const field of ['path','sha256','version'])addInvalid('required-source-'+field,(doc)=>{delete doc.source_artifact[field];});
+ for(const field of ['name','slug','category','import','exports','props','events','slots'])addInvalid('required-component-'+field,(doc)=>{delete doc.components[0][field];});
+ for(const field of ['owner','name','kind','required','description'])addInvalid('required-member-'+field,(doc)=>{delete doc.components[0].props[0][field];});
+ const typeCases=[
+  ['type-root-source',(doc)=>{doc.source_artifact=[];}],['type-root-components',(doc)=>{doc.components={};}],
+  ['type-root-missing',(doc)=>{doc.missing={};}],['type-root-versionSkew',(doc)=>{doc.versionSkew=1;}],
+  ['type-root-stale',(doc)=>{doc.stale='false';}],['type-root-fallbacks',(doc)=>{doc.fallbacks={};}],
+  ['type-source-path',(doc)=>{doc.source_artifact.path=1;}],['type-source-sha',(doc)=>{doc.source_artifact.sha256=1;}],
+  ['type-source-version',(doc)=>{doc.source_artifact.version=1;}],['type-component-name',(doc)=>{doc.components[0].name=1;}],
+  ['type-component-slug',(doc)=>{doc.components[0].slug=1;}],['type-component-category',(doc)=>{doc.components[0].category=1;}],
+  ['type-component-import',(doc)=>{doc.components[0].import=1;}],['type-component-exports',(doc)=>{doc.components[0].exports={};}],
+  ['type-component-props',(doc)=>{doc.components[0].props={};}],['type-component-events',(doc)=>{doc.components[0].events={};}],
+  ['type-component-slots',(doc)=>{doc.components[0].slots={};}],['type-array-component',(doc)=>{doc.components[0]=null;}],
+  ['type-array-missing',(doc)=>{doc.missing=[1];}],['type-array-fallbacks',(doc)=>{doc.fallbacks=[1];}],
+  ['type-array-export',(doc)=>{doc.components[0].exports=[1];}],['type-array-prop',(doc)=>{doc.components[0].props=[null];}],
+  ['type-array-event',(doc)=>{doc.components[0].events=[null];}],['type-array-slot',(doc)=>{doc.components[0].slots=[null];}],
+  ['type-member-owner',(doc)=>{doc.components[0].props[0].owner=1;}],['type-member-name',(doc)=>{doc.components[0].props[0].name=1;}],
+  ['type-member-kind',(doc)=>{doc.components[0].props[0].kind=1;}],['type-member-required',(doc)=>{doc.components[0].props[0].required='false';}],
+  ['type-member-description',(doc)=>{doc.components[0].props[0].description=1;}]
+ ];
+ for(const row of typeCases)addInvalid(...row);
+ const formatCases=[
+  ['format-source-path-empty',(doc)=>{doc.source_artifact.path='';}],['format-source-path-absolute',(doc)=>{doc.source_artifact.path='/apps/x';}],
+  ['format-source-sha',(doc)=>{doc.source_artifact.sha256='A'.repeat(64);}],['min-source-version',(doc)=>{doc.source_artifact.version='';}],
+  ['min-component-name',(doc)=>{doc.components[0].name='';}],['min-component-slug',(doc)=>{doc.components[0].slug='';}],
+  ['min-component-category',(doc)=>{doc.components[0].category='';}],['min-export',(doc)=>{doc.components[0].exports=[''];}],
+  ['min-missing',(doc)=>{doc.missing=[''];}],['min-versionSkew',(doc)=>{doc.versionSkew='';}],['min-fallback',(doc)=>{doc.fallbacks=[''];}],
+  ['min-member-owner',(doc)=>{doc.components[0].props[0].owner='';}],['min-member-name',(doc)=>{doc.components[0].props[0].name='';}],
+  ['min-member-kind',(doc)=>{doc.components[0].props[0].kind='';}]
+ ];
+ for(const row of formatCases)addInvalid(...row);
+ for(const [label,mutate] of invalidCases){
+  const row=valid();mutate(row.structuredContent);
+  record(label+'-oracle',schemaAccepts(row.structuredContent)===false);
+  record(label+'-adapter',adapterAccepts(row)===false,classify(row));
+ }
+
+ const sharedMember=valid(),member=sharedMember.structuredContent.components[0].props[0];
+ sharedMember.structuredContent.components[0].props=[member,member];
+ record('global-repeated-result-identity',classify(sharedMember)==='server_error',classify(sharedMember));
+ const contractDag=clone(contract);contractDag.request=sharedDag(30);
+ const resultDag=valid();resultDag.structuredContent=sharedDag(30);
+ const [contractDagResult,resultDagResult]=await Promise.all([isolatedClassification(valid(),contractDag),isolatedClassification(resultDag,contract)]);
+ record('contract-30-layer-shared-dag',contractDagResult.status==='invalid_request',JSON.stringify(contractDagResult));
+ record('result-30-layer-shared-dag',resultDagResult.status==='server_error',JSON.stringify(resultDagResult));
+
+ let contractAccessorTouched=false,resultAccessorTouched=false;
+ const contractAccessor=clone(contract);Object.defineProperty(contractAccessor,'request',{enumerable:true,get(){contractAccessorTouched=true;return {};}});
+ const resultAccessor=valid();Object.defineProperty(resultAccessor,'structuredContent',{enumerable:true,get(){resultAccessorTouched=true;return null;}});
+ const contractCycle=clone(contract);contractCycle.request=contractCycle;
+ const resultCycle=valid();resultCycle.structuredContent=resultCycle;
+ const contractProxy=new Proxy(clone(contract),{ownKeys(){throw new Error('contract-proxy');}});
+ const resultProxy=new Proxy(valid(),{ownKeys(){throw new Error('result-proxy');}});
+ record('contract-accessor',classify(valid(),contractAccessor)==='invalid_request'&&!contractAccessorTouched);
+ record('result-accessor',classify(resultAccessor)==='server_error'&&!resultAccessorTouched);
+ record('contract-proxy',classify(valid(),contractProxy)==='invalid_request');
+ record('result-proxy',classify(resultProxy)==='server_error');
+ record('contract-cycle',classify(valid(),contractCycle)==='invalid_request');
+ record('result-cycle',classify(resultCycle)==='server_error');
+
+ for(const depth of [63,64,65]){
+  const c=clone(contract);c.request=chain(depth);
+  const r=valid();r.structuredContent=chain(depth);
+  record('contract-depth-'+depth,classify(valid(),c)==='invalid_request');
+  record('result-depth-'+depth,classify(r)==='server_error');
+ }
+ for(const size of [4095,4096,4097]){
+  const c=clone(contract);c.request=wide(size);
+  const r=valid();r.structuredContent=wide(size);
+  record('contract-width-'+size,classify(valid(),c)==='invalid_request');
+  record('result-width-'+size,classify(r)==='server_error');
+ }
+ for(const size of [1_048_575,1_048_576,1_048_577]){
+  const c=clone(contract);c.server_version='x'.repeat(size);
+  const r=valid();r.content[0].text='x'.repeat(size);
+  record('contract-string-'+size,classify(valid(),c)==='invalid_request');
+  record('result-string-'+size,classify(r)==='server_error');
+ }
+ assert.deepEqual(issues,[],'TASK8_SCHEMA_TOTALITY_RED\n'+issues.join('\n'));
+});
