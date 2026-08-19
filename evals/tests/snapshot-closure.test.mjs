@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -728,5 +728,179 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       await rm(root, { recursive: true, force: true });
     }
     assert.deepEqual(issues, [], `TASK9_TRANSPORT_PROVENANCE_RED:${issues.join(',')}`);
+  });
+
+  test('TASK9_MODULE_CLOSURE_RED', async () => {
+    const issues = [];
+    const root = await mkdtemp(join(tmpdir(), 'task9-module-closure-red-'));
+    const orderedClosure = (rows) => rows
+      .map(([relative_path, source]) => ({ relative_path, raw_sha256: sha(Buffer.from(source)) }))
+      .sort((left, right) => Buffer.compare(Buffer.from(left.relative_path), Buffer.from(right.relative_path)));
+    const writeRegistry = async (directory, runnerEntry, runnerRows, transportEntry, transportRows, options = {}) => {
+      await mkdir(directory, { recursive: true });
+      for (const [relativePath, source] of [...runnerRows, ...transportRows]) {
+        if (source === null) continue;
+        await mkdir(join(directory, ...relativePath.split('/').slice(0, -1)), { recursive: true });
+        await writeFile(join(directory, relativePath), source);
+      }
+      const entry = {
+        case_id: options.caseId ?? 'RW-MODULE-CLOSURE-001',
+        task_script_digest: options.taskDigest ?? d('1'),
+        runner_path: runnerEntry,
+        runner_digest: sha(Buffer.from(runnerRows.find(([path]) => path === runnerEntry)[1])),
+        transport_path: transportEntry,
+        transport_digest: sha(Buffer.from(transportRows.find(([path]) => path === transportEntry)[1])),
+      };
+      if (options.withClosure !== false) {
+        entry.runner_module_closure = orderedClosure(runnerRows.filter(([, source]) => source !== null));
+        entry.transport_module_closure = orderedClosure(transportRows.filter(([, source]) => source !== null));
+      }
+      const manifest = { registry_version: 'snapshot-capture-registry-v1', entries: [entry], registry_digest: '' };
+      manifest.registry_digest = captureRegistryDigest(manifest);
+      const manifestPath = join(directory, 'capture-registry.json');
+      await writeFile(manifestPath, `${canonicalize(manifest)}\n`);
+      return { entry, manifest, manifestPath };
+    };
+    const expectRejected = async (label, manifestPath) => {
+      try {
+        await createCaptureRegistry(manifestPath);
+        issues.push(`${label}-accepted`);
+      } catch {}
+    };
+    const runnerEntry = "export { run } from './runner-helper.mjs';\n";
+    const runnerHelper = 'export async function run() {}\n';
+    const transportEntry = "export { request } from './transport-helper.mjs';\n";
+    const transportHelperA = 'export async function request() { throw new Error(\"A\"); }\n';
+    const transportHelperB = 'export async function request() { throw new Error(\"B\"); }\n';
+    try {
+      const positiveDir = join(root, 'positive');
+      const positive = await writeRegistry(
+        positiveDir,
+        'runner.mjs',
+        [['runner.mjs', runnerEntry], ['runner-helper.mjs', runnerHelper]],
+        'transport.mjs',
+        [['transport.mjs', transportEntry], ['transport-helper.mjs', transportHelperA]],
+      );
+      let positiveRegistry;
+      try { positiveRegistry = await createCaptureRegistry(positive.manifestPath); } catch (error) { issues.push(`registered-multifile-rejected:${error?.code ?? error?.name}`); }
+      if (positiveRegistry) {
+        const mutated = structuredClone(positive.manifest);
+        mutated.entries[0].transport_module_closure = orderedClosure([['transport.mjs', transportEntry], ['transport-helper.mjs', transportHelperB]]);
+        mutated.registry_digest = captureRegistryDigest(mutated);
+        if (mutated.registry_digest === positive.manifest.registry_digest) issues.push('helper-change-did-not-change-registry-digest');
+      }
+
+      const unregisteredDir = join(root, 'unregistered');
+      const unregistered = await writeRegistry(
+        unregisteredDir,
+        'runner.mjs',
+        [['runner.mjs', runnerEntry], ['runner-helper.mjs', runnerHelper]],
+        'transport.mjs',
+        [['transport.mjs', transportEntry], ['transport-helper.mjs', transportHelperA]],
+        { withClosure: false },
+      );
+      await expectRejected('unregistered-helper', unregistered.manifestPath);
+
+      const staleDir = join(root, 'stale');
+      const stale = await writeRegistry(
+        staleDir,
+        'runner.mjs',
+        [['runner.mjs', runnerEntry], ['runner-helper.mjs', runnerHelper]],
+        'transport.mjs',
+        [['transport.mjs', transportEntry], ['transport-helper.mjs', transportHelperA]],
+      );
+      await writeFile(join(staleDir, 'transport-helper.mjs'), transportHelperB);
+      await expectRejected('helper-mutation', stale.manifestPath);
+
+      const invalidCases = [
+        ['cross-root', "export { run } from '../outside.mjs';\n", [['runner.mjs', "export { run } from '../outside.mjs';\n"]]],
+        ['missing', "export { run } from './missing.mjs';\n", [['runner.mjs', "export { run } from './missing.mjs';\n"]]],
+        ['nonfile', "export { run } from './directory';\n", [['runner.mjs', "export { run } from './directory';\n"]]],
+        ['cycle', "export { run } from './cycle-helper.mjs';\n", [['runner.mjs', "export { run } from './cycle-helper.mjs';\n"], ['cycle-helper.mjs', "export { run } from './runner.mjs';\n"]]],
+        ['duplicate', "export { run } from './runner-helper.mjs';\nexport { run as again } from './runner-helper.mjs';\n", [['runner.mjs', "export { run } from './runner-helper.mjs';\nexport { run as again } from './runner-helper.mjs';\n"], ['runner-helper.mjs', runnerHelper]]],
+        ['nonliteral-dynamic-import', "const specifier='./runner-helper.mjs';\nexport async function run(){ return import(specifier); }\n", [['runner.mjs', "const specifier='./runner-helper.mjs';\nexport async function run(){ return import(specifier); }\n"], ['runner-helper.mjs', runnerHelper]]],
+      ];
+      await writeFile(join(root, 'outside.mjs'), runnerHelper);
+      for (const [label, entrySource, rows] of invalidCases) {
+        const directory = join(root, `invalid-${label}`);
+        const candidate = await writeRegistry(
+          directory,
+          'runner.mjs',
+          rows,
+          'transport.mjs',
+          [['transport.mjs', 'export async function request() {}\n']],
+        );
+        if (label === 'nonfile') await mkdir(join(directory, 'directory'), { recursive: true });
+        await expectRejected(label, candidate.manifestPath);
+      }
+
+      const symlinkDir = join(root, 'invalid-symlink');
+      const symlinkCandidate = await writeRegistry(
+        symlinkDir,
+        'runner.mjs',
+        [['runner.mjs', "export { run } from './linked-helper.mjs';\n"]],
+        'transport.mjs',
+        [['transport.mjs', 'export async function request() {}\n']],
+      );
+      await writeFile(join(symlinkDir, 'runner-helper.mjs'), runnerHelper);
+      await symlink('runner-helper.mjs', join(symlinkDir, 'linked-helper.mjs'));
+      symlinkCandidate.manifest.entries[0].runner_module_closure.push({ relative_path: 'linked-helper.mjs', raw_sha256: sha(Buffer.from(runnerHelper)) });
+      symlinkCandidate.manifest.entries[0].runner_module_closure.sort((left, right) => Buffer.compare(Buffer.from(left.relative_path), Buffer.from(right.relative_path)));
+      symlinkCandidate.manifest.registry_digest = captureRegistryDigest(symlinkCandidate.manifest);
+      await writeFile(symlinkCandidate.manifestPath, `${canonicalize(symlinkCandidate.manifest)}\n`);
+      await expectRejected('symlink', symlinkCandidate.manifestPath);
+
+      const aliasDir = join(root, 'invalid-realpath-alias');
+      const aliasEntry = "import { run as first } from './runner-helper.mjs';\nimport { run as second } from './alias-helper.mjs';\nexport const run=first;\n";
+      const aliasCandidate = await writeRegistry(
+        aliasDir,
+        'runner.mjs',
+        [['runner.mjs', aliasEntry], ['runner-helper.mjs', runnerHelper]],
+        'transport.mjs',
+        [['transport.mjs', 'export async function request() {}\n']],
+      );
+      await symlink('runner-helper.mjs', join(aliasDir, 'alias-helper.mjs'));
+      aliasCandidate.manifest.entries[0].runner_module_closure.push({ relative_path: 'alias-helper.mjs', raw_sha256: sha(Buffer.from(runnerHelper)) });
+      aliasCandidate.manifest.entries[0].runner_module_closure.sort((left, right) => Buffer.compare(Buffer.from(left.relative_path), Buffer.from(right.relative_path)));
+      aliasCandidate.manifest.registry_digest = captureRegistryDigest(aliasCandidate.manifest);
+      await writeFile(aliasCandidate.manifestPath, `${canonicalize(aliasCandidate.manifest)}\n`);
+      await expectRejected('realpath-alias', aliasCandidate.manifestPath);
+
+      const raceDir = join(root, 'mutation-before-use');
+      const publicDir = join(raceDir, 'evals', 'public-cases'), fixtureDir = join(raceDir, 'evals', 'fixtures'), registryDir = join(raceDir, 'registry');
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      const activeProfile = profile('module-closure-profile', { browser_engine_digest: d('c') });
+      const taskScript = { task_script_id: 'module-closure-task-v1', steps: [{ step_id: 'visit', instruction: 'Use registered action.', required_replay_profile_ids: [activeProfile.replay_profile_id] }] };
+      const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
+      const seed = { closure_version: 'snapshot-closure-v1', entry_url: 'http://127.0.0.1:9/', task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [activeProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      seed.manifest_digest = snapshotClosureDigest(seed);
+      const localCase = { case_id: 'RW-MODULE-CLOSURE-001', canonical_locator: seed.entry_url, snapshot_closure_digest: seed.manifest_digest, task_script: taskScript };
+      const activeRunnerHelper = "export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:'http://127.0.0.1:9/'});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n";
+      const activeTransportHelper = "export async function request({url}){const bytes=Buffer.from('UNREGISTERED_HELPER_EVIDENCE');return{status:200,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n";
+      const race = await writeRegistry(
+        registryDir,
+        'runner.mjs',
+        [['runner.mjs', runnerEntry], ['runner-helper.mjs', activeRunnerHelper]],
+        'transport.mjs',
+        [['transport.mjs', transportEntry], ['transport-helper.mjs', activeTransportHelper]],
+        { caseId: localCase.case_id, taskDigest, withClosure: false },
+      );
+      let registry;
+      try { registry = await createCaptureRegistry(race.manifestPath); } catch {}
+      await writeFile(join(registryDir, 'transport-helper.mjs'), `${activeTransportHelper}// MUTATED_AFTER_REGISTRATION\n`);
+      await writeFile(join(publicDir, 'module.json'), `${canonicalize(localCase)}\n`);
+      await writeFile(join(fixtureDir, `${localCase.case_id}.snapshot-closure.json`), `${canonicalize(seed)}\n`);
+      const casPath = join(raceDir, 'cas'), outputPath = join(raceDir, 'output.json');
+      if (registry) {
+        const exitCode = await runCaptureCli(['--case', join(publicDir, 'module.json'), '--cas', casPath, '--output', outputPath], { registry });
+        let casTouched = false;
+        try { await access(casPath); casTouched = true; } catch {}
+        if (exitCode !== 2 || casTouched) issues.push(`helper-mutation-not-closed-before-target-cas:${exitCode}:${casTouched}`);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_MODULE_CLOSURE_RED:${issues.join(',')}`);
   });
 }
