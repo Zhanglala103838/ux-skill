@@ -472,3 +472,56 @@ test('TASK5_CONTEXT_TRACE_RED dependency decision coherence',()=>{
  const parts=[multi,multi.run_issue,partial,traced];
  assert.equal(reduceRunStatus(parts),reduceRunStatus([...parts].reverse()));
 });
+
+
+test('TASK5_INTERNAL_BOUNDARY_RED critical invalid emission and Task10 provenance gate',async()=>{
+ const context=rulesRuntime.deriveFindingContext(structuredClone(deleteBundle()));
+ assert.notEqual(context,null);
+ const criticalInput=evaluateRule(baseRule({release_critical:true}),null,[]);
+ const criticalRule=evaluateRule(baseRule({
+  release_critical:true,
+  registered_input_pointers:['/target/enabled'],
+  required_input_pointers:[],
+  check:eq('check','/target/passes',true)
+ }),{target:{passes:true}},[]);
+ for(const evaluation of [criticalInput,criticalRule]){
+  assert.deepEqual(Object.keys(evaluation).sort(),['dependency_trace','finding_type','outcome','reason_code','release_critical','rule_id','rule_version','run_issue','terminal','trace']);
+  const finding=rawEmitFinding(evaluation,context);
+  assert.deepEqual({type:finding.finding_type,reason:finding.emission_reason_code},{type:'escalation',reason:'RELEASE_CRITICAL_EVALUATION_ERROR'});
+  assert.equal(reduceRunStatus([evaluation,finding,evaluation.run_issue]),'failed');
+ }
+ const noncriticalInput=evaluateRule(baseRule(),null,[]);
+ const noncriticalRule=evaluateRule(baseRule({
+  registered_input_pointers:['/target/enabled'],
+  required_input_pointers:[],
+  check:eq('check','/target/passes',true)
+ }),{target:{passes:true}},[]);
+ for(const evaluation of [noncriticalInput,noncriticalRule]){
+  assert.equal(rawEmitFinding(evaluation,context),null);
+  assert.equal(reduceRunStatus([evaluation,evaluation.run_issue]),'failed');
+ }
+ const invalidBundle=structuredClone(deleteBundle());
+ invalidBundle.schema_version='invented';
+ assert.equal(rulesRuntime.deriveFindingContext(invalidBundle),null);
+
+ const pkg=JSON.parse(await readFile(new URL('../../package.json',import.meta.url),'utf8'));
+ assert.equal(pkg.private,true);
+ assert.equal(Object.hasOwn(pkg,'exports'),false);
+ const design=await readFile(new URL('../../docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md',import.meta.url),'utf8');
+ const plan=await readFile(new URL('../../docs/superpowers/plans/2026-08-18-evidence-aware-product-ux-skill-v0.1-vertical-slice.md',import.meta.url),'utf8');
+ const designContract=[
+  'Task 5 primitives are internal, diagnostic, and non-authoritative.',
+  'A structurally valid FindingContextV1 does not prove provenance.',
+  'The sole authority-bearing public gate is Task 10 evaluate(bundle).',
+  'Digests provide identity and integrity, not authenticity.',
+  'Task 5 acceptance is semantic; provenance closure is deferred to Task 10.'
+ ];
+ for(const sentence of designContract)assert.ok(design.includes(sentence),sentence);
+ const planContract=[
+  'Task 5 interfaces are internal diagnostic primitives, not public authority-bearing APIs.',
+  'Task 10 evaluate(bundle) is the sole authority-bearing public evaluation gate.',
+  'verifyRunArtifact deterministically replays from the raw normalized bundle and fixed evaluator artifacts, then byte-compares the result.',
+  'Digests provide identity and integrity, not authenticity.'
+ ];
+ for(const sentence of planContract)assert.ok(plan.includes(sentence),sentence);
+});
