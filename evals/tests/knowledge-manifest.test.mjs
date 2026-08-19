@@ -359,6 +359,188 @@ if (importFailure) {
     );
   });
 
+  async function writeJsonBytesAndRebind(repositoryRoot, targetPath, bytes) {
+    await writeFile(join(repositoryRoot, targetPath), bytes);
+
+    if (targetPath === 'knowledge/manifest.json') return;
+
+    const manifestPath = join(repositoryRoot, 'knowledge/manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const setManifestDigest = (path, digest) => {
+      const row = manifest.files.find((candidate) => candidate.path === path);
+      assert.ok(row, `missing manifest row for ${path}`);
+      row.file_digest = digest;
+    };
+
+    if (targetPath === 'knowledge/decision-policies.json') {
+      const policyPath = join(repositoryRoot, 'knowledge/policy-manifest.json');
+      const policyManifest = JSON.parse(await readFile(policyPath, 'utf8'));
+      policyManifest.policy_files[0].file_digest = sha256(bytes);
+      const policyBytes = Buffer.from(JSON.stringify(policyManifest) + '\n', 'utf8');
+      await writeFile(policyPath, policyBytes);
+      setManifestDigest(targetPath, sha256(bytes));
+      setManifestDigest('knowledge/policy-manifest.json', sha256(policyBytes));
+    } else {
+      setManifestDigest(targetPath, sha256(bytes));
+    }
+
+    await writeFile(manifestPath, JSON.stringify(manifest) + '\n', 'utf8');
+  }
+
+  async function assertJsonRejected(repositoryRoot, fixture) {
+    await assert.rejects(
+      () => loadKnowledgeManifest({ repositoryRoot }),
+      (error) => {
+        assert.equal(error?.code, fixture.code, fixture.label);
+        assert.equal(error?.message, `${fixture.code}:${fixture.path}${fixture.pointer ?? ''}`, fixture.label);
+        return true;
+      },
+    );
+  }
+
+  test('TASK7_DUPLICATE_MEMBER_RED rejects duplicate-aware and hostile JSON bytes at every loader boundary', async () => {
+    const duplicateFixtures = [
+      {
+        label: 'knowledge manifest root duplicate with canonical value last',
+        path: 'knowledge/manifest.json',
+        pointer: '/manifest_version',
+        mutate(source) {
+          return source.replace('{', '{"manifest_version":"shadow",');
+        },
+      },
+      {
+        label: 'knowledge manifest root duplicate with canonical value first',
+        path: 'knowledge/manifest.json',
+        pointer: '/manifest_version',
+        mutate(source) {
+          return source.replace(/\n\}\n$/u, ',\n"manifest_version":"shadow"\n}\n');
+        },
+      },
+      {
+        label: 'knowledge manifest escape-equivalent decoded key',
+        path: 'knowledge/manifest.json',
+        pointer: '/files',
+        mutate(source) {
+          return source.replace('{', String.raw`{"fi\u006ces":[],`);
+        },
+      },
+      {
+        label: 'knowledge manifest nested array object duplicate',
+        path: 'knowledge/manifest.json',
+        pointer: '/files/0/path',
+        mutate(source) {
+          return source.replace(
+            '"path": "knowledge/assertions.json",',
+            '"path":"knowledge/ghost.json","path": "knowledge/assertions.json",',
+          );
+        },
+      },
+      {
+        label: 'policy manifest root duplicate',
+        path: 'knowledge/policy-manifest.json',
+        pointer: '/policy_files',
+        mutate(source) {
+          return source.replace('{', '{"policy_files":[],');
+        },
+      },
+      {
+        label: 'policy manifest nested array object duplicate',
+        path: 'knowledge/policy-manifest.json',
+        pointer: '/policy_files/0/path',
+        mutate(source) {
+          return source.replace(
+            '"path": "knowledge/decision-policies.json",',
+            '"path":"knowledge/ghost.json","path": "knowledge/decision-policies.json",',
+          );
+        },
+      },
+      ...[
+        'knowledge/assertions.json',
+        'knowledge/decision-policies.json',
+        'knowledge/registries.json',
+        'knowledge/rules.json',
+        'knowledge/sources.json',
+      ].map((path) => ({
+        label: `${path} direct duplicate`,
+        path,
+        pointer: '/value',
+        mutate() {
+          return '{"value":"shadow","value":"canonical"}\n';
+        },
+      })),
+      {
+        label: 'nested object duplicate',
+        path: 'knowledge/assertions.json',
+        pointer: '/nested/x',
+        mutate() {
+          return '{"nested":{"x":1,"x":2}}\n';
+        },
+      },
+      {
+        label: 'array member duplicate',
+        path: 'knowledge/registries.json',
+        pointer: '/rows/0/id',
+        mutate() {
+          return '{"rows":[{"id":"shadow","id":"canonical"}]}\n';
+        },
+      },
+    ];
+
+    for (const fixture of duplicateFixtures) {
+      await withRepository(async (repositoryRoot) => {
+        const original = await readFile(join(repositoryRoot, fixture.path), 'utf8');
+        const bytes = Buffer.from(fixture.mutate(original), 'utf8');
+        await writeJsonBytesAndRebind(repositoryRoot, fixture.path, bytes);
+        await assertJsonRejected(repositoryRoot, {
+          ...fixture,
+          code: 'KNOWLEDGE_JSON_DUPLICATE_KEY',
+        });
+      });
+    }
+
+    for (const dangerousKey of ['__proto__', 'constructor', 'prototype']) {
+      await withRepository(async (repositoryRoot) => {
+        const path = 'knowledge/sources.json';
+        const bytes = Buffer.from(`{"safe":true,"${dangerousKey}":{"polluted":true}}\n`, 'utf8');
+        await writeJsonBytesAndRebind(repositoryRoot, path, bytes);
+        await assertJsonRejected(repositoryRoot, {
+          label: `dangerous decoded key ${dangerousKey}`,
+          path,
+          pointer: `/${dangerousKey}`,
+          code: 'KNOWLEDGE_JSON_DANGEROUS_KEY',
+        });
+      });
+    }
+
+    const hostileBytes = [
+      {
+        label: 'invalid UTF-8 is fatal',
+        path: 'knowledge/assertions.json',
+        code: 'KNOWLEDGE_JSON_UTF8_INVALID',
+        bytes: Buffer.concat([Buffer.from('{"value":"', 'utf8'), Buffer.from([0xff]), Buffer.from('"}\n', 'utf8')]),
+      },
+      {
+        label: 'UTF-8 BOM is forbidden',
+        path: 'knowledge/registries.json',
+        code: 'KNOWLEDGE_JSON_BOM_FORBIDDEN',
+        bytes: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"value":true}\n', 'utf8')]),
+      },
+      {
+        label: 'lone surrogate escape is forbidden',
+        path: 'knowledge/rules.json',
+        code: 'KNOWLEDGE_JSON_UNICODE_INVALID',
+        bytes: Buffer.from('{"value":"\\uD800"}\n', 'utf8'),
+      },
+    ];
+
+    for (const fixture of hostileBytes) {
+      await withRepository(async (repositoryRoot) => {
+        await writeJsonBytesAndRebind(repositoryRoot, fixture.path, fixture.bytes);
+        await assertJsonRejected(repositoryRoot, fixture);
+      });
+    }
+  });
+
   test('symlink roots, symlinked declared files, and non-files cannot substitute raw identities', async () => {
     await withRepository(async (repositoryRoot) => {
       const alias = `${repositoryRoot}-alias`;
