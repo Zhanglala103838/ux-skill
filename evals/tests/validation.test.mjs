@@ -374,12 +374,13 @@ test('TASK5_RUN_ISSUE_CODE_RED closes public RunIssue code domain',async()=>{
   ['EvaluationOutput',{...common,validation_errors:[]}],
   ['SemanticProjection',{...common,semantic_digest:'9'.repeat(64)}]
  ];
- const nested={rule_id:'issue-owner',rule_version:'1.0.0',release_critical:false,finding_type:'usability',terminal:'invalid_input',outcome:'evaluation_error',reason_code:'INVALID_INPUT',trace:[],dependency_trace:[],run_issue:validIssue};
+ const nestedIssue={...validIssue,instance_pointer:'',dependency_id:null};
+ const nested={rule_id:'issue-owner',rule_version:'1.0.0',release_critical:false,finding_type:'usability',terminal:'invalid_input',outcome:'evaluation_error',reason_code:'INVALID_INPUT',trace:[],dependency_trace:[],run_issue:nestedIssue};
  for(const [schemaId,root] of roots){
   assert.equal(validateBySchema(schemaId,root).ok,true,schemaId+' rejects legal orphan RunIssue');
   assert.equal(validateBySchema(schemaId,{...root,run_issues:[unknownIssue]}).ok,false,schemaId+' accepts unknown root RunIssue');
   assert.equal(validateBySchema(schemaId,{...root,rule_evaluations:[nested]}).ok,true,schemaId+' rejects valid nested RunIssue');
-  assert.equal(validateBySchema(schemaId,{...root,rule_evaluations:[{...nested,run_issue:unknownIssue}]}).ok,false,schemaId+' accepts unknown nested RunIssue');
+  assert.equal(validateBySchema(schemaId,{...root,rule_evaluations:[{...nested,run_issue:{...nestedIssue,code:unknownIssue.code}}]}).ok,false,schemaId+' accepts unknown nested RunIssue');
  }
 });
 
