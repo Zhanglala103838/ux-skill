@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
+import { pathToFileURL } from 'node:url';
 import { canonicalize } from 'json-canonicalize';
 import { validateBySchema } from '../../evaluator/validation.mjs';
 
@@ -904,5 +905,103 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       await rm(root, { recursive: true, force: true });
     }
     assert.deepEqual(issues, [], `TASK9_MODULE_CLOSURE_RED:${issues.join(',')}`);
+  });
+
+  test('TASK9_MODULE_LOADER_RED', async () => {
+    const issues = [];
+    const root = await mkdtemp(join(tmpdir(), 'task9-module-loader-red-'));
+    const taskScript = { task_script_id: 'module-loader-task-v1', steps: [{ step_id: 'visit', instruction: 'Use the registered deterministic action.', required_replay_profile_ids: ['module-loader-profile'] }] };
+    const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
+    const activeProfile = profile('module-loader-profile', { browser_engine_digest: d('e') });
+    const runnerEntryDynamic = "export async function run(context){return (await import('./runner-helper.mjs')).run(context);}\n";
+    const transportEntryDynamic = "export async function request(input){return (await import('./transport-helper.mjs')).request(input);}\n";
+    const runnerHelper = (marker) => `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:'http://127.0.0.1:9/${marker}'});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+    const transportHelper = (marker) => `export async function request({url}){const bytes=Buffer.from(${JSON.stringify(marker)});return{status:200,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n`;
+    const rows = (sources) => Object.entries(sources).map(([relative_path, source]) => ({ relative_path, raw_sha256: sha(Buffer.from(source)) })).sort((left, right) => Buffer.compare(Buffer.from(left.relative_path), Buffer.from(right.relative_path)));
+    const writeFixture = async (directory, caseId) => {
+      const publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures');
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      const seed = { closure_version: 'snapshot-closure-v1', entry_url: 'http://127.0.0.1:9/', task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [activeProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      seed.manifest_digest = snapshotClosureDigest(seed);
+      const caseManifest = { case_id: caseId, canonical_locator: seed.entry_url, snapshot_closure_digest: seed.manifest_digest, task_script: taskScript };
+      const casePath = join(publicDir, 'case.json');
+      await writeFile(casePath, `${canonicalize(caseManifest)}\n`);
+      await writeFile(join(fixtureDir, `${caseId}.snapshot-closure.json`), `${canonicalize(seed)}\n`);
+      return casePath;
+    };
+    const writeRegistry = async (directory, caseId, runnerSources, transportSources) => {
+      await mkdir(directory, { recursive: true });
+      for (const [relativePath, source] of Object.entries({ ...runnerSources, ...transportSources })) await writeFile(join(directory, relativePath), source);
+      const manifest = { registry_version: 'snapshot-capture-registry-v1', entries: [{ case_id: caseId, task_script_digest: taskDigest, runner_path: 'runner.mjs', runner_digest: sha(Buffer.from(runnerSources['runner.mjs'])), runner_module_closure: rows(runnerSources), transport_path: 'transport.mjs', transport_digest: sha(Buffer.from(transportSources['transport.mjs'])), transport_module_closure: rows(transportSources) }], registry_digest: '' };
+      manifest.registry_digest = captureRegistryDigest(manifest);
+      const manifestPath = join(directory, 'capture-registry.json');
+      await writeFile(manifestPath, `${canonicalize(manifest)}\n`);
+      return { manifest, manifestPath };
+    };
+    const invoke = async (directory, casePath, registry, name) => {
+      const casPath = join(directory, `cas-${name}`), outputPath = join(directory, `output-${name}.json`);
+      const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], { registry });
+      let wrapper, observation = '';
+      try {
+        wrapper = JSON.parse(await readFile(outputPath, 'utf8'));
+        const locator = wrapper?.closure?.observation_records?.[0]?.content_addressed_artifact_locator;
+        if (locator) observation = await readFile(join(casPath, locator.slice(4)), 'utf8');
+      } catch {}
+      return { casPath, exitCode, observation, wrapper };
+    };
+    try {
+      const cacheRoot = join(root, 'same-process-cache'), registryDir = join(cacheRoot, 'registry'), caseId = 'RW-MODULE-CACHE-001';
+      const casePath = await writeFixture(cacheRoot, caseId);
+      const runnerA = { 'runner.mjs': runnerEntryDynamic, 'runner-helper.mjs': runnerHelper('runner-a') };
+      const transportA = { 'transport.mjs': transportEntryDynamic, 'transport-helper.mjs': transportHelper('TRANSPORT_A') };
+      const registryAPath = await writeRegistry(registryDir, caseId, runnerA, transportA);
+      const registryA = await createCaptureRegistry(registryAPath.manifestPath);
+      const runA = await invoke(cacheRoot, casePath, registryA, 'a');
+      if (runA.exitCode !== 0 || runA.wrapper?.closure?.network_records?.[0]?.request_url !== 'http://127.0.0.1:9/runner-a' || runA.observation !== 'TRANSPORT_A') issues.push('registry-a-control-failed');
+
+      const runnerB = { 'runner.mjs': runnerEntryDynamic, 'runner-helper.mjs': runnerHelper('runner-b') };
+      const transportB = { 'transport.mjs': transportEntryDynamic, 'transport-helper.mjs': transportHelper('TRANSPORT_B') };
+      const registryBPath = await writeRegistry(registryDir, caseId, runnerB, transportB);
+      if (registryAPath.manifest.registry_digest === registryBPath.manifest.registry_digest) issues.push('registry-b-identity-did-not-change');
+      let registryB;
+      try { registryB = await createCaptureRegistry(registryBPath.manifestPath); } catch {}
+      if (registryB) {
+        const runB = await invoke(cacheRoot, casePath, registryB, 'b');
+        if (runB.exitCode !== 0) issues.push(`registry-b-not-executable:${runB.exitCode}`);
+        if (runB.wrapper?.closure?.network_records?.[0]?.request_url !== 'http://127.0.0.1:9/runner-b') issues.push('runner-helper-cache-reused-a');
+        if (runB.observation !== 'TRANSPORT_B') issues.push('transport-helper-cache-reused-a');
+      }
+
+      const poisonRoot = join(root, 'prepoisoned-entry'), poisonRegistryDir = join(poisonRoot, 'registry'), poisonCaseId = 'RW-MODULE-POISON-001';
+      const poisonCasePath = await writeFixture(poisonRoot, poisonCaseId);
+      const directRunner = "export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:'http://127.0.0.1:9/benign-entry'});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n";
+      const maliciousRunner = directRunner.replace('/benign-entry', '/malicious-prepoisoned-entry');
+      const directTransport = (marker) => `export async function request({url}){const bytes=Buffer.from(${JSON.stringify(marker)});return{status:200,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n`;
+      const benignTransport = directTransport('BENIGN_DECLARED_BYTES'), maliciousTransport = directTransport('MALICIOUS_PREPOISONED_NAMESPACE');
+      const poisonManifest = await writeRegistry(poisonRegistryDir, poisonCaseId, { 'runner.mjs': directRunner }, { 'transport.mjs': benignTransport });
+      const poisonRunnerPath = join(poisonRegistryDir, 'runner.mjs'), poisonTransportPath = join(poisonRegistryDir, 'transport.mjs');
+      await writeFile(poisonRunnerPath, maliciousRunner);
+      await writeFile(poisonTransportPath, maliciousTransport);
+      await import(`${pathToFileURL(poisonRunnerPath).href}?registry=${poisonManifest.manifest.registry_digest}`);
+      await import(`${pathToFileURL(poisonTransportPath).href}?registry=${poisonManifest.manifest.registry_digest}`);
+      await writeFile(poisonRunnerPath, directRunner);
+      await writeFile(poisonTransportPath, benignTransport);
+      let poisonedRegistry;
+      try { poisonedRegistry = await createCaptureRegistry(poisonManifest.manifestPath); } catch {}
+      if (poisonedRegistry) {
+        const poisonedRun = await invoke(poisonRoot, poisonCasePath, poisonedRegistry, 'poisoned');
+        if (poisonedRun.wrapper?.closure?.network_records?.[0]?.request_url === 'http://127.0.0.1:9/malicious-prepoisoned-entry') issues.push('prepoisoned-runner-entry-namespace-accepted');
+        if (poisonedRun.observation === 'MALICIOUS_PREPOISONED_NAMESPACE') issues.push('prepoisoned-entry-namespace-accepted');
+        if (poisonedRun.exitCode === 0 && poisonedRun.observation !== 'BENIGN_DECLARED_BYTES') issues.push('declared-entry-bytes-not-executed');
+      } else {
+        let casTouched = false;
+        try { await access(join(poisonRoot, 'cas-poisoned')); casTouched = true; } catch {}
+        if (casTouched) issues.push('prepoison-rejection-touched-cas');
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_MODULE_LOADER_RED:${issues.join(',')}`);
   });
 }
