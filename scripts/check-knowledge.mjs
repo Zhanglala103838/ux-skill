@@ -16,6 +16,13 @@ const defaultRepositoryRoot = resolve(dirname(modulePath), '..');
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const GLOB_PATTERN = /[*?\[\]{}]/u;
 
+export const KNOWLEDGE_JSON_LIMITS = Object.freeze({
+  MAX_BYTES: 1_048_576,
+  MAX_DEPTH: 128,
+  MAX_NODES: 100_000,
+  MAX_STRING_UTF8_BYTES: 262_144,
+});
+
 const REFERENCE_PATHS = [
   'references/claim-study.md',
   'references/context-model.md',
@@ -156,8 +163,11 @@ function assertUniquePaths(paths, code) {
 
 const DANGEROUS_JSON_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-function parseKnowledgeJson(bytes, path, syntaxCode) {
+export function parseKnowledgeJson(bytes, path, syntaxCode) {
   const input = Buffer.from(bytes);
+  if (input.length > KNOWLEDGE_JSON_LIMITS.MAX_BYTES) {
+    fail('KNOWLEDGE_JSON_RESOURCE_LIMIT', path);
+  }
   if (input.length >= 3 && input[0] === 0xef && input[1] === 0xbb && input[2] === 0xbf) {
     fail('KNOWLEDGE_JSON_BOM_FORBIDDEN', path);
   }
@@ -169,9 +179,42 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
     fail('KNOWLEDGE_JSON_UTF8_INVALID', path);
   }
 
+  let lexicalDepth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let position = 0; position < text.length; position += 1) {
+    const code = text.charCodeAt(position);
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (code === 0x5c) {
+        escaped = true;
+      } else if (code === 0x22) {
+        inString = false;
+      }
+      continue;
+    }
+    if (code === 0x22) {
+      inString = true;
+    } else if (code === 0x7b || code === 0x5b) {
+      lexicalDepth += 1;
+      if (lexicalDepth > KNOWLEDGE_JSON_LIMITS.MAX_DEPTH) {
+        fail('KNOWLEDGE_JSON_RESOURCE_LIMIT', path);
+      }
+    } else if ((code === 0x7d || code === 0x5d) && lexicalDepth > 0) {
+      lexicalDepth -= 1;
+    }
+  }
+
   let index = 0;
+  let nodeUnits = 0;
   const syntaxFail = () => fail(syntaxCode, path);
   const unicodeFail = () => fail('KNOWLEDGE_JSON_UNICODE_INVALID', path);
+  const resourceFail = () => fail('KNOWLEDGE_JSON_RESOURCE_LIMIT', path);
+  const takeNodeUnit = () => {
+    nodeUnits += 1;
+    if (nodeUnits > KNOWLEDGE_JSON_LIMITS.MAX_NODES) resourceFail();
+  };
   const isWhitespace = (code) => code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0d;
   const skipWhitespace = () => {
     while (index < text.length && isWhitespace(text.charCodeAt(index))) index += 1;
@@ -183,6 +226,14 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
     if (text.charCodeAt(index) !== 0x22) syntaxFail();
     index += 1;
     let value = '';
+    let decodedUtf8Bytes = 0;
+    const append = (fragment, byteLength) => {
+      if (decodedUtf8Bytes > KNOWLEDGE_JSON_LIMITS.MAX_STRING_UTF8_BYTES - byteLength) {
+        resourceFail();
+      }
+      decodedUtf8Bytes += byteLength;
+      value += fragment;
+    };
 
     while (index < text.length) {
       const code = text.charCodeAt(index);
@@ -198,27 +249,27 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
         const escape = text[index];
         index += 1;
         if (escape === '"' || escape === '/' || escape.charCodeAt(0) === 0x5c) {
-          value += escape;
+          append(escape, 1);
           continue;
         }
         if (escape === 'b') {
-          value += String.fromCharCode(0x08);
+          append(String.fromCharCode(0x08), 1);
           continue;
         }
         if (escape === 'f') {
-          value += String.fromCharCode(0x0c);
+          append(String.fromCharCode(0x0c), 1);
           continue;
         }
         if (escape === 'n') {
-          value += String.fromCharCode(0x0a);
+          append(String.fromCharCode(0x0a), 1);
           continue;
         }
         if (escape === 'r') {
-          value += String.fromCharCode(0x0d);
+          append(String.fromCharCode(0x0d), 1);
           continue;
         }
         if (escape === 't') {
-          value += String.fromCharCode(0x09);
+          append(String.fromCharCode(0x09), 1);
           continue;
         }
         if (escape !== 'u' || index + 4 > text.length) syntaxFail();
@@ -245,24 +296,27 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
           }
           const lowUnit = Number.parseInt(lowDigits, 16);
           if (lowUnit < 0xdc00 || lowUnit > 0xdfff) unicodeFail();
-          value += String.fromCharCode(unit, lowUnit);
+          append(String.fromCharCode(unit, lowUnit), 4);
           index += 6;
           continue;
         }
         if (unit >= 0xdc00 && unit <= 0xdfff) unicodeFail();
-        value += String.fromCharCode(unit);
+        append(
+          String.fromCharCode(unit),
+          unit <= 0x7f ? 1 : unit <= 0x7ff ? 2 : 3,
+        );
         continue;
       }
 
       if (code >= 0xd800 && code <= 0xdbff) {
         const low = text.charCodeAt(index + 1);
         if (low < 0xdc00 || low > 0xdfff) unicodeFail();
-        value += text[index] + text[index + 1];
+        append(text[index] + text[index + 1], 4);
         index += 2;
         continue;
       }
       if (code >= 0xdc00 && code <= 0xdfff) unicodeFail();
-      value += text[index];
+      append(text[index], code <= 0x7f ? 1 : code <= 0x7ff ? 2 : 3);
       index += 1;
     }
     syntaxFail();
@@ -295,6 +349,7 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
 
   const parseValue = (pointer) => {
     skipWhitespace();
+    takeNodeUnit();
     const character = text[index];
     if (character === '"') return parseString();
     if (character === '{') return parseObject(pointer);
@@ -328,6 +383,7 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
     while (index < text.length) {
       skipWhitespace();
       const key = parseString();
+      takeNodeUnit();
       const keyPointer = pointerFor(pointer, key);
       if (seen.has(key)) fail('KNOWLEDGE_JSON_DUPLICATE_KEY', path + keyPointer);
       if (DANGEROUS_JSON_KEYS.has(key)) fail('KNOWLEDGE_JSON_DANGEROUS_KEY', path + keyPointer);
@@ -375,10 +431,15 @@ function parseKnowledgeJson(bytes, path, syntaxCode) {
     syntaxFail();
   };
 
-  const value = parseValue('');
-  skipWhitespace();
-  if (index !== text.length) syntaxFail();
-  return value;
+  try {
+    const value = parseValue('');
+    skipWhitespace();
+    if (index !== text.length) syntaxFail();
+    return value;
+  } catch (error) {
+    if (error instanceof RangeError || error?.name === 'RangeError') resourceFail();
+    throw error;
+  }
 }
 
 async function resolveRepositoryRoot(options) {
