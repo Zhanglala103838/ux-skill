@@ -1349,7 +1349,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
     const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
     const runNodeCli = (arguments_) => new Promise((resolve) => {
       const child = spawn(process.execPath, ['scripts/capture-snapshot-closure.mjs', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });let stdout = '', stderr = '';
-      child.stdout.on('data', (chunk) => { stdout += chunk; });child.stderr.on('data', (chunk) => { stderr += chunk; });child.once('error', (error) => resolve({ code: null, error, stderr, stdout }));child.once('close', (code) => resolve({ code, stderr, stdout }));
+      const deadline=setTimeout(()=>child.kill('SIGKILL'),10_000);child.stdout.on('data', (chunk) => { stdout += chunk; });child.stderr.on('data', (chunk) => { stderr += chunk; });child.once('error', (error) => { clearTimeout(deadline);resolve({ code: null, error, stderr, stdout }); });child.once('close', (code) => { clearTimeout(deadline);resolve({ code, stderr, stdout }); });
     });
     const writeScenario = async (label, runnerSource, transportSource) => {
       const directory = join(root, label), publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures'), registryDir = join(directory, 'registry'), caseId = `RW-COMPARTMENT-${label.toUpperCase()}`;
@@ -1363,8 +1363,8 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       return { directory, casePath, registryPath, casPath: join(directory, 'cas'), outputPath: join(directory, 'output.json'), fsPath: join(directory, 'outside-fs'), childPath: join(directory, 'outside-child') };
     };
     const escapeRoot = "Object['con'+'structor']('return pro'+'cess')()";
-    const httpEffect = (path) => `await new Promise((resolve,reject)=>{const request=${escapeRoot}.getBuiltinModule('node:'+'http').get(${JSON.stringify(`${origin}${path}`)},response=>{response.resume();response.on('end',resolve);});request.on('error',reject);});`;
-    const netEffect = (path) => `await new Promise((resolve,reject)=>{const socket=${escapeRoot}.getBuiltinModule('node:'+'net').connect(${port},'127.0.0.1',()=>{socket.end(${JSON.stringify(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`)});});socket.on('error',reject);socket.on('close',resolve);});`;
+    const httpEffect = (path) => `await new Promise((resolve,reject)=>{const request=${escapeRoot}.getBuiltinModule('node:'+'http').get(${JSON.stringify(`${origin}${path}`)},{agent:false},response=>{response.resume();response.on('end',resolve);});request.on('error',reject);});`;
+    const netEffect = (path) => `await new Promise((resolve,reject)=>{const socket=${escapeRoot}.getBuiltinModule('node:'+'net').connect(${port},'127.0.0.1',()=>{socket.end(${JSON.stringify(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`)});resolve();});socket.on('error',reject);});`;
     const fileEffects = (fsPath, childPath) => `${escapeRoot}.getBuiltinModule('node:'+'fs').writeFileSync(${JSON.stringify(fsPath)},'outside');${escapeRoot}.getBuiltinModule('node:child_'+'pro'+'cess').execFileSync('/usr/bin/touch',[${JSON.stringify(childPath)}]);`;
     const benignRunner = `const target=${JSON.stringify(`${origin}/registered`)};export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:target});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
     const benignTransport = "export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());return{status:response.status,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
@@ -1383,7 +1383,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
         const transport = `const escape=()=>${escapeRoot};export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());setTimeout(()=>{void(async()=>{${httpEffect('/outside-late-http')}${netEffect('/outside-late-net')}})().catch(()=>{});},0);return{status:response.status,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n`;
         return { runner, transport };
       }, false);
-    } finally { await new Promise((resolve) => server.close(resolve));await rm(root, { recursive: true, force: true }); }
+    } finally { const closing=new Promise((resolve)=>server.close(resolve));server.closeAllConnections();await closing;await rm(root, { recursive: true, force: true }); }
     assert.deepEqual(issues, [], `TASK9_COMPARTMENT_AUTHORITY_RED:${issues.join(',')}`);
   });
 }
