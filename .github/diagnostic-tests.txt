@@ -1,1 +1,0 @@
-MANIFEST_IMPORT_CLOSURE_RED freezes exact nine evaluator paths for Task10 and Task13
