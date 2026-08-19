@@ -122,3 +122,40 @@ void canonical; void digestModule; void singleQuoted; void doubleQuoted; void te
     await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot }), /explicit canonical \.mjs path/);
   });
 });
+
+test('ECMASCRIPT_PARSER_AUTHENTICITY_RED ignores regex and method-call lookalikes while preserving real module edges', async () => {
+  const parserAuthenticityIndex = String.raw`
+import './authority.mjs';
+import canonical from "./canonical.mjs";
+import { claim } from './claims.mjs';
+export * from './dependency-decision.mjs';
+export { digest } from "./digests.mjs";
+const projectionModule = import('./projection.mjs');
+import './rules-runtime.mjs';
+import './validation.mjs';
+/import\('\.\/ghost-statement\.mjs'\)/;
+const escapedRegex = /\\\/[a-z]+import\(['"]\.\/ghost-escaped\.mjs['"]\)/;
+const classRegex = /[a-z\/'"]+import\(['"]\.\/ghost-class\.mjs['"]\)/;
+const quotient = numerator / denominator / 2;
+loader.import('./ghost-method.mjs');
+loader['import']('./ghost-computed.mjs');
+void canonical; void claim; void projectionModule; void escapedRegex; void classRegex; void quotient;
+`;
+  await withEvaluatorGraph({ 'evaluator/index.mjs': parserAuthenticityIndex }, async (repositoryRoot) => {
+    assert.deepEqual(
+      await collectLocalEvaluatorImportClosure({ repositoryRoot }),
+      EXPECTED_EVALUATOR_MODULE_PATHS,
+      'only real ImportDeclaration, export-from, and literal import() edges belong to the closure'
+    );
+  });
+
+  await withEvaluatorGraph({
+    'evaluator/index.mjs': "const modulePath = './authority.mjs';\nimport(modulePath);\n"
+  }, async (repositoryRoot) => {
+    await assert.rejects(
+      () => collectLocalEvaluatorImportClosure({ repositoryRoot }),
+      /dynamic import must use one literal module specifier/,
+      'nonliteral dynamic imports are fail-closed because their local closure cannot be proven'
+    );
+  });
+});

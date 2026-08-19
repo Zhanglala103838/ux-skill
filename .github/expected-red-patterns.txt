@@ -1,0 +1,1 @@
+ECMASCRIPT_PARSER_AUTHENTICITY_RED ignores regex and method-call lookalikes while preserving real module edges
