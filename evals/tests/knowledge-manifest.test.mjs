@@ -333,7 +333,10 @@ if (importFailure) {
           manifest.files[0].path = invalidPath;
           return manifest;
         });
-        await assertRejected(repositoryRoot, /PATH_INVALID/);
+        await assertRejected(
+          repositoryRoot,
+          invalidPath === 'references/e\u0301.md' ? /UNICODE_NOT_NFC/ : /PATH_INVALID/,
+        );
       });
     }
 
