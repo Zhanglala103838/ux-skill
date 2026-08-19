@@ -344,3 +344,76 @@ test('TASK8_SCHEMA_DOMAIN_RED schema domain and canonical path parity',()=>{
  }
  assert.deepEqual(issues,[],'TASK8_SCHEMA_DOMAIN_RED\n'+issues.join('\n'));
 });
+
+test('TASK8_OPTIONAL_UNKNOWN_RED preserves omitted unknowns without inventing defaults',async()=>{
+ const issues=[];
+ const record=(label,condition,detail='')=>{if(!condition)issues.push(label+(detail?':'+detail:''));};
+ const schema=JSON.parse(await readFile(task8SchemaUrl,'utf8'));
+ const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});
+ addFormats(ajv);
+ ajv.addFormat('canonical-relative-path',{type:'string',validate:canonicalPathOracle});
+ const validateOptionalDocument=ajv.compile(schema);
+ const schemaAccepts=(document)=>validateOptionalDocument(clone(document))===true;
+ const safeStatus=(row)=>{try{return classify(row);}catch(cause){return 'threw:'+String(cause?.code||cause?.message||cause);}};
+ const safeMap=(row)=>{try{return {ok:true,value:map(row)};}catch(cause){return {ok:false,error:String(cause?.code||cause?.message||cause)};}};
+
+ const rootOptional=valid();delete rootOptional.structuredContent.missing;delete rootOptional.structuredContent.stale;
+ record('root-omitted-schema',schemaAccepts(rootOptional.structuredContent),JSON.stringify(validateOptionalDocument.errors||[]));
+ record('root-omitted-status',safeStatus(rootOptional)==='success',safeStatus(rootOptional));
+ record('root-omitted-map',safeMap(rootOptional).ok,safeMap(rootOptional).error);
+
+ for(const collection of ['props','events','slots']){
+  const row=valid(),sourceMember=row.structuredContent.components[0][collection][0];
+  const identity=[sourceMember.owner,sourceMember.name,sourceMember.kind];delete sourceMember.required;
+  record(collection+'-unknown-schema',schemaAccepts(row.structuredContent),JSON.stringify(validateOptionalDocument.errors||[]));
+  record(collection+'-unknown-status',safeStatus(row)==='success',safeStatus(row));
+  const mapped=safeMap(row);
+  record(collection+'-unknown-map',mapped.ok,mapped.error);
+  if(mapped.ok){
+   const member=mapped.value[collection].find((item)=>item.owner===identity[0]&&item.name===identity[1]&&item.kind===identity[2]);
+   record(collection+'-unknown-present',Boolean(member));
+   record(collection+'-unknown-required-absent',Boolean(member)&&!Object.hasOwn(member,'required'),member?JSON.stringify(Reflect.ownKeys(member)):'missing');
+  }
+ }
+
+ const missingPartial=valid();delete missingPartial.structuredContent.stale;missingPartial.structuredContent.missing=['props'];
+ record('missing-nonempty-schema',schemaAccepts(missingPartial.structuredContent),JSON.stringify(validateOptionalDocument.errors||[]));
+ record('missing-nonempty-partial',safeStatus(missingPartial)==='partial',safeStatus(missingPartial));
+ const stalePartial=valid();delete stalePartial.structuredContent.missing;stalePartial.structuredContent.stale=true;
+ record('stale-true-schema',schemaAccepts(stalePartial.structuredContent),JSON.stringify(validateOptionalDocument.errors||[]));
+ record('stale-true-partial',safeStatus(stalePartial)==='partial',safeStatus(stalePartial));
+
+ for(const [label,mutate] of [
+  ['missing-wrong-type',(doc)=>{doc.missing='props';}],
+  ['stale-wrong-type',(doc)=>{doc.stale='true';}]
+ ]){
+  const row=valid();mutate(row.structuredContent);
+  record(label+'-schema',schemaAccepts(row.structuredContent)===false);
+  record(label+'-adapter',safeStatus(row)==='server_error',safeStatus(row));
+  record(label+'-not-mappable',safeMap(row).ok===false);
+ }
+
+ const mixed=valid();delete mixed.structuredContent.missing;delete mixed.structuredContent.stale;
+ delete mixed.structuredContent.components[0].props[0].required;
+ delete mixed.structuredContent.components[0].events[0].required;
+ delete mixed.structuredContent.components[0].slots[1].required;
+ record('mixed-schema',schemaAccepts(mixed.structuredContent),JSON.stringify(validateOptionalDocument.errors||[]));
+ const mappedMixed=safeMap(mixed);
+ record('mixed-map',mappedMixed.ok,mappedMixed.error);
+ if(mappedMixed.ok){
+  const all=[...mappedMixed.value.props,...mappedMixed.value.events,...mappedMixed.value.slots];
+  for(const name of ['open','onOpenChange','content']){
+   const member=all.find((item)=>item.name===name);
+   record('mixed-unknown-'+name,Boolean(member)&&!Object.hasOwn(member,'required'),member?JSON.stringify(Reflect.ownKeys(member)):'missing');
+  }
+  record('mixed-explicit-false',all.find((item)=>item.name==='defaultOpen')?.required===false);
+  record('mixed-explicit-true',all.find((item)=>item.name==='trigger')?.required===true);
+  const shuffled=clone(mixed),component=shuffled.structuredContent.components[0];
+  for(const collection of ['props','events','slots'])component[collection]=[...component[collection]].reverse();
+  const mappedShuffled=safeMap(shuffled);
+  record('mixed-shuffle-map',mappedShuffled.ok,mappedShuffled.error);
+  if(mappedShuffled.ok)record('mixed-shuffle-jcs',jcsBytes(mappedMixed.value).equals(jcsBytes(mappedShuffled.value)));
+ }
+ assert.deepEqual(issues,[],'TASK8_OPTIONAL_UNKNOWN_RED\n'+issues.join('\n'));
+});
+
