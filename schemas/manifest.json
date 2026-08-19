@@ -17,7 +17,7 @@
   },
   {
     "path": "schemas/core/claims.schema.json",
-    "file_digest": "74b89f8820957d0061bdace03c2366dc3ebec157402ac194d812adb980a01dfc"
+    "file_digest": "20a1f2b99d8b457895d778453da3b82e9234f25f0713981d1785fbaa759eba7c"
   },
   {
     "path": "schemas/core/evaluation-input.schema.json",
@@ -33,7 +33,7 @@
   },
   {
     "path": "schemas/evaluator/output.schema.json",
-    "file_digest": "62c4bb3c80be072ac49e62444b7461fc7d216e0e6947d43a7739d31815c43b50"
+    "file_digest": "24f6fb9a316d23b95e6f28bd09eabd509931da3927bf94145bb65876df72e537"
   },
   {
     "path": "schemas/evaluator/rule.schema.json",
@@ -41,6 +41,6 @@
   },
   {
     "path": "schemas/evaluator/semantic-projection.schema.json",
-    "file_digest": "42cc80e15184ba5e4cf84add13cee6ab035d0631a3dc9a177ad18fe04884c436"
+    "file_digest": "05a03f2f072f388997a484469eee0c893aa5b13c240ea256beebe8d401c235f9"
   }
 ]

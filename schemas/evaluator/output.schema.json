@@ -272,7 +272,9 @@
       "required": [
         "status",
         "next_action",
-        "condition_ids"
+        "condition_ids",
+        "conditions",
+        "reason_code"
       ],
       "properties": {
         "status": {
@@ -296,6 +298,16 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReleaseCondition"
+          }
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -1158,6 +1170,7 @@
       "additionalProperties": false,
       "required": [
         "risk_assessment_id",
+        "finding_id",
         "status",
         "decision",
         "severity",
@@ -1168,6 +1181,10 @@
       ],
       "properties": {
         "risk_assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finding_id": {
           "type": "string",
           "minLength": 1
         },
@@ -1197,17 +1214,14 @@
         "likelihood": {
           "type": "string",
           "enum": [
-            "unlikely",
-            "possible",
-            "likely",
+            "known",
             "unknown"
           ]
         },
         "exposure": {
           "type": "string",
           "enum": [
-            "limited",
-            "broad",
+            "known",
             "unknown"
           ]
         },
@@ -1234,11 +1248,15 @@
       "required": [
         "recommendation_assessment_id",
         "status",
+        "action_id",
         "authority_ceiling",
         "evidence_ceiling",
         "risk_ceiling",
         "reversibility_ceiling",
         "strength",
+        "output_kind",
+        "recommendation",
+        "research_question",
         "policy_version",
         "reason_codes"
       ],
@@ -1248,6 +1266,10 @@
           "minLength": 1
         },
         "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_id": {
           "type": "string",
           "minLength": 1
         },
@@ -1301,6 +1323,98 @@
             "required"
           ]
         },
+        "output_kind": {
+          "type": "string",
+          "enum": [
+            "recommendation",
+            "research_question"
+          ]
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "recommendation_id",
+                "action",
+                "strength"
+              ],
+              "properties": {
+                "recommendation_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "action": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "action_id",
+                    "target_id",
+                    "scope_id"
+                  ],
+                  "properties": {
+                    "action_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "target_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "strength": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "explore",
+                    "conditional_advice",
+                    "strong_advice",
+                    "required"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "research_question": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "question_id",
+                "kind",
+                "prompt_code"
+              ],
+              "properties": {
+                "question_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "prompt_code": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "policy_version": {
           "type": "string",
           "minLength": 1
@@ -1312,7 +1426,118 @@
             "minLength": 1
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "output_kind": {
+                "const": "recommendation"
+              }
+            },
+            "required": [
+              "output_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recommendation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "recommendation_id",
+                  "action",
+                  "strength"
+                ],
+                "properties": {
+                  "recommendation_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "action_id",
+                      "target_id",
+                      "scope_id"
+                    ],
+                    "properties": {
+                      "action_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "target_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "scope_id": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "strength": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "explore",
+                      "conditional_advice",
+                      "strong_advice",
+                      "required"
+                    ]
+                  }
+                }
+              },
+              "research_question": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_kind": {
+                "const": "research_question"
+              }
+            },
+            "required": [
+              "output_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recommendation": {
+                "type": "null"
+              },
+              "research_question": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "question_id",
+                  "kind",
+                  "prompt_code"
+                ],
+                "properties": {
+                  "question_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "prompt_code": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "Alternative": {
       "type": "object",
@@ -1361,6 +1586,48 @@
             "type": "string",
             "minLength": 1
           }
+        }
+      }
+    },
+    "ReleaseCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "condition_id",
+        "predicate",
+        "owner",
+        "deadline",
+        "verification_method",
+        "status"
+      ],
+      "properties": {
+        "condition_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "predicate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deadline": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified_executable",
+            "unknown",
+            "rejected_or_infeasible"
+          ]
         }
       }
     }

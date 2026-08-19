@@ -98,7 +98,7 @@ const normalizeAjvErrors=(schemaId,rawErrors)=>{
 const assessedPredicateConfig=Object.freeze({
  ClaimsBundle:{definition:'AssessedPredicate',outer:'status'},
  EvaluationOutput:{definition:'AssessedPredicate',outer:'admissible_conclusion'},
- SemanticProjection:{definition:'AssessedPredicateProjection',outer:'admissible_conclusion'}
+ SemanticProjection:{definition:'AssessedPredicate',outer:'admissible_conclusion'}
 });
 const predicateSchemas=new Map();
 for(const [schemaId,config] of Object.entries(assessedPredicateConfig)){

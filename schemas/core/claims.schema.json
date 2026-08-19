@@ -47,7 +47,7 @@
     "claim_assessments": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/ClaimAssessment"
+        "$ref": "#/$defs/ClaimAssessmentCoreV1"
       }
     },
     "claim_assessment_policies": {
@@ -427,236 +427,6 @@
           ]
         }
       }
-    },
-    "ClaimAssessment": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "claim_assessment_id",
-        "claim_id",
-        "policy_id",
-        "status",
-        "assessed_predicate",
-        "checks",
-        "dimension_scores",
-        "evidence_grade",
-        "reason_codes"
-      ],
-      "properties": {
-        "claim_assessment_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "claim_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "status": {
-          "type": "string",
-          "enum": [
-            "normative",
-            "causal",
-            "associational",
-            "predictive",
-            "descriptive",
-            "reported_experience",
-            "observed_signal",
-            "unresolved"
-          ]
-        },
-        "evidence_grade": {
-          "$ref": "#/$defs/EvidenceGrade"
-        },
-        "reason_codes": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "policy_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "assessed_predicate": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AssessedPredicate"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "checks": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ClaimCheckResult"
-          }
-        },
-        "dimension_scores": {
-          "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
-          "items": {
-            "$ref": "#/$defs/EvidenceDimensionScore"
-          }
-        }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "normative"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "causal"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "associational"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "predictive"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "descriptive"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "reported_experience"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "observed_signal"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "$ref": "#/$defs/AssessedPredicate"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "status": {
-                "const": "unresolved"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "assessed_predicate": {
-                "type": "null"
-              }
-            }
-          }
-        }
-      ]
     },
     "ClaimsBundle": {
       "type": "object",
@@ -1177,6 +947,616 @@
             "adequate",
             "high"
           ]
+        }
+      }
+    },
+    "ClaimAssessmentCoreV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_assessment_id",
+        "claim_id",
+        "policy_id",
+        "status",
+        "assessed_predicate",
+        "checks",
+        "dimension_scores",
+        "evidence_grade",
+        "reason_codes"
+      ],
+      "properties": {
+        "claim_assessment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "normative",
+            "causal",
+            "associational",
+            "predictive",
+            "descriptive",
+            "reported_experience",
+            "observed_signal",
+            "unresolved"
+          ]
+        },
+        "evidence_grade": {
+          "$ref": "#/$defs/EvidenceGrade"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessed_predicate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssessedPredicate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClaimCheckResult"
+          }
+        },
+        "dimension_scores": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/EvidenceDimensionScore"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "normative"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "causal"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "associational"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "predictive"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "descriptive"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "reported_experience"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "observed_signal"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unresolved"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RiskDecisionCoreV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "reason_code"
+      ],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": [
+            "clear",
+            "block",
+            "escalation",
+            "investigate_immediately"
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "RecommendationDecisionCoreV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ceilings",
+        "minimum_ceiling",
+        "strength",
+        "output_kind",
+        "recommendation",
+        "research_question",
+        "reason_codes"
+      ],
+      "properties": {
+        "ceilings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "authority",
+            "evidence",
+            "risk",
+            "reversibility"
+          ],
+          "properties": {
+            "authority": {
+              "type": "string",
+              "enum": [
+                "none",
+                "explore",
+                "conditional_advice",
+                "strong_advice",
+                "required"
+              ]
+            },
+            "evidence": {
+              "type": "string",
+              "enum": [
+                "none",
+                "explore",
+                "conditional_advice",
+                "strong_advice",
+                "required"
+              ]
+            },
+            "risk": {
+              "type": "string",
+              "enum": [
+                "none",
+                "explore",
+                "conditional_advice",
+                "strong_advice",
+                "required"
+              ]
+            },
+            "reversibility": {
+              "type": "string",
+              "enum": [
+                "none",
+                "explore",
+                "conditional_advice",
+                "strong_advice",
+                "required"
+              ]
+            }
+          }
+        },
+        "minimum_ceiling": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
+        "output_kind": {
+          "type": "string",
+          "enum": [
+            "recommendation",
+            "research_question"
+          ]
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "action",
+                "strength"
+              ],
+              "properties": {
+                "action": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "action_id",
+                    "target_id",
+                    "scope_id"
+                  ],
+                  "properties": {
+                    "action_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "target_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "strength": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "explore",
+                    "conditional_advice",
+                    "strong_advice",
+                    "required"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "research_question": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "question_id",
+                "kind",
+                "prompt_code"
+              ],
+              "properties": {
+                "question_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "prompt_code": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "output_kind": {
+                "const": "recommendation"
+              }
+            },
+            "required": [
+              "output_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recommendation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action",
+                  "strength"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "action_id",
+                      "target_id",
+                      "scope_id"
+                    ],
+                    "properties": {
+                      "action_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "target_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "scope_id": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "strength": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "explore",
+                      "conditional_advice",
+                      "strong_advice",
+                      "required"
+                    ]
+                  }
+                }
+              },
+              "research_question": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_kind": {
+                "const": "research_question"
+              }
+            },
+            "required": [
+              "output_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recommendation": {
+                "type": "null"
+              },
+              "research_question": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "question_id",
+                  "kind",
+                  "prompt_code"
+                ],
+                "properties": {
+                  "question_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "prompt_code": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ReleaseDecisionCoreV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "next_action",
+        "conditions",
+        "reason_code"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "allow_with_conditions",
+            "block",
+            "escalation",
+            "undecided"
+          ]
+        },
+        "next_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "predicate",
+              "owner",
+              "deadline",
+              "verification_method",
+              "status"
+            ],
+            "properties": {
+              "predicate": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owner": {
+                "type": "string",
+                "minLength": 1
+              },
+              "deadline": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verification_method": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "verified_executable",
+                  "unknown",
+                  "rejected_or_infeasible"
+                ]
+              }
+            }
+          }
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

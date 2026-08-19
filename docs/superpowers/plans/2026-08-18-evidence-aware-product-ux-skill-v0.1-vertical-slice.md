@@ -838,3 +838,7 @@ Record the implementation commit, artifact SHA-256, exact failing release gates,
 - Full production execution of every authority/research/effect capability remains outside this vertical slice and therefore must surface as fail-closed coverage gaps; this plan does not silently approximate it.
 - All referenced functions are introduced before downstream use: knowledge precedes evaluator, the pure adapter precedes the bridge, evaluator precedes CLI/bridge, and CLI precedes Skill.
 - The plan contains no placeholder steps; test fixture/process/transport helpers and the full artifact golden are named explicitly, and no missing vector, evidence, or unavailable website can become a passing result.
+
+#### Task 10 materializer acceptance
+
+Task 10 consumes `ClaimAssessmentCoreV1`, `RiskDecisionCoreV1`, `RecommendationDecisionCoreV1`, and `ReleaseDecisionCoreV1` and is the only implementation allowed to create the four public assessment shapes. Acceptance must execute the mappings and domain-separated ids specified in design §8.5, assert byte-stable `required_check_id + ":" + status` ordering, assert fixed `validity,directness,precision,transportability` dimension order, assert `condition_ids 按 condition_id` with the conditions array in the same order, validate both public recommendation branches, and prove output.schema and semantic-projection.schema expose byte-equivalent public definitions.

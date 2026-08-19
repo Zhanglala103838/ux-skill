@@ -1,1 +1,0 @@
-TASK6_PARITY_RED reducers have closed CoreV1 contracts and Task10 public materializers

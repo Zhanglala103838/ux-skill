@@ -838,3 +838,16 @@ HoldoutReleaseGate 只有 current behavior generation 的 overall_gate=pass 才�
 - Stripe Docs（rotation）: https://docs.stripe.com/
 
 经典著作只作为综合知识输入，不复制受版权保护正文。首批包括 Jesse James Garrett、Don Norman、Steve Krug、Giles Colborne、Marty Cagan 及本地提供的产品设计资料。
+
+### 8.5 Task 10 public materializer boundary
+
+Task 6 reducers return only the closed internal contracts `ClaimAssessmentCoreV1`, `RiskDecisionCoreV1`, `RecommendationDecisionCoreV1`, and `ReleaseDecisionCoreV1`. Task 10 is the sole public materializer; no Task 6 helper may emit an authority-bearing public assessment.
+
+The materializer uses these deterministic mappings:
+
+- ClaimAssessment: copy `claim_id`; map `status` to `admissible_conclusion`; preserve the selected-branch `assessed_predicate`; map `evidence_grade.overall` to the public `evidence_grade`; encode each check as `required_check_id + ":" + status` and sort bytewise; emit `dimension_scores` in the fixed order `validity,directness,precision,transportability`; canonicalize `reason_codes`. The existing `claim_assessment_id` remains the identity derived with `ux-skill:claim-assessment:v1`.
+- RiskAssessment: combine one `RiskDecisionCoreV1` with its Finding and validated context; copy `finding_id`, map the core `decision`, preserve severity/reversibility, reduce likelihood and exposure to `known|unknown`, and wrap the single core reason as `reason_codes`. Derive `risk_assessment_id` from the public body without its id using `ux-skill:risk-assessment:v1`.
+- RecommendationAssessment: flatten the four core ceilings, copy `action_id`, `output_kind`, and the mutually exclusive recommendation/research-question branch, attach the selected policy registry version, and canonicalize `reason_codes`. Derive a non-null nested `recommendation_id` with `ux-skill:recommendation:v1`, then derive `recommendation_assessment_id` from the completed public body without its id using `ux-skill:recommendation-assessment:v1`.
+- ReleaseRecommendation: materialize every internal condition as a closed ReleaseCondition and derive `condition_id` from its five-field body using `ux-skill:release-condition:v1`; emit `condition_ids 按 condition_id` bytewise ascending and emit `conditions` in that same order; copy `status`, `next_action`, and `reason_code`.
+
+All ids above are lowercase SHA-256 hex prefixed by their public type abbreviation. Domain separation is the literal UTF-8 domain followed by the JCS bytes of the stated id-less body. Public arrays use the stated fixed or bytewise order, never locale order.
