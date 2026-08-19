@@ -1204,7 +1204,7 @@
         },
         "finding_id": {
           "type": "string",
-          "pattern": "^fnd_[0-9a-f]{32}$"
+          "pattern": "^f_[0-9a-f]{32}$"
         },
         "status": {
           "type": "string",

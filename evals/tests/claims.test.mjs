@@ -276,9 +276,13 @@ test('TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to no
   evidence:evidence(claimIds.map(([id])=>[id,'verified','cluster-'+id]),{intervention_id:'do-x',counterfactual_id:'no-x',effect_estimand_id:'ate'}),
   policy:policy('causal',claimIds)
  };
- const riskFinding={mandatory_fail:false,hard_unsat:false,hard_decision:'none',release_critical:false,outcome:'pass'};
+ const {createHash}=await import('node:crypto');const {jcsBytes}=await import('../../evaluator/canonical.mjs');
+ const riskFingerprint={schema_version:'finding-v1',behavior_version:'0.1.0',rule_id:'public-risk-rule',rule_version:'1.0.0',finding_type:'unknown',emission_reason_code:'RULE_UNKNOWN',canonical_target_locator:'admin/risk',target_snapshot_digest:'2'.repeat(64),scenario_binding_ids:['admin-desktop'],claim_key:null};
+ const riskFullDigest=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(riskFingerprint)).digest('hex');
+ const riskFinding={fingerprint:riskFingerprint,fingerprint_full_digest:riskFullDigest,finding_id:'f_'+riskFullDigest.slice(0,32),finding_type:riskFingerprint.finding_type,emission_reason_code:riskFingerprint.emission_reason_code,rule_id:riskFingerprint.rule_id,rule_version:riskFingerprint.rule_version};
  const riskContext={severity:'moderate',likelihood:'known',exposure:'known',reversibility:'reversible',key_factor_status:'verified',purpose:'other',materially_relies_on:false,inference_kind:'other',prohibition_status:'not_applicable',mandatory_check_status:'pass',other_hard_checks_status:'pass',signal_policy_row:null};
- const riskSource={finding:riskFinding,context:riskContext};
+ const riskSource={finding_id:riskFinding.finding_id,finding:riskFinding,context:riskContext};
+ const riskEvaluationOutput={findings:[riskFinding]};
  const recParts={action:action(),authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'none',required_action:null,outcome_equivalent_verified:false},evidence:{admissible_conclusion:'causal',overall:'high',assessed_action:action()},risk_decision:'clear',reversibility:'reversible',exact_mandatory_action:false,hard_decision:'clear',sensitive_decision:'continue'};
  const recSource={parts:recParts,selected_policy_registry_row:{policy_id:'recommendation-policy',version:'registry-v1',status:'effective'}};
  const releaseConditions=[
@@ -287,7 +291,7 @@ test('TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to no
  ];
  const releaseSource={derived_gates:['clear'],selection:{status:'decided'},authority:{complete:true},critical_tail_evidence:{critical_status:'pass',tail_unknown:false},conditions:releaseConditions};
  const claimPublic=materializers.materializeClaimAssessment(claimSource);
- const riskPublic=materializers.materializeRiskAssessment(riskSource);
+ const riskPublic=materializers.materializeRiskAssessment(riskSource,riskEvaluationOutput);
  const recPublic=materializers.materializeRecommendationAssessment(recSource);
  const releasePublic=materializers.materializeReleaseRecommendation(releaseSource);
  for(const [name,value] of Object.entries({ClaimAssessment:claimPublic,RiskAssessment:riskPublic,RecommendationAssessment:recPublic,ReleaseRecommendation:releasePublic})){
@@ -308,7 +312,7 @@ test('TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to no
   {...claimSource,policy:{...claimSource.policy,required_checks:claimSource.policy.required_checks.map((row,index)=>index===0?{...row,dimension:'directness'}:index===1?{...row,dimension:'validity'}:row)}}
  ];
  for(const source of claimVariants)changesBoth(claimPublic,materializers.materializeClaimAssessment(source),'claim_assessment_id');
- for(const context of [{...riskContext,purpose:'marketing'},{...riskContext,materially_relies_on:true}])changesBoth(riskPublic,materializers.materializeRiskAssessment({finding:riskFinding,context}),'risk_assessment_id');
+ for(const context of [{...riskContext,purpose:'marketing'},{...riskContext,materially_relies_on:true}])changesBoth(riskPublic,materializers.materializeRiskAssessment({...riskSource,context},riskEvaluationOutput),'risk_assessment_id');
  const recVariants=[
   {...recSource,parts:{...recParts,authority:{...recParts.authority,applicability:'unknown'}}},
   {...recSource,parts:{...recParts,evidence:{...recParts.evidence,overall:'adequate'}}},
@@ -326,9 +330,9 @@ test('TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to no
  assert.deepEqual(materializers.materializeClaimAssessment(claimPermutation),claimPublic);
  const releasePermutation={...releaseSource,derived_gates:[...releaseSource.derived_gates].reverse(),conditions:[...releaseSource.conditions].reverse()};
  assert.deepEqual(materializers.materializeReleaseRecommendation(releasePermutation),releasePublic);
- for(const [kind,source,value] of [['claim',claimSource,claimPublic],['risk',riskSource,riskPublic],['recommendation',recSource,recPublic],['release',releaseSource,releasePublic]]){
-  assert.equal(materializers.verifyPublicMaterialization(kind,source,value),true);
-  assert.equal(materializers.verifyPublicMaterialization(kind,source,{...value,source_material_digest:'0'.repeat(64)}),false);
+ for(const [kind,source,value,evaluationOutput] of [['claim',claimSource,claimPublic,null],['risk',riskSource,riskPublic,riskEvaluationOutput],['recommendation',recSource,recPublic,null],['release',releaseSource,releasePublic,null]]){
+  assert.equal(materializers.verifyPublicMaterialization(kind,source,value,evaluationOutput),true);
+  assert.equal(materializers.verifyPublicMaterialization(kind,source,{...value,source_material_digest:'0'.repeat(64)},evaluationOutput),false);
  }
 });
 
