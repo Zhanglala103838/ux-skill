@@ -218,9 +218,9 @@ test('TASK6_PARITY_RED reducers have closed CoreV1 contracts and Task10 public m
  const recommendationDef=outputSchema.$defs.RecommendationAssessment;
  for(const key of ['action_id','output_kind','recommendation','research_question','policy_version'])assert.ok(recommendationDef.required.includes(key),'missing recommendation public member '+key);
  const validateRecommendation=ajv.compile({$schema:outputSchema.$schema,$defs:outputSchema.$defs,$ref:'#/$defs/RecommendationAssessment'});
- const recommendationBase={recommendation_assessment_id:'rma_1',status:'complete',action_id:a.action_id,authority_ceiling:'required',evidence_ceiling:'strong_advice',risk_ceiling:'required',reversibility_ceiling:'required',strength:'strong_advice',policy_version:'registry-v1',reason_codes:[]};
- const recommendation={...recommendationBase,output_kind:'recommendation',recommendation:{recommendation_id:'rec_1',action:a,strength:'strong_advice'},research_question:null};
- const inquiry={...recommendationBase,output_kind:'research_question',strength:'none',recommendation:null,research_question:{question_id:'rq_1',kind:'decision_gap',prompt_code:'EVIDENCE_OR_AUTHORITY_GAP'}};
+ const recommendationBase={recommendation_assessment_id:'rma_'+ 'a'.repeat(32),source_material_digest:'b'.repeat(64),status:'complete',action_id:a.action_id,authority_ceiling:'required',evidence_ceiling:'strong_advice',risk_ceiling:'required',reversibility_ceiling:'required',minimum_ceiling:'strong_advice',strength:'strong_advice',policy_version:'registry-v1',reason_codes:[]};
+ const recommendation={...recommendationBase,output_kind:'recommendation',recommendation:{recommendation_id:'rec_'+ 'c'.repeat(32),action:a,strength:'strong_advice'},research_question:null};
+ const inquiry={...recommendationBase,output_kind:'research_question',strength:'none',recommendation:null,research_question:{question_id:'rq_'+ 'd'.repeat(32),kind:'decision_gap',prompt_code:'EVIDENCE_OR_AUTHORITY_GAP'}};
  assert.equal(validateRecommendation(recommendation),true,JSON.stringify(validateRecommendation.errors));
  assert.equal(validateRecommendation(inquiry),true,JSON.stringify(validateRecommendation.errors));
  assert.equal(validateRecommendation({...recommendation,research_question:inquiry.research_question}),false,'public recommendation branches are not mutually exclusive');

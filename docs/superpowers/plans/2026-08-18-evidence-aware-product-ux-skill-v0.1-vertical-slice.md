@@ -841,4 +841,10 @@ Record the implementation commit, artifact SHA-256, exact failing release gates,
 
 #### Task 10 materializer acceptance
 
-Task 10 consumes `ClaimAssessmentCoreV1`, `RiskDecisionCoreV1`, `RecommendationDecisionCoreV1`, and `ReleaseDecisionCoreV1` and is the only implementation allowed to create the four public assessment shapes. Acceptance must execute the mappings and domain-separated ids specified in design §8.5, assert byte-stable `required_check_id + ":" + status` ordering, assert fixed `validity,directness,precision,transportability` dimension order, assert `condition_ids 按 condition_id` with the conditions array in the same order, validate both public recommendation branches, and prove output.schema and semantic-projection.schema expose byte-equivalent public definitions.
+Task 10 consumes the four CoreV1 decisions and materializes the four exact-equal output/projection public definitions. It preserves Claim checks, dimension rows, structured grade, and policy; Risk finding linkage and context; Recommendation `minimum_ceiling` and exclusive output; Release condition bodies and decision reason.
+
+The implementation must recompute source_material_digest from exact validated normalized source objects, never trusts a caller-supplied source_material_digest, and uses these exact preimages: Claim `{claim,evidence,policy}`; Risk `{finding,context}`; Recommendation `{parts,selected_policy_registry_row}`; Release `{derived_gates,selection,authority,critical_tail_evidence,conditions}`. Canonical set permutation must produce byte-identical public output.
+
+Public ids hash the complete id-less public body with `ux-skill:claim-assessment-public:v1`, `ux-skill:risk-assessment:v1`, `ux-skill:recommendation-assessment:v1`, and `ux-skill:release-recommendation:v1`; nested recommendation and release condition ids retain their own domains. The verifier re-derives the reducer core and byte-compares the complete public object. The digest is a material integrity binding, not authenticity.
+
+Task 10 tests tamper policy/check/evidence/dimension material for Claim, purpose/material-reliance for Risk, authority/evidence/risk material for Recommendation, and gates/selection/authority/critical-tail material for Release. Every material change must change both source_material_digest and the public id; set permutation must not.

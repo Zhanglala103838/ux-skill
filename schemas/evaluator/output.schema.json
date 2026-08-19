@@ -270,6 +270,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "release_recommendation_id",
+        "source_material_digest",
         "status",
         "next_action",
         "condition_ids",
@@ -277,6 +279,14 @@
         "reason_code"
       ],
       "properties": {
+        "release_recommendation_id": {
+          "type": "string",
+          "pattern": "^rr_[0-9a-f]{32}$"
+        },
+        "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
         "status": {
           "type": "string",
           "enum": [
@@ -296,7 +306,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^rc_[0-9a-f]{32}$"
           }
         },
         "conditions": {
@@ -938,20 +948,30 @@
       "additionalProperties": false,
       "required": [
         "claim_assessment_id",
+        "source_material_digest",
         "claim_id",
+        "policy_id",
         "admissible_conclusion",
         "assessed_predicate",
-        "evidence_grade",
-        "check_results",
+        "checks",
         "dimension_scores",
+        "evidence_grade",
         "reason_codes"
       ],
       "properties": {
         "claim_assessment_id": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^ca_[0-9a-f]{32}$"
+        },
+        "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_id": {
           "type": "string",
           "minLength": 1
         },
@@ -978,29 +998,22 @@
             }
           ]
         },
-        "evidence_grade": {
-          "type": "string",
-          "enum": [
-            "insufficient",
-            "limited",
-            "adequate",
-            "high"
-          ]
-        },
-        "check_results": {
+        "checks": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/ClaimCheckResult"
           }
         },
         "dimension_scores": {
           "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
           "items": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 3
+            "$ref": "#/$defs/EvidenceDimensionScore"
           }
+        },
+        "evidence_grade": {
+          "$ref": "#/$defs/EvidenceGrade"
         },
         "reason_codes": {
           "type": "array",
@@ -1170,6 +1183,7 @@
       "additionalProperties": false,
       "required": [
         "risk_assessment_id",
+        "source_material_digest",
         "finding_id",
         "status",
         "decision",
@@ -1182,15 +1196,19 @@
       "properties": {
         "risk_assessment_id": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^ra_[0-9a-f]{32}$"
+        },
+        "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "finding_id": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^fnd_[0-9a-f]{32}$"
         },
         "status": {
           "type": "string",
-          "minLength": 1
+          "const": "complete"
         },
         "decision": {
           "type": "string",
@@ -1247,12 +1265,14 @@
       "additionalProperties": false,
       "required": [
         "recommendation_assessment_id",
+        "source_material_digest",
         "status",
         "action_id",
         "authority_ceiling",
         "evidence_ceiling",
         "risk_ceiling",
         "reversibility_ceiling",
+        "minimum_ceiling",
         "strength",
         "output_kind",
         "recommendation",
@@ -1263,11 +1283,15 @@
       "properties": {
         "recommendation_assessment_id": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^rma_[0-9a-f]{32}$"
+        },
+        "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "status": {
           "type": "string",
-          "minLength": 1
+          "const": "complete"
         },
         "action_id": {
           "type": "string",
@@ -1313,6 +1337,16 @@
             "required"
           ]
         },
+        "minimum_ceiling": {
+          "type": "string",
+          "enum": [
+            "none",
+            "explore",
+            "conditional_advice",
+            "strong_advice",
+            "required"
+          ]
+        },
         "strength": {
           "type": "string",
           "enum": [
@@ -1343,7 +1377,7 @@
               "properties": {
                 "recommendation_id": {
                   "type": "string",
-                  "minLength": 1
+                  "pattern": "^rec_[0-9a-f]{32}$"
                 },
                 "action": {
                   "type": "object",
@@ -1398,7 +1432,7 @@
               "properties": {
                 "question_id": {
                   "type": "string",
-                  "minLength": 1
+                  "pattern": "^rq_[0-9a-f]{32}$"
                 },
                 "kind": {
                   "type": "string",
@@ -1452,7 +1486,7 @@
                 "properties": {
                   "recommendation_id": {
                     "type": "string",
-                    "minLength": 1
+                    "pattern": "^rec_[0-9a-f]{32}$"
                   },
                   "action": {
                     "type": "object",
@@ -1522,7 +1556,7 @@
                 "properties": {
                   "question_id": {
                     "type": "string",
-                    "minLength": 1
+                    "pattern": "^rq_[0-9a-f]{32}$"
                   },
                   "kind": {
                     "type": "string",
@@ -1603,7 +1637,7 @@
       "properties": {
         "condition_id": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^rc_[0-9a-f]{32}$"
         },
         "predicate": {
           "type": "string",
@@ -1627,6 +1661,157 @@
             "verified_executable",
             "unknown",
             "rejected_or_infeasible"
+          ]
+        }
+      }
+    },
+    "EvidenceGrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validity",
+        "directness",
+        "precision",
+        "transportability",
+        "overall"
+      ],
+      "properties": {
+        "validity": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "directness": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "precision": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "transportability": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        },
+        "overall": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
+          ]
+        }
+      }
+    },
+    "ClaimCheckResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_check_id",
+        "dimension",
+        "critical",
+        "status",
+        "score",
+        "evidence_refs",
+        "reason_codes"
+      ],
+      "properties": {
+        "required_check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "validity",
+            "directness",
+            "precision",
+            "transportability"
+          ]
+        },
+        "critical": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "rejected",
+            "unknown",
+            "verified_with_limit",
+            "verified"
+          ]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "EvidenceDimensionScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "score",
+        "grade"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "validity",
+            "directness",
+            "precision",
+            "transportability"
+          ]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "grade": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "limited",
+            "adequate",
+            "high"
           ]
         }
       }

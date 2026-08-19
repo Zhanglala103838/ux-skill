@@ -33,7 +33,7 @@
   },
   {
     "path": "schemas/evaluator/output.schema.json",
-    "file_digest": "24f6fb9a316d23b95e6f28bd09eabd509931da3927bf94145bb65876df72e537"
+    "file_digest": "f1351e62fd3114b80552dd69eedca04de775bd3b8524fbb4ef0e65d4aebcd43c"
   },
   {
     "path": "schemas/evaluator/rule.schema.json",
@@ -41,6 +41,6 @@
   },
   {
     "path": "schemas/evaluator/semantic-projection.schema.json",
-    "file_digest": "05a03f2f072f388997a484469eee0c893aa5b13c240ea256beebe8d401c235f9"
+    "file_digest": "a0859debda855d22fe82bc2b347767d933e423a9f0ec563bdc6b460da063990e"
   }
 ]
