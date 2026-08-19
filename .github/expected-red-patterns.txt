@@ -1,0 +1,1 @@
+TASK5_PUBLIC_SHAPE_RED preserves full RuleEvaluation Finding and RunIssue across roots

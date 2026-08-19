@@ -288,3 +288,67 @@ test('EvaluationOutput assessed predicate is a closed nullable definition',()=>{
  const mismatch=validOutput();mismatch.claim_assessments[0].admissible_conclusion='causal';
  assert.deepEqual(validateBySchema('EvaluationOutput',mismatch).errors.filter((row)=>row.instance_pointer.endsWith('/relation_kind')).map((row)=>row.code),['ENUM_MISMATCH']);
 });
+
+test('TASK5_PUBLIC_SHAPE_RED preserves full RuleEvaluation Finding and RunIssue across roots',async()=>{
+ const [{default:Ajv2020},{evaluateRule,emitFinding},{materializeRiskAssessment}]=await Promise.all([
+  import('ajv/dist/2020.js'),
+  import('../../evaluator/rules-runtime.mjs'),
+  import('../../evaluator/projection.mjs')
+ ]);
+ const [outputSchema,projectionSchema]=await Promise.all([
+  readFile(new URL('../../schemas/evaluator/output.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse)
+ ]);
+ const expected={
+  RuleEvaluation:['rule_id','rule_version','release_critical','finding_type','terminal','outcome','reason_code','trace','dependency_trace','run_issue'],
+  Finding:['finding_id','fingerprint_full_digest','fingerprint','finding_type','emission_reason_code','rule_id','rule_version'],
+  RunIssue:['code','instance_pointer','dependency_id']
+ };
+ for(const name of Object.keys(expected)){
+  assert.deepEqual(projectionSchema.$defs[name],outputSchema.$defs[name],name+' differs across public schemas');
+  assert.equal(outputSchema.$defs[name].additionalProperties,false);
+  assert.deepEqual(outputSchema.$defs[name].required,expected[name]);
+ }
+ for(const schema of [outputSchema,projectionSchema]){
+  for(const field of ['rule_evaluations','findings','run_issues'])assert.equal(schema.properties[field].items.$ref,'#/$defs/'+({rule_evaluations:'RuleEvaluation',findings:'Finding',run_issues:'RunIssue'}[field]));
+ }
+ const rule={
+  rule_id:'task5-public-owner',rule_version:'1.0.0',release_critical:true,finding_type:'usability',
+  required_dependencies:[],registered_input_pointers:['/target/passes'],required_input_pointers:[],
+  applicability:{node_id:'app',op:'literal',value:true},exclusion:{node_id:'exc',op:'literal',value:false},
+  precondition:{node_id:'pre',op:'literal',value:true},check:{node_id:'check',op:'eq',path:'/target/passes',value:true}
+ };
+ const ruleEvaluation=evaluateRule(rule,{target:{passes:[]} },[]);
+ assert.deepEqual(Object.keys(ruleEvaluation).sort(),[...expected.RuleEvaluation].sort());
+ assert.equal(ruleEvaluation.outcome,'evaluation_error');
+ const finding=emitFinding(ruleEvaluation,{schema_version:'finding-v1',behavior_version:'0.1.0',canonical_target_locator:'admin/task5-owner',target_snapshot_digest:'3'.repeat(64),scenario_binding_ids:['admin-desktop'],claim_key:null});
+ assert.ok(finding);
+ assert.deepEqual(Object.keys(finding).sort(),[...expected.Finding].sort());
+ assert.deepEqual(Object.keys(ruleEvaluation.run_issue).sort(),[...expected.RunIssue].sort());
+ const riskContext={severity:'moderate',likelihood:'known',exposure:'known',reversibility:'reversible',key_factor_status:'verified',purpose:'other',materially_relies_on:false,inference_kind:'other',prohibition_status:'not_applicable',mandatory_check_status:'pass',other_hard_checks_status:'pass',signal_policy_row:null};
+ const riskSource={finding_id:finding.finding_id,finding,context:riskContext};
+ const risk=materializeRiskAssessment(riskSource,{findings:[finding]});
+ assert.equal(risk.finding_id,finding.finding_id);
+ const shortFinding={finding_id:finding.finding_id,fingerprint_full_digest:finding.fingerprint_full_digest,fingerprint:finding.fingerprint};
+ assert.throws(()=>materializeRiskAssessment({finding_id:shortFinding.finding_id,finding:shortFinding,context:riskContext},{findings:[shortFinding]}));
+ const shortRule={rule_id:ruleEvaluation.rule_id,outcome:ruleEvaluation.outcome,reason_code:ruleEvaluation.reason_code,release_critical:ruleEvaluation.release_critical};
+ const ajv=new Ajv2020({strict:true,allErrors:true});
+ for(const schema of [outputSchema,projectionSchema]){
+  const compile=(name)=>ajv.compile({$schema:schema.$schema,$defs:schema.$defs,$ref:'#/$defs/'+name});
+  const validateRule=compile('RuleEvaluation'),validateFinding=compile('Finding'),validateIssue=compile('RunIssue');
+  assert.equal(validateRule(ruleEvaluation),true,JSON.stringify(validateRule.errors));
+  assert.equal(validateRule(shortRule),false,'four-key RuleEvaluation remained public-valid');
+  assert.equal(validateFinding(finding),true,JSON.stringify(validateFinding.errors));
+  assert.equal(validateFinding(shortFinding),false,'three-key Finding remained public-valid');
+  assert.equal(validateIssue(ruleEvaluation.run_issue),true,JSON.stringify(validateIssue.errors));
+ }
+ const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'4'.repeat(64),evaluator_digest:'5'.repeat(64),run_status:'completed_escalated',rule_evaluations:[ruleEvaluation],findings:[finding],run_issues:[ruleEvaluation.run_issue],claim_assessments:[],risk_assessments:[risk],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+ const output={...common,validation_errors:[]};
+ const projection={...common,semantic_digest:'6'.repeat(64)};
+ for(const [schemaId,value] of [['EvaluationOutput',output],['SemanticProjection',projection]]){
+  const valid=validateBySchema(schemaId,value);
+  assert.equal(valid.ok,true,schemaId+' rejects genuine Task5 root: '+JSON.stringify(valid.errors));
+  assert.equal(validateBySchema(schemaId,{...value,rule_evaluations:[shortRule]}).ok,false,schemaId+' accepts four-key RuleEvaluation');
+  assert.equal(validateBySchema(schemaId,{...value,findings:[shortFinding]}).ok,false,schemaId+' accepts three-key Finding');
+ }
+});
