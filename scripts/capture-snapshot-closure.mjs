@@ -274,7 +274,7 @@ const startInvocationWorker=async(runnerStage,transportStage)=>{
       if(!activeRun)throw E('TASK_RUNNER_INACTIVE_STEP');
       if(message.kind==='step-open'){
         const stepId=`step-${++activeRun.stepSequence}`;let readyResolve,readyReject,finishResolve,finishReject;const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject}),finish=new Promise((resolve,reject)=>{finishResolve=resolve;finishReject=reject}),session={stepId,handles:new Map(),handleSequence:0,finishResolve,finishReject,capabilities:null,execution:null};sessions.set(stepId,session);
-        session.execution=Promise.resolve().then(()=>activeRun.executeStep(message.identity,async capabilities=>{session.capabilities=capabilities;readyResolve();await finish})).catch(error=>{readyReject(error);throw error});await ready;reply(message.id,true,stepId);return;
+        session.execution=Promise.resolve().then(()=>activeRun.executeStep(message.identity,async capabilities=>{session.capabilities=capabilities;readyResolve();await finish})).catch(error=>{readyReject(error);throw error});void session.execution.catch(()=>{});try{await ready}catch(error){sessions.delete(stepId);throw error}reply(message.id,true,stepId);return;
       }
       const session=sessions.get(message.step_id);if(!session?.capabilities)throw E('TASK_RUNNER_INACTIVE_STEP');
       if(message.kind==='step-request'){const response=await session.capabilities.request(message.input),ids=response.observation_handles.map(handle=>{const id=`handle-${++session.handleSequence}`;session.handles.set(id,handle);return id});reply(message.id,true,{status:response.status,final_url:response.final_url,observation_handle_ids:ids});return}
