@@ -272,6 +272,12 @@ ReleaseRecommendation 与 DecisionRecord 分离。Inquiry 文本不能成为任�
 
 Finding identity context 只能由 `deriveFindingContext(validated EvaluationInputBundle)` 产生。v0.1 的 closed exact-six 结构是 `schema_version`、`behavior_version`、`canonical_target_locator`、`target_snapshot_digest`、`scenario_binding_ids`、`claim_key`；其中 `schema_version = finding-v1`，`scenario_binding_ids = [scenario_profile_id]`，`claim_key = null`。调用方不得在 RuleEvaluation 上自报或覆盖这些字段。
 
+Task 5 primitives are internal, diagnostic, and non-authoritative.
+A structurally valid FindingContextV1 does not prove provenance.
+The sole authority-bearing public gate is Task 10 evaluate(bundle).
+Digests provide identity and integrity, not authenticity.
+Task 5 acceptance is semantic; provenance closure is deferred to Task 10.
+
 
 EvaluationInputBundle 必填 schema/behavior versions、evaluation_effective_at、target snapshot、CandidateUniverse、Scenario/Journey、Source registry refs、Evidence/Study/Claim、Research state、adapter evidence、policy digests；可选 InquiryDraft。其 normalized bytes 产生 input_digest。
 

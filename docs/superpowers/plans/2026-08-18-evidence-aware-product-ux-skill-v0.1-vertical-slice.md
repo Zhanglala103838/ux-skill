@@ -312,6 +312,8 @@ git commit -m "feat: enforce destructive-action authority boundaries"
 **Interfaces:**
 - Produces: `evaluateRule(rule, input, toolResults): RuleEvaluation`, `deriveFindingContext(bundle): FindingContextV1|null`, `emitFinding(ruleEvaluation, findingContext): Finding|null`, `reduceRunStatus(parts): RunStatus`.
 
+Task 5 interfaces are internal diagnostic primitives, not public authority-bearing APIs.
+
 - [ ] **Step 1: Write reducer tests**
 
 ```js
@@ -531,6 +533,10 @@ git commit -m "feat: add fail-closed website regression harness"
 ```
 
 ### Task 10: Sole Evaluator Entry Point and Semantic Projection
+
+Task 10 evaluate(bundle) is the sole authority-bearing public evaluation gate.
+verifyRunArtifact deterministically replays from the raw normalized bundle and fixed evaluator artifacts, then byte-compares the result.
+Digests provide identity and integrity, not authenticity.
 
 **Files:**
 - Create: `evaluator/projection.mjs`, `evaluator/index.mjs`

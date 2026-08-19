@@ -111,7 +111,7 @@ function fingerprint(ruleValue,context,finding_type,emission_reason_code){
  const full=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(value)).digest('hex');return{fingerprint:value,fingerprint_full_digest:full,finding_id:`f_${full.slice(0,32)}`};
 }
 export function emitFinding(ruleEvaluation,context){
- try{const value=snapshot(ruleEvaluation),safeContext=snapshot(context);if(ruleSignal(value)===null||!validFindingContext(safeContext)||value.terminal==='invalid_input'||value.terminal==='invalid_rule')return null;const [kind,emission_reason_code]=EMISSION[value.outcome][String(value.release_critical)];if(kind===null)return null;const finding_type=kind==='rule'?value.finding_type:kind;if(!text(finding_type))return null;return{...fingerprint(value,safeContext,finding_type,emission_reason_code),finding_type,emission_reason_code,rule_id:value.rule_id,rule_version:value.rule_version};}catch{return null;}
+ try{const value=snapshot(ruleEvaluation),safeContext=snapshot(context);if(ruleSignal(value)===null||!validFindingContext(safeContext))return null;const [kind,emission_reason_code]=EMISSION[value.outcome][String(value.release_critical)];if(kind===null)return null;const finding_type=kind==='rule'?value.finding_type:kind;if(!text(finding_type))return null;return{...fingerprint(value,safeContext,finding_type,emission_reason_code),finding_type,emission_reason_code,rule_id:value.rule_id,rule_version:value.rule_version};}catch{return null;}
 }
 const RULE_PAIRS=Object.freeze({
  invalid_input:Object.freeze({evaluation_error:new Set(['INVALID_INPUT'])}),
