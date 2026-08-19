@@ -1336,4 +1336,54 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
     }
     assert.deepEqual(issues, [], `TASK9_AUTHORITY_LEASE_RED:${issues.join(',')}`);
   });
+
+  test('TASK9_COMPARTMENT_AUTHORITY_RED', async () => {
+    const issues = [], requests = [];
+    const server = createServer((request, response) => { requests.push(request.url); response.writeHead(200, { 'content-type': 'text/plain' }); response.end(request.url); });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const origin = `http://127.0.0.1:${server.address().port}`, port = server.address().port, root = await mkdtemp(join(tmpdir(), 'task9-compartment-authority-red-'));
+    const stageNames = async () => new Set((await readdir(tmpdir())).filter((name) => name.startsWith('ux-skill-runner-') || name.startsWith('ux-skill-transport-')));
+    const pathExists = async (path) => { try { await access(path); return true; } catch { return false; } };
+    const compartmentProfile = profile('compartment-authority-profile', { browser_engine_digest: d('6') });
+    const taskScript = { task_script_id: 'compartment-authority-v1', steps: [{ step_id: 'visit', instruction: 'Use only registered capabilities.', required_replay_profile_ids: [compartmentProfile.replay_profile_id] }] };
+    const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
+    const runNodeCli = (arguments_) => new Promise((resolve) => {
+      const child = spawn(process.execPath, ['scripts/capture-snapshot-closure.mjs', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });let stdout = '', stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });child.stderr.on('data', (chunk) => { stderr += chunk; });child.once('error', (error) => resolve({ code: null, error, stderr, stdout }));child.once('close', (code) => resolve({ code, stderr, stdout }));
+    });
+    const writeScenario = async (label, runnerSource, transportSource) => {
+      const directory = join(root, label), publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures'), registryDir = join(directory, 'registry'), caseId = `RW-COMPARTMENT-${label.toUpperCase()}`;
+      await mkdir(publicDir, { recursive: true });await mkdir(fixtureDir, { recursive: true });await mkdir(registryDir, { recursive: true });
+      const fixture = { closure_version: 'snapshot-closure-v1', entry_url: `${origin}/registered`, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [compartmentProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      fixture.manifest_digest = snapshotClosureDigest(fixture);const casePath = join(publicDir, `${label}.json`);
+      await writeFile(casePath, `${canonicalize({ case_id: caseId, canonical_locator: `${origin}/registered`, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript })}\n`);await writeFile(join(fixtureDir, `${caseId}.snapshot-closure.json`), `${canonicalize(fixture)}\n`);
+      await writeFile(join(registryDir, 'runner.mjs'), runnerSource);await writeFile(join(registryDir, 'transport.mjs'), transportSource);
+      const manifest = { registry_version: 'snapshot-capture-registry-v1', entries: [{ case_id: caseId, task_script_digest: taskDigest, runner_path: 'runner.mjs', runner_digest: sha(Buffer.from(runnerSource)), runner_module_closure: [{ relative_path: 'runner.mjs', raw_sha256: sha(Buffer.from(runnerSource)) }], transport_path: 'transport.mjs', transport_digest: sha(Buffer.from(transportSource)), transport_module_closure: [{ relative_path: 'transport.mjs', raw_sha256: sha(Buffer.from(transportSource)) }] }], registry_digest: '' };
+      manifest.registry_digest = captureRegistryDigest(manifest);const registryPath = join(registryDir, 'capture-registry.json');await writeFile(registryPath, `${canonicalize(manifest)}\n`);
+      return { directory, casePath, registryPath, casPath: join(directory, 'cas'), outputPath: join(directory, 'output.json'), fsPath: join(directory, 'outside-fs'), childPath: join(directory, 'outside-child') };
+    };
+    const escapeRoot = "Object['con'+'structor']('return pro'+'cess')()";
+    const httpEffect = (path) => `await new Promise((resolve,reject)=>{const request=${escapeRoot}.getBuiltinModule('node:'+'http').get(${JSON.stringify(`${origin}${path}`)},response=>{response.resume();response.on('end',resolve);});request.on('error',reject);});`;
+    const netEffect = (path) => `await new Promise((resolve,reject)=>{const socket=${escapeRoot}.getBuiltinModule('node:'+'net').connect(${port},'127.0.0.1',()=>{socket.end(${JSON.stringify(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`)});});socket.on('error',reject);socket.on('close',resolve);});`;
+    const fileEffects = (fsPath, childPath) => `${escapeRoot}.getBuiltinModule('node:'+'fs').writeFileSync(${JSON.stringify(fsPath)},'outside');${escapeRoot}.getBuiltinModule('node:child_'+'pro'+'cess').execFileSync('/usr/bin/touch',[${JSON.stringify(childPath)}]);`;
+    const benignRunner = `const target=${JSON.stringify(`${origin}/registered`)};export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:target});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+    const benignTransport = "export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());return{status:response.status,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
+    const executeScenario = async (label, sourceFactory, expectClosed) => {
+      const draftDirectory = join(root, label), pathsForSource = { fsPath: join(draftDirectory, 'outside-fs'), childPath: join(draftDirectory, 'outside-child') }, sources = sourceFactory(pathsForSource), paths = await writeScenario(label, sources.runner, sources.transport), before = await stageNames();requests.length = 0;
+      const result = await runNodeCli(['--case', paths.casePath, '--registry', paths.registryPath, '--cas', paths.casPath, '--output', paths.outputPath]);let wrapper;try{wrapper=JSON.parse(await readFile(paths.outputPath,'utf8'))}catch{}await new Promise((resolve)=>setTimeout(resolve,100));
+      if(expectClosed){if(result.code!==2||wrapper?.closure!==null||wrapper?.completeness_status!=='incomplete'||wrapper?.run_status!=='target_unavailable'||wrapper?.release_gate!=='no_release')issues.push(`${label}-not-closed:${result.code}`);if(await pathExists(paths.casPath))issues.push(`${label}-touched-cas`)}else{if(result.code!==0||wrapper?.completeness_status!=='complete'||wrapper?.closure?.network_records?.length!==1)issues.push(`${label}-not-complete:${result.code}`);if(wrapper?.closure){const diskCas={async get(locator){try{return await readFile(join(paths.casPath,locator.slice(4)))}catch{return null}}};try{const replay=await replayClosure(wrapper.closure,diskCas);if(replay.run_status!=='completed'||replay.live_network_events!==0)issues.push(`${label}-replay-invalid`)}catch{issues.push(`${label}-replay-failed`)}}}
+      if(requests.join(',')!==(expectClosed?'':'/registered'))issues.push(`${label}-outside-requests:${requests.join(',')}`);if(await pathExists(paths.fsPath)||await pathExists(paths.childPath))issues.push(`${label}-outside-file-effect`);if(/unhandled(?:Promise)?Rejection/i.test(result.stderr))issues.push(`${label}-unhandled-rejection`);
+      const after=await stageNames(),residual=[...after].filter(name=>!before.has(name));if(residual.length)issues.push(`${label}-stage-residue:${residual.length}`);await Promise.all(residual.map(name=>rm(join(tmpdir(),name),{recursive:true,force:true})));
+    };
+    try {
+      await executeScenario('runner-top', (paths) => ({ runner: `${httpEffect('/outside-runner-http')}${fileEffects(paths.fsPath, paths.childPath)}${benignRunner}`, transport: benignTransport }), true);
+      await executeScenario('transport-top', (paths) => ({ runner: benignRunner, transport: `${netEffect('/outside-transport-net')}${fileEffects(paths.fsPath, paths.childPath)}${benignTransport}` }), true);
+      await executeScenario('late', (paths) => {
+        const runner = `const target=${JSON.stringify(`${origin}/registered`)},escape=()=>${escapeRoot};export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:target});setTimeout(()=>{try{escape().getBuiltinModule('node:'+'fs').writeFileSync(${JSON.stringify(paths.fsPath)},'late');escape().getBuiltinModule('node:child_'+'pro'+'cess').execFileSync('/usr/bin/touch',[${JSON.stringify(paths.childPath)}]);}catch{}},0);await new Promise(resolve=>setTimeout(resolve,180));await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+        const transport = `const escape=()=>${escapeRoot};export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());setTimeout(()=>{void(async()=>{${httpEffect('/outside-late-http')}${netEffect('/outside-late-net')}})().catch(()=>{});},0);return{status:response.status,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n`;
+        return { runner, transport };
+      }, false);
+    } finally { await new Promise((resolve) => server.close(resolve));await rm(root, { recursive: true, force: true }); }
+    assert.deepEqual(issues, [], `TASK9_COMPARTMENT_AUTHORITY_RED:${issues.join(',')}`);
+  });
 }
