@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   EXPECTED_EVALUATOR_MODULE_PATHS,
@@ -157,5 +157,92 @@ void canonical; void claim; void projectionModule; void escapedRegex; void class
       /dynamic import must use one literal module specifier/,
       'nonliteral dynamic imports are fail-closed because their local closure cannot be proven'
     );
+  });
+});
+
+async function withPathAuthenticitySandbox(callback) {
+  const sandbox = await mkdtemp(join(tmpdir(), 'ux-skill-path-authenticity-'));
+  try {
+    return await callback(sandbox);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
+}
+
+async function writeFixtureFile(path, source = 'export const fixture = true;\n') {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, source, 'utf8');
+}
+
+async function createRealEvaluatorTree(repositoryRoot, indexSource) {
+  for (const modulePath of EXPECTED_EVALUATOR_MODULE_PATHS) {
+    await writeFixtureFile(
+      join(repositoryRoot, modulePath),
+      modulePath === 'evaluator/index.mjs' ? indexSource : 'export const fixture = true;\n'
+    );
+  }
+}
+
+test('IMPORT_CLOSURE_REALPATH_AUTHENTICITY_RED rejects symlinked paths missing modules and nonfiles', async () => {
+  const dependencies = EXPECTED_EVALUATOR_MODULE_PATHS.filter((path) => !path.endsWith('/index.mjs'));
+  const exactIndex = importsFor(dependencies);
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const repositoryRoot = join(sandbox, 'normal-repository');
+    await createRealEvaluatorTree(repositoryRoot, exactIndex);
+    assert.deepEqual(await collectLocalEvaluatorImportClosure({ repositoryRoot }), EXPECTED_EVALUATOR_MODULE_PATHS);
+  });
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const repositoryRoot = join(sandbox, 'entry-symlink-repository');
+    await createRealEvaluatorTree(repositoryRoot, exactIndex);
+    const entryPath = join(repositoryRoot, 'evaluator/index.mjs');
+    const outsideEntry = join(sandbox, 'outside-entry.mjs');
+    await writeFixtureFile(outsideEntry, exactIndex);
+    await rm(entryPath);
+    await symlink(outsideEntry, entryPath, 'file');
+    await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot }), /symlink path component/i);
+  });
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const repositoryRoot = join(sandbox, 'import-symlink-repository');
+    await createRealEvaluatorTree(repositoryRoot, exactIndex);
+    const importedPath = join(repositoryRoot, 'evaluator/authority.mjs');
+    const outsideModule = join(sandbox, 'outside-authority.mjs');
+    await writeFixtureFile(outsideModule);
+    await rm(importedPath);
+    await symlink(outsideModule, importedPath, 'file');
+    await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot }), /symlink path component/i);
+  });
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const repositoryRoot = join(sandbox, 'directory-symlink-repository');
+    const outsideRoot = join(sandbox, 'outside-root');
+    const outsideEvaluator = join(outsideRoot, 'evaluator');
+    await createRealEvaluatorTree(outsideRoot, exactIndex);
+    await mkdir(repositoryRoot, { recursive: true });
+    await symlink(outsideEvaluator, join(repositoryRoot, 'evaluator'), 'dir');
+    await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot }), /symlink path component/i);
+  });
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const realRepository = join(sandbox, 'real-repository');
+    const repositoryAlias = join(sandbox, 'repository-alias');
+    await createRealEvaluatorTree(realRepository, exactIndex);
+    await symlink(realRepository, repositoryAlias, 'dir');
+    await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot: repositoryAlias }), /symlink path component/i);
+  });
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const repositoryRoot = join(sandbox, 'missing-module-repository');
+    await writeFixtureFile(join(repositoryRoot, 'evaluator/index.mjs'), "import './authority.mjs';\n");
+    await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot }), /missing evaluator module/i);
+  });
+
+  await withPathAuthenticitySandbox(async (sandbox) => {
+    const repositoryRoot = join(sandbox, 'nonfile-module-repository');
+    await writeFixtureFile(join(repositoryRoot, 'evaluator/index.mjs'), "import './authority.mjs';\n");
+    await mkdir(join(repositoryRoot, 'evaluator/authority.mjs'), { recursive: true });
+    await assert.rejects(() => collectLocalEvaluatorImportClosure({ repositoryRoot }), /regular file/i);
   });
 });
