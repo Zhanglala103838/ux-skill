@@ -90,20 +90,21 @@ const sourceMismatch=(document,contract)=>document!==null&&typeof document==='ob
 const identityMatches=(component,contract)=>['name','slug','category'].every((key)=>component[key]===contract.component_identity[key]);
 const partial=(document)=>document.missing.length>0||document.versionSkew!==null||document.stale===true||document.fallbacks.length>0;
 const notFound=(result)=>result.isError===true&&result.structuredContent===null&&result.content.length>0&&result.content[0].text.startsWith('没有名为');
+const inspected=(status,contract_valid,details={})=>({status,contract_valid,...details});
 const inspect=(result,contract)=>{
- let fixed;try{fixed=contractSnapshot(contract);}catch{return{status:'invalid_request'};}
- let value;try{value=resultSnapshot(result);}catch{return{status:'server_error'};}
- if(value.transport_status==='invalid_request')return{status:'invalid_request'};
- if(value.transport_status==='auth_error')return{status:'auth_error'};
- if(sourceMismatch(value.structuredContent,fixed))return{status:'incompatible_source'};
- if(value.transport_status==='timeout')return{status:'timeout'};
- if(value.transport_status==='server_error')return{status:'server_error'};
- if(value.transport_status==='cancelled')return{status:'cancelled'};
+ let fixed;try{fixed=contractSnapshot(contract);}catch{return inspected('invalid_request',false);}
+ let value;try{value=resultSnapshot(result);}catch{return inspected('server_error',true);}
+ if(value.transport_status==='invalid_request')return inspected('invalid_request',true);
+ if(value.transport_status==='auth_error')return inspected('auth_error',true);
+ if(sourceMismatch(value.structuredContent,fixed))return inspected('incompatible_source',true);
+ if(value.transport_status==='timeout')return inspected('timeout',true);
+ if(value.transport_status==='server_error')return inspected('server_error',true);
+ if(value.transport_status==='cancelled')return inspected('cancelled',true);
  const validDocument=documentValid(value.structuredContent)&&value.structuredContent.components.length===1&&identityMatches(value.structuredContent.components[0],fixed);
- if(validDocument&&value.isError===false&&partial(value.structuredContent))return{status:'partial',result:value,contract:fixed};
- if(notFound(value))return{status:'not_found'};
- if(validDocument&&value.isError===false&&!partial(value.structuredContent))return{status:'success',result:value,contract:fixed};
- return{status:'server_error'};
+ if(validDocument&&value.isError===false&&partial(value.structuredContent))return inspected('partial',true,{result:value,contract:fixed});
+ if(notFound(value))return inspected('not_found',true);
+ if(validDocument&&value.isError===false&&!partial(value.structuredContent))return inspected('success',true,{result:value,contract:fixed});
+ return inspected('server_error',true);
 };
 const canonicalSet=(items,keyOf)=>{
  const entries=[];
@@ -124,7 +125,7 @@ export const classifyHulianResult=(result,contract)=>inspect(result,contract).st
 
 export const mapHulianComponentDoc=(result,contract)=>{
  const checked=inspect(result,contract);
- if(checked.status==='invalid_request')fail('ADAPTER_CONTRACT_INVALID');
+ if(checked.contract_valid===false)fail('ADAPTER_CONTRACT_INVALID');
  if(checked.status==='incompatible_source')fail('INCOMPATIBLE_SOURCE');
  if(checked.status!=='success'&&checked.status!=='partial')fail('ADAPTER_RESULT_NOT_MAPPABLE');
  const component=checked.result.structuredContent.components[0];

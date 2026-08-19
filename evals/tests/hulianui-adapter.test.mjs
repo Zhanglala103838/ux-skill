@@ -89,7 +89,9 @@ test('contract, artifact, result schema, and component identity are closed and b
 });
 
 test('explicit required booleans survive; adapter never infers optionality',()=>{
- const evidence=map(valid());assert.ok(evidence.props.some((x)=>x.required===true));assert.ok(evidence.props.some((x)=>x.required===false));assert.equal(evidence.props.every((x)=>typeof x.required==='boolean'),true);
+ const evidence=map(valid()),members=[...evidence.props,...evidence.events,...evidence.slots];
+ assert.ok(members.some((x)=>x.required===true));assert.ok(members.some((x)=>x.required===false));
+ assert.equal(evidence.props.every((x)=>x.required===false),true);assert.equal(members.every((x)=>typeof x.required==='boolean'),true);
 });
 
 test('hostile JS values, Unicode, and oversize inputs are total fail-closed',()=>{
