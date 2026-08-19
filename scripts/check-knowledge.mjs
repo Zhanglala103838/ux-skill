@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
+import { O_NOFOLLOW, O_RDONLY } from 'node:constants';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
@@ -21,6 +22,15 @@ export const KNOWLEDGE_JSON_LIMITS = Object.freeze({
   MAX_DEPTH: 128,
   MAX_NODES: 100_000,
   MAX_STRING_UTF8_BYTES: 262_144,
+});
+
+const KNOWLEDGE_JSON_READ_OPTIONS = Object.freeze({
+  maxBytes: KNOWLEDGE_JSON_LIMITS.MAX_BYTES,
+  resourceCode: 'KNOWLEDGE_JSON_RESOURCE_LIMIT',
+});
+const KNOWLEDGE_REFERENCE_READ_OPTIONS = Object.freeze({
+  maxBytes: 1_048_576,
+  resourceCode: 'KNOWLEDGE_REFERENCE_RESOURCE_LIMIT',
 });
 
 const REFERENCE_PATHS = [
@@ -473,8 +483,32 @@ async function resolveRepositoryRoot(options) {
   return repositoryRoot;
 }
 
-async function readSecureRegularFile(repositoryRoot, path) {
+export function assertKnowledgeFileSnapshot(before, after, bytesRead, path) {
+  const sizeMatches = before.size === after.size;
+  const identityMatches = before.dev === after.dev && before.ino === after.ino;
+  let completeRead = false;
+  try {
+    completeRead = BigInt(bytesRead) === BigInt(before.size);
+  } catch {
+    completeRead = false;
+  }
+  if (!sizeMatches || !identityMatches || !completeRead) {
+    fail('KNOWLEDGE_FILE_CHANGED_DURING_READ', path);
+  }
+}
+
+async function readSecureRegularFile(repositoryRoot, path, options) {
   assertPath(path);
+  if (
+    !isRecord(options)
+    || !Number.isSafeInteger(options.maxBytes)
+    || options.maxBytes < 0
+    || typeof options.resourceCode !== 'string'
+    || options.resourceCode.length === 0
+  ) {
+    fail('KNOWLEDGE_READ_OPTIONS_INVALID', path);
+  }
+
   const segments = path.split('/');
   let current = repositoryRoot;
 
@@ -488,23 +522,76 @@ async function readSecureRegularFile(repositoryRoot, path) {
       throw error;
     }
     if (status.isSymbolicLink()) {
-      fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', `${path}:symlink path component`);
+      fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', path + ':symlink path component');
     }
     if (index < segments.length - 1 && !status.isDirectory()) {
-      fail('KNOWLEDGE_PATH_COMPONENT_INVALID', `${path}:directory required`);
+      fail('KNOWLEDGE_PATH_COMPONENT_INVALID', path + ':directory required');
     }
     if (index === segments.length - 1 && !status.isFile()) {
-      fail('KNOWLEDGE_FILE_NOT_REGULAR', `${path}:regular file required`);
+      fail('KNOWLEDGE_FILE_NOT_REGULAR', path + ':regular file required');
     }
   }
 
-  const rootPrefix = repositoryRoot.endsWith(sep) ? repositoryRoot : `${repositoryRoot}${sep}`;
+  const rootPrefix = repositoryRoot.endsWith(sep) ? repositoryRoot : repositoryRoot + sep;
   const absolutePath = resolve(repositoryRoot, path);
-  const actualPath = await realpath(absolutePath);
-  if (!absolutePath.startsWith(rootPrefix) || actualPath !== absolutePath) {
-    fail('KNOWLEDGE_REALPATH_IDENTITY_INVALID', `${path}:symlink path component or escape`);
+  if (!absolutePath.startsWith(rootPrefix)) {
+    fail('KNOWLEDGE_REALPATH_IDENTITY_INVALID', path + ':symlink path component or escape');
   }
-  return readFile(absolutePath);
+
+  let handle;
+  try {
+    handle = await open(absolutePath, O_RDONLY | O_NOFOLLOW);
+  } catch (error) {
+    if (error?.code === 'ELOOP') {
+      fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', path + ':symlink path component');
+    }
+    if (error?.code === 'ENOENT') fail('KNOWLEDGE_FILE_MISSING', path);
+    throw error;
+  }
+
+  try {
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile()) {
+      fail('KNOWLEDGE_FILE_NOT_REGULAR', path + ':regular file required');
+    }
+    if (before.size > BigInt(options.maxBytes)) {
+      fail(options.resourceCode, path);
+    }
+
+    const capacity = Math.min(options.maxBytes + 1, Number(before.size) + 1);
+    const allocation = Buffer.allocUnsafe(capacity);
+    let bytesRead = 0;
+    while (bytesRead < capacity) {
+      const result = await handle.read(
+        allocation,
+        bytesRead,
+        capacity - bytesRead,
+        bytesRead,
+      );
+      if (result.bytesRead === 0) break;
+      bytesRead += result.bytesRead;
+    }
+
+    let after;
+    let pathStatus;
+    let actualPath;
+    try {
+      after = await handle.stat({ bigint: true });
+      actualPath = await realpath(absolutePath);
+      pathStatus = await lstat(absolutePath, { bigint: true });
+    } catch {
+      fail('KNOWLEDGE_FILE_CHANGED_DURING_READ', path);
+    }
+    if (actualPath !== absolutePath) {
+      fail('KNOWLEDGE_FILE_CHANGED_DURING_READ', path);
+    }
+    assertKnowledgeFileSnapshot(before, after, bytesRead, path);
+    assertKnowledgeFileSnapshot(after, pathStatus, bytesRead, path);
+    if (bytesRead > options.maxBytes) fail(options.resourceCode, path);
+    return allocation.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
 }
 
 function validateFileRows(files) {
@@ -660,7 +747,8 @@ async function validateReferenceDirectory(repositoryRoot) {
 }
 
 async function loadManifestJson(repositoryRoot, path, parseCode) {
-  return parseKnowledgeJson(await readSecureRegularFile(repositoryRoot, path), path, parseCode);
+  const bytes = await readSecureRegularFile(repositoryRoot, path, KNOWLEDGE_JSON_READ_OPTIONS);
+  return parseKnowledgeJson(bytes, path, parseCode);
 }
 
 export function knowledgeManifestDigest(manifest) {
@@ -679,7 +767,11 @@ export async function loadPolicyManifest(options) {
     await loadManifestJson(repositoryRoot, 'knowledge/policy-manifest.json', 'POLICY_MANIFEST_JSON_INVALID'),
   );
   const row = manifest.policy_files[0];
-  const policyBytes = await readSecureRegularFile(repositoryRoot, row.path);
+  const policyBytes = await readSecureRegularFile(
+    repositoryRoot,
+    row.path,
+    KNOWLEDGE_JSON_READ_OPTIONS,
+  );
   const actualDigest = createHash('sha256').update(policyBytes).digest('hex');
   if (actualDigest !== row.file_digest) fail('POLICY_FILE_DIGEST_MISMATCH', row.path);
   const policyValue = parseKnowledgeJson(policyBytes, row.path, 'KNOWLEDGE_JSON_INVALID');
@@ -696,10 +788,15 @@ export async function loadKnowledgeManifest(options) {
 
   await validateReferenceDirectory(repositoryRoot);
   for (const row of manifest.files) {
-    const bytes = await readSecureRegularFile(repositoryRoot, row.path);
+    const isJson = row.path.endsWith('.json');
+    const bytes = await readSecureRegularFile(
+      repositoryRoot,
+      row.path,
+      isJson ? KNOWLEDGE_JSON_READ_OPTIONS : KNOWLEDGE_REFERENCE_READ_OPTIONS,
+    );
     const actualDigest = createHash('sha256').update(bytes).digest('hex');
     if (actualDigest !== row.file_digest) fail('KNOWLEDGE_DIGEST_MISMATCH', row.path);
-    if (row.path.endsWith('.json')) {
+    if (isJson) {
       const value = parseKnowledgeJson(bytes, row.path, 'KNOWLEDGE_JSON_INVALID');
       assertIJson(value);
       assertNfc(value);
