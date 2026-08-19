@@ -1,0 +1,1 @@
+Task5 versioned finding fixture migration diagnostic

@@ -278,6 +278,8 @@ The sole authority-bearing public gate is Task 10 evaluate(bundle).
 Digests provide identity and integrity, not authenticity.
 Task 5 acceptance is semantic; provenance closure is deferred to Task 10.
 
+Fixture migration: `FIND-INC-001` and `EMISSION-REASON-001` remain immutable historical regressions and run only through the explicit legacy adapter; non-catalog `FIND-INC-002` and `EMISSION-REASON-002` are the Task 5 current two-argument interface authority fixtures.
+
 
 EvaluationInputBundle 必填 schema/behavior versions、evaluation_effective_at、target snapshot、CandidateUniverse、Scenario/Journey、Source registry refs、Evidence/Study/Claim、Research state、adapter evidence、policy digests；可选 InquiryDraft。其 normalized bytes 产生 input_digest。
 

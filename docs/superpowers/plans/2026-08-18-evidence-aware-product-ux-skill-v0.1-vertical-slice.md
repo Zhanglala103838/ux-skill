@@ -314,6 +314,8 @@ git commit -m "feat: enforce destructive-action authority boundaries"
 
 Task 5 interfaces are internal diagnostic primitives, not public authority-bearing APIs.
 
+Fixture migration: immutable catalog `*-001` rows retain explicit legacy-adapter coverage; non-catalog `FIND-INC-002` and `EMISSION-REASON-002` freeze the current exact-10 RuleEvaluation plus exact-6 FindingContext two-argument interface.
+
 - [ ] **Step 1: Write reducer tests**
 
 ```js
