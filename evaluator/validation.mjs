@@ -95,6 +95,62 @@ const normalizeAjvErrors=(schemaId,rawErrors)=>{
  return out;
 };
 
+const assessedPredicateConfig=Object.freeze({
+ ClaimsBundle:{definition:'AssessedPredicate',outer:'status'},
+ EvaluationOutput:{definition:'AssessedPredicate',outer:'admissible_conclusion'},
+ SemanticProjection:{definition:'AssessedPredicateProjection',outer:'admissible_conclusion'}
+});
+const predicateSchemas=new Map();
+for(const [schemaId,config] of Object.entries(assessedPredicateConfig)){
+ const owner=schemas.find((schema)=>schema.$id===schemaIds[schemaId]);
+ const branches=owner.$defs[config.definition].oneOf;
+ predicateSchemas.set(schemaId,new Map(branches.map((branch,index)=>[
+  branch.properties.relation_kind.const,
+  ajv.compile({$ref:`${owner.$id}#/$defs/${config.definition}/oneOf/${index}`})
+ ])));
+}
+const predicatePlaceholder=(kind)=>{
+ const value={relation_kind:kind,subject_id:'subject',value:'value',context_id:'context',time_scope_id:'time'};
+ if(['normative','causal','associational','predictive','reported_experience','observed_signal'].includes(kind)){value.predicate_id='predicate';value.population_id='population';}
+ if(kind==='causal'){value.intervention_id='intervention';value.counterfactual_id='counterfactual';value.effect_estimand_id='estimand';}
+ if(kind==='predictive')value.future_target_id='future-target';
+ return value;
+};
+const assessedPredicateErrors=(schemaId,value,candidate)=>{
+ const config=assessedPredicateConfig[schemaId],validators=predicateSchemas.get(schemaId),out=[];
+ if(!config||!isPlainObject(value)||!Array.isArray(value.claim_assessments))return out;
+ value.claim_assessments.forEach((assessment,index)=>{
+  if(!isPlainObject(assessment)||!Object.hasOwn(assessment,'assessed_predicate'))return;
+  const pointer=`/claim_assessments/${index}/assessed_predicate`,outer=assessment[config.outer],predicate=assessment.assessed_predicate;
+  if(outer==='unresolved'){
+   if(predicate!==null)out.push(normalizedError('schema','TYPE_MISMATCH',pointer,schemaId,{expected:'null'}));
+   if(isPlainObject(candidate.claim_assessments?.[index]))candidate.claim_assessments[index].assessed_predicate=null;
+   return;
+  }
+  if(!validators.has(outer))return;
+  if(!isPlainObject(predicate)){
+   out.push(normalizedError('schema','TYPE_MISMATCH',pointer,schemaId,{expected:'object'}));
+   candidate.claim_assessments[index].assessed_predicate=predicatePlaceholder(outer);
+   return;
+  }
+  if(!Object.hasOwn(predicate,'relation_kind')){
+   out.push(normalizedError('schema','REQUIRED_MISSING',`${pointer}/relation_kind`,schemaId,{missingProperty:'relation_kind'}));
+   candidate.claim_assessments[index].assessed_predicate=predicatePlaceholder(outer);
+   return;
+  }
+  const relation=predicate.relation_kind,selected=validators.get(relation);
+  if(!selected){
+   out.push(normalizedError('schema','ENUM_MISMATCH',`${pointer}/relation_kind`,schemaId,{allowed:[...validators.keys()]}));
+   candidate.claim_assessments[index].assessed_predicate=predicatePlaceholder(outer);
+   return;
+  }
+  selected(defensiveCopy(predicate));
+  out.push(...normalizeAjvErrors(schemaId,(selected.errors||[]).map((raw)=>({...raw,instancePath:`${pointer}${raw.instancePath||''}`}))));
+  if(relation!==outer)out.push(normalizedError('schema','ENUM_MISMATCH',`${pointer}/relation_kind`,schemaId,{allowed:[outer]}));
+  candidate.claim_assessments[index].assessed_predicate=predicatePlaceholder(outer);
+ });
+ return out;
+};
 const ruleSchema=schemas.find((schema)=>schema.$id==='https://ux-skill.invalid/schemas/evaluator/rule.schema.json');
 const astBranchValidators=new Map(ruleSchema.$defs.AstNode.oneOf.map((branch,index)=>[
  branch.properties.op.const,
@@ -127,6 +183,10 @@ const schemaErrors=(schemaId,value)=>{
  const validate=ajv.getSchema(schemaIds[schemaId]);
  if(!validate)return[normalizedError('schema','INVARIANT_SCHEMA_ID_UNKNOWN','','SchemaRegistry-v1',{schema_id:schemaId})];
  let candidate=value,tagged=[];
+ if(Object.hasOwn(assessedPredicateConfig,schemaId)&&isPlainObject(value)){
+  candidate=defensiveCopy(value);
+  tagged.push(...assessedPredicateErrors(schemaId,value,candidate));
+ }
  if(schemaId==='Rule'&&isPlainObject(value)){
   candidate=defensiveCopy(value);
   for(const field of ruleAstFields)if(Object.hasOwn(value,field)){

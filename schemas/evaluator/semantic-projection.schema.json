@@ -849,47 +849,312 @@
       }
     },
     "AssessedPredicateProjection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "relation_kind",
-        "predicate_id",
-        "population_id",
-        "context_id",
-        "time_scope_id",
-        "subject_id",
-        "value"
-      ],
-      "properties": {
-        "relation_kind": {
-          "type": "string",
-          "minLength": 1
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id",
+            "predicate_id",
+            "population_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "normative"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "predicate_id": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id",
+            "predicate_id",
+            "population_id",
+            "intervention_id",
+            "counterfactual_id",
+            "effect_estimand_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "causal"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "intervention_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "counterfactual_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effect_estimand_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "population_id": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id",
+            "predicate_id",
+            "population_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "associational"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "context_id": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id",
+            "predicate_id",
+            "population_id",
+            "future_target_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "predictive"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "future_target_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "time_scope_id": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "descriptive"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "subject_id": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id",
+            "predicate_id",
+            "population_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "reported_experience"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "value": {
-          "type": "string",
-          "minLength": 1
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relation_kind",
+            "subject_id",
+            "value",
+            "context_id",
+            "time_scope_id",
+            "predicate_id",
+            "population_id"
+          ],
+          "properties": {
+            "relation_kind": {
+              "const": "observed_signal"
+            },
+            "subject_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "time_scope_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
-      }
+      ]
     },
     "EvidenceGradeProjection": {
       "type": "object",
@@ -1044,7 +1309,161 @@
             "minLength": 1
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "normative"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "causal"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "associational"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "predictive"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "descriptive"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "reported_experience"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "observed_signal"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "$ref": "#/$defs/AssessedPredicateProjection"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admissible_conclusion": {
+                "const": "unresolved"
+              }
+            },
+            "required": [
+              "admissible_conclusion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessed_predicate": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "RiskAssessment": {
       "type": "object",

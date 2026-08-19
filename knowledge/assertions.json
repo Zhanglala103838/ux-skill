@@ -1,0 +1,226 @@
+{
+  "registry_version": "ux-assertion-registry-v1",
+  "claim_assessment_policies": [
+    {
+      "policy_id": "claim-normative-v1",
+      "claim_kind": "normative",
+      "required_checks": [
+        {
+          "required_check_id": "authority-entailment",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:authority-entailment"
+        },
+        {
+          "required_check_id": "scope",
+          "dimension": "directness",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:scope"
+        },
+        {
+          "required_check_id": "precision",
+          "dimension": "precision",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:precision"
+        },
+        {
+          "required_check_id": "transport",
+          "dimension": "transportability",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:transport"
+        }
+      ]
+    },
+    {
+      "policy_id": "claim-causal-v1",
+      "claim_kind": "causal",
+      "required_checks": [
+        {
+          "required_check_id": "temporal",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:temporal"
+        },
+        {
+          "required_check_id": "comparator",
+          "dimension": "directness",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:comparator"
+        },
+        {
+          "required_check_id": "identification",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:identification"
+        },
+        {
+          "required_check_id": "estimand",
+          "dimension": "precision",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:estimand"
+        },
+        {
+          "required_check_id": "transport",
+          "dimension": "transportability",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:transport"
+        }
+      ]
+    },
+    {
+      "policy_id": "claim-predictive-v1",
+      "claim_kind": "predictive",
+      "required_checks": [
+        {
+          "required_check_id": "independent_validation",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:independent_validation"
+        },
+        {
+          "required_check_id": "calibration",
+          "dimension": "precision",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:calibration"
+        },
+        {
+          "required_check_id": "baseline",
+          "dimension": "directness",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:baseline"
+        },
+        {
+          "required_check_id": "target_population",
+          "dimension": "transportability",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:target_population"
+        },
+        {
+          "required_check_id": "drift",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:drift"
+        }
+      ]
+    },
+    {
+      "policy_id": "claim-reported_experience-v1",
+      "claim_kind": "reported_experience",
+      "required_checks": [
+        {
+          "required_check_id": "authentic-report",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:authentic-report"
+        },
+        {
+          "required_check_id": "population-fit",
+          "dimension": "directness",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:population-fit"
+        },
+        {
+          "required_check_id": "report-precision",
+          "dimension": "precision",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:report-precision"
+        },
+        {
+          "required_check_id": "context-fit",
+          "dimension": "transportability",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:context-fit"
+        }
+      ]
+    },
+    {
+      "policy_id": "claim-observed_signal-v1",
+      "claim_kind": "observed_signal",
+      "required_checks": [
+        {
+          "required_check_id": "signal-integrity",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:signal-integrity"
+        },
+        {
+          "required_check_id": "construct-fit",
+          "dimension": "directness",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:construct-fit"
+        },
+        {
+          "required_check_id": "signal-precision",
+          "dimension": "precision",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:signal-precision"
+        },
+        {
+          "required_check_id": "context-fit",
+          "dimension": "transportability",
+          "critical": true,
+          "evaluator_invariant": "evaluator-owned:context-fit"
+        }
+      ]
+    }
+  ],
+  "sensitive_default_matrix": {
+    "policy_id": "sensitive-inference-default-v1",
+    "sensitive_purposes": [
+      "credit",
+      "education",
+      "eligibility",
+      "employment",
+      "health",
+      "insurance",
+      "manipulative_intervention",
+      "pricing",
+      "vulnerability_targeting"
+    ],
+    "material_inference_kinds": [
+      "derived",
+      "observed_signal",
+      "reported_experience"
+    ],
+    "missing_registry_row_decision": "escalation"
+  },
+  "evidence_policy": {
+    "status_scores": {
+      "rejected": 0,
+      "unknown": 1,
+      "verified_with_limit": 2,
+      "verified": 3
+    },
+    "grade_labels": [
+      "insufficient",
+      "limited",
+      "adequate",
+      "high"
+    ],
+    "selection_or_contradiction_cap": "limited"
+  },
+  "recommendation_policy": {
+    "strength_order": [
+      "none",
+      "explore",
+      "conditional_advice",
+      "strong_advice",
+      "required"
+    ],
+    "none_output_kind": "research_question"
+  },
+  "source_assertions": [
+    {
+      "assertion_id": "wcag-exact-scope",
+      "source_id": "w3c-wcag-22",
+      "authority_class": "normative",
+      "proposition_boundary": "only verified exact success-criterion entailment"
+    },
+    {
+      "assertion_id": "garrett-lens-only",
+      "source_id": "garrett-elements-2e",
+      "authority_class": "expert_synthesis",
+      "proposition_boundary": "planes organize inquiry; they do not prove outcomes or conformance"
+    }
+  ]
+}

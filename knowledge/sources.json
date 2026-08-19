@@ -1,0 +1,50 @@
+{
+  "registry_version": "ux-source-registry-v1",
+  "sources": [
+    {
+      "source_id": "garrett-elements-2e",
+      "publisher": "Jesse James Garrett / New Riders",
+      "canonical_uri": "https://www.jjg.net/elements/",
+      "version": "2nd-edition",
+      "source_kind": "expert_synthesis",
+      "status": "effective",
+      "usage_boundary": "conceptual lens; never normative authority"
+    },
+    {
+      "source_id": "w3c-wcag-22",
+      "publisher": "W3C",
+      "canonical_uri": "https://www.w3.org/TR/WCAG22/",
+      "version": "2023-10-05",
+      "source_kind": "normative",
+      "status": "effective",
+      "usage_boundary": "exact success-criterion scope only"
+    },
+    {
+      "source_id": "iso-9241-210",
+      "publisher": "ISO",
+      "canonical_uri": "https://www.iso.org/standard/77520.html",
+      "version": "2019",
+      "source_kind": "normative",
+      "status": "effective",
+      "usage_boundary": "licensed metadata and verified propositions only"
+    },
+    {
+      "source_id": "w3c-ethical-web-principles",
+      "publisher": "W3C TAG",
+      "canonical_uri": "https://www.w3.org/TR/ethical-web-principles/",
+      "version": "2024-12-12",
+      "source_kind": "normative",
+      "status": "effective",
+      "usage_boundary": "exact applicable proposition only"
+    },
+    {
+      "source_id": "govuk-service-manual",
+      "publisher": "UK Government Digital Service",
+      "canonical_uri": "https://www.gov.uk/service-manual",
+      "version": "continuous",
+      "source_kind": "expert_synthesis",
+      "status": "effective",
+      "usage_boundary": "public-service practice evidence, not universal law"
+    }
+  ]
+}
