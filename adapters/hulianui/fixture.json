@@ -1,0 +1,79 @@
+{
+  "transport_status": "ok",
+  "isError": false,
+  "content": [
+    {
+      "type": "text",
+      "text": "Pinned AlertDialog component documentation."
+    }
+  ],
+  "structuredContent": {
+    "source_artifact": {
+      "path": "apps/www/public/llms-props.json",
+      "sha256": "729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5",
+      "version": "0.52.0"
+    },
+    "components": [
+      {
+        "name": "AlertDialog",
+        "slug": "alert-dialog",
+        "category": "feedback",
+        "import": "import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from '@hulianui/ui';",
+        "exports": [
+          "AlertDialog",
+          "AlertDialogAction",
+          "AlertDialogCancel",
+          "AlertDialogContent",
+          "AlertDialogDescription",
+          "AlertDialogTitle",
+          "AlertDialogTrigger"
+        ],
+        "props": [
+          {
+            "owner": "AlertDialog",
+            "name": "open",
+            "kind": "boolean",
+            "required": false,
+            "description": "Controlled open state."
+          },
+          {
+            "owner": "AlertDialog",
+            "name": "defaultOpen",
+            "kind": "boolean",
+            "required": false,
+            "description": "Initial uncontrolled open state."
+          }
+        ],
+        "events": [
+          {
+            "owner": "AlertDialog",
+            "name": "onOpenChange",
+            "kind": "function",
+            "required": true,
+            "description": "Called when the open state changes."
+          }
+        ],
+        "slots": [
+          {
+            "owner": "AlertDialog",
+            "name": "trigger",
+            "kind": "slot",
+            "required": true,
+            "description": "Opens the dialog."
+          },
+          {
+            "owner": "AlertDialog",
+            "name": "content",
+            "kind": "slot",
+            "required": true,
+            "description": "Contains the modal dialog content."
+          }
+        ]
+      }
+    ],
+    "missing": [],
+    "versionSkew": null,
+    "stale": false,
+    "fallbacks": []
+  }
+}
