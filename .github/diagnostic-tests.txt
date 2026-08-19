@@ -1,1 +1,0 @@
-TASK10_RISK_OWNER_REF_RED binds RiskAssessment to one coherent Task5 Finding owner
