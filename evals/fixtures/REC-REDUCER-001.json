@@ -1,0 +1,40 @@
+{
+  "vector_id": "REC-REDUCER-001",
+  "catalog_mutation": false,
+  "operation": "assessRecommendation",
+  "input": {
+    "action": {
+      "action_id": "change",
+      "target_id": "screen",
+      "scope_id": "admin"
+    },
+    "authority": {
+      "prohibition": "not_applicable",
+      "applicability": "unknown",
+      "conflict": "none",
+      "requirement_kind": "none",
+      "required_action": null,
+      "outcome_equivalent_verified": false
+    },
+    "evidence": {
+      "admissible_conclusion": "causal",
+      "overall": "high",
+      "assessed_action": {
+        "action_id": "change",
+        "target_id": "screen",
+        "scope_id": "admin"
+      }
+    },
+    "risk_decision": "clear",
+    "reversibility": "irreversible",
+    "exact_mandatory_action": false,
+    "hard_decision": "clear",
+    "sensitive_decision": "continue"
+  },
+  "expected": {
+    "/ceilings/authority": "explore",
+    "/ceilings/evidence": "strong_advice",
+    "/ceilings/reversibility": "conditional_advice",
+    "/strength": "explore"
+  }
+}

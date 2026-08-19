@@ -1,0 +1,35 @@
+{
+  "vector_id": "REC-WEAK-001",
+  "catalog_mutation": false,
+  "operation": "assessRecommendation",
+  "input": {
+    "action": {
+      "action_id": "change",
+      "target_id": "screen",
+      "scope_id": "admin"
+    },
+    "authority": {
+      "prohibition": "not_applicable",
+      "applicability": "known",
+      "conflict": "none",
+      "requirement_kind": "none",
+      "required_action": null,
+      "outcome_equivalent_verified": false
+    },
+    "evidence": {
+      "admissible_conclusion": "unresolved",
+      "overall": "insufficient",
+      "assessed_action": null
+    },
+    "risk_decision": "clear",
+    "reversibility": "reversible",
+    "exact_mandatory_action": false,
+    "hard_decision": "clear",
+    "sensitive_decision": "continue"
+  },
+  "expected": {
+    "/strength": "none",
+    "/output_kind": "research_question",
+    "/recommendation": null
+  }
+}

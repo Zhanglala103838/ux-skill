@@ -1,0 +1,19 @@
+{
+  "vector_id": "RELEASE-SOFT-TIE-001",
+  "catalog_mutation": false,
+  "operation": "reduceRelease",
+  "input": {
+    "gates": [
+      "clear"
+    ],
+    "selection": "undecided",
+    "authority_complete": true,
+    "critical_status": "pass",
+    "tail_unknown": false,
+    "conditions": []
+  },
+  "expected": {
+    "/status": "undecided",
+    "/next_action": "ask_decision_owner"
+  }
+}

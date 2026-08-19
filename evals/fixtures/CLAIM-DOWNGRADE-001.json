@@ -1,0 +1,115 @@
+{
+  "vector_id": "CLAIM-DOWNGRADE-001",
+  "catalog_mutation": false,
+  "operation": "assessClaim",
+  "input": {
+    "claim": {
+      "claim_id": "fixture-causal",
+      "claim_kind": "causal",
+      "relation_kind": "causal",
+      "predicate_id": "success",
+      "population_id": "users",
+      "context_id": "admin",
+      "time_scope_id": "t1",
+      "subject_id": "completion",
+      "value": "higher",
+      "evidence_refs": [
+        "ev"
+      ]
+    },
+    "policy": {
+      "policy_id": "causal-v1",
+      "claim_kind": "causal",
+      "required_checks": [
+        {
+          "required_check_id": "temporal",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "temporal"
+        },
+        {
+          "required_check_id": "comparator",
+          "dimension": "directness",
+          "critical": true,
+          "evaluator_invariant": "comparator"
+        },
+        {
+          "required_check_id": "identification",
+          "dimension": "validity",
+          "critical": true,
+          "evaluator_invariant": "identification"
+        },
+        {
+          "required_check_id": "estimand",
+          "dimension": "precision",
+          "critical": true,
+          "evaluator_invariant": "estimand"
+        },
+        {
+          "required_check_id": "transport",
+          "dimension": "transportability",
+          "critical": true,
+          "evaluator_invariant": "transport"
+        }
+      ]
+    },
+    "evidence": {
+      "checks": [
+        {
+          "required_check_id": "temporal",
+          "status": "verified",
+          "dependency_cluster_id": "t",
+          "evidence_refs": [
+            "ev"
+          ]
+        },
+        {
+          "required_check_id": "comparator",
+          "status": "verified_with_limit",
+          "dependency_cluster_id": "c",
+          "evidence_refs": [
+            "ev"
+          ]
+        },
+        {
+          "required_check_id": "identification",
+          "status": "unknown",
+          "dependency_cluster_id": "i",
+          "evidence_refs": [
+            "ev"
+          ]
+        },
+        {
+          "required_check_id": "estimand",
+          "status": "verified",
+          "dependency_cluster_id": "e",
+          "evidence_refs": [
+            "ev"
+          ]
+        },
+        {
+          "required_check_id": "transport",
+          "status": "verified",
+          "dependency_cluster_id": "x",
+          "evidence_refs": [
+            "ev"
+          ]
+        }
+      ],
+      "selection_status": "verified",
+      "contradiction_status": "resolved",
+      "measured_covariation": true,
+      "verifiable_observation": true,
+      "prediction_observed_outcome_pair": false,
+      "intervention_id": "do-x",
+      "counterfactual_id": "no-x",
+      "effect_estimand_id": "ate",
+      "future_target_id": null
+    }
+  },
+  "expected": {
+    "/status": "associational",
+    "/evidence_grade/overall": "limited",
+    "/assessed_predicate/relation_kind": "associational"
+  }
+}

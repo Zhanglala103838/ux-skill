@@ -1,0 +1,43 @@
+{
+  "vector_id": "REC-HIGH-NORMATIVE-NONENTAIL-001",
+  "catalog_mutation": false,
+  "operation": "assessRecommendation",
+  "input": {
+    "action": {
+      "action_id": "change",
+      "target_id": "screen",
+      "scope_id": "admin"
+    },
+    "authority": {
+      "prohibition": "not_applicable",
+      "applicability": "known",
+      "conflict": "none",
+      "requirement_kind": "exact_requires",
+      "required_action": {
+        "action_id": "change",
+        "target_id": "screen",
+        "scope_id": "admin"
+      },
+      "outcome_equivalent_verified": false
+    },
+    "evidence": {
+      "admissible_conclusion": "normative",
+      "overall": "high",
+      "assessed_action": {
+        "action_id": "different",
+        "target_id": "screen",
+        "scope_id": "admin"
+      }
+    },
+    "risk_decision": "clear",
+    "reversibility": "reversible",
+    "exact_mandatory_action": true,
+    "hard_decision": "clear",
+    "sensitive_decision": "continue"
+  },
+  "expected": {
+    "/ceilings/authority": "required",
+    "/ceilings/evidence": "conditional_advice",
+    "/strength": "conditional_advice"
+  }
+}
