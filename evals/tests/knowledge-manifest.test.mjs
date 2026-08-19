@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { digestJcs } from '../../evaluator/digests.mjs';
@@ -20,6 +20,7 @@ if (importFailure) {
   });
 } else {
   const {
+    assertKnowledgeFileSnapshot,
     checkKnowledge,
     KNOWLEDGE_JSON_LIMITS,
     parseKnowledgeJson,
@@ -602,6 +603,157 @@ if (importFailure) {
       'knowledge/assertions.json',
       nestedArrayBytes(12_000),
     );
+
+    assert.equal(failures.length, 0, failures.join('\n'));
+  });
+
+
+  function padJsonBytesToSize(bytes, size) {
+    assert.ok(bytes.length <= size);
+    return Buffer.concat([bytes, Buffer.alloc(size - bytes.length, 0x20)]);
+  }
+
+  async function makeSparseFile(repositoryRoot, targetPath, size) {
+    const handle = await open(join(repositoryRoot, targetPath), 'r+');
+    try {
+      await handle.truncate(size);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  test('TASK7_IO_PREALLOCATION_RED bounds JSON reads before allocation and verifies stable file snapshots', async () => {
+    const failures = [];
+    const resourceCode = 'KNOWLEDGE_JSON_RESOURCE_LIMIT';
+    const changedCode = 'KNOWLEDGE_FILE_CHANGED_DURING_READ';
+    const sparseOversizedBytes = 5 * 1024 * 1024 * 1024;
+
+    const captureResource = async (label, targetPath, operation) => {
+      let error;
+      try {
+        await operation();
+      } catch (caught) {
+        error = caught;
+      }
+      if (!error) {
+        failures.push(label + ': accepted');
+      } else if (error instanceof RangeError || error?.name === 'RangeError') {
+        failures.push(label + ': leaked RangeError');
+      } else if (error?.code === 'ERR_FS_FILE_TOO_LARGE') {
+        failures.push(label + ': leaked ERR_FS_FILE_TOO_LARGE');
+      } else if (error?.code !== resourceCode) {
+        failures.push(label + ': expected ' + resourceCode + ' got ' + (error?.code ?? error?.name));
+      } else if (error?.message !== resourceCode + ':' + targetPath) {
+        failures.push(label + ': nondeterministic message ' + error?.message);
+      }
+    };
+
+    const sparseCases = [
+      {
+        label: 'knowledge manifest entrypoint',
+        path: 'knowledge/manifest.json',
+        invoke(repositoryRoot) {
+          return loadKnowledgeManifest({ repositoryRoot });
+        },
+      },
+      {
+        label: 'policy manifest entrypoint',
+        path: 'knowledge/policy-manifest.json',
+        invoke(repositoryRoot) {
+          return loadPolicyManifest({ repositoryRoot });
+        },
+      },
+      ...[
+        'knowledge/assertions.json',
+        'knowledge/decision-policies.json',
+        'knowledge/policy-manifest.json',
+        'knowledge/registries.json',
+        'knowledge/rules.json',
+        'knowledge/sources.json',
+      ].map((path) => ({
+        label: 'declared JSON surface ' + path,
+        path,
+        invoke(repositoryRoot) {
+          return loadKnowledgeManifest({ repositoryRoot });
+        },
+      })),
+    ];
+
+    for (const fixture of sparseCases) {
+      await withRepository(async (repositoryRoot) => {
+        await makeSparseFile(repositoryRoot, fixture.path, sparseOversizedBytes);
+        await captureResource(
+          'sparse ' + fixture.label,
+          fixture.path,
+          () => fixture.invoke(repositoryRoot),
+        );
+      });
+    }
+
+    for (const path of ['knowledge/manifest.json', 'knowledge/assertions.json']) {
+      await withRepository(async (repositoryRoot) => {
+        const original = await readFile(join(repositoryRoot, path));
+        const exact = padJsonBytesToSize(original, EXPECTED_JSON_LIMITS.MAX_BYTES);
+        await writeJsonBytesAndRebind(repositoryRoot, path, exact);
+        try {
+          await loadKnowledgeManifest({ repositoryRoot });
+        } catch (error) {
+          failures.push(
+            'normal allocated MAX ' + path + ': unexpected ' + (error?.code ?? error?.name),
+          );
+        }
+      });
+
+      await withRepository(async (repositoryRoot) => {
+        const original = await readFile(join(repositoryRoot, path));
+        const oversized = padJsonBytesToSize(original, EXPECTED_JSON_LIMITS.MAX_BYTES + 1);
+        await writeJsonBytesAndRebind(repositoryRoot, path, oversized);
+        await captureResource(
+          'normal allocated MAX+1 ' + path,
+          path,
+          () => loadKnowledgeManifest({ repositoryRoot }),
+        );
+      });
+    }
+
+    if (typeof assertKnowledgeFileSnapshot !== 'function') {
+      failures.push('assertKnowledgeFileSnapshot export missing');
+    } else {
+      const path = 'knowledge/assertions.json';
+      const before = { dev: 11n, ino: 22n, size: 33 };
+      try {
+        assertKnowledgeFileSnapshot(before, { ...before }, 33, path);
+      } catch (error) {
+        failures.push('stable snapshot rejected: ' + (error?.code ?? error?.name));
+      }
+      for (const [label, after, bytesRead] of [
+        ['size change', { ...before, size: 34 }, 33],
+        ['device change', { ...before, dev: 12n }, 33],
+        ['inode change', { ...before, ino: 23n }, 33],
+        ['short read', { ...before }, 32],
+      ]) {
+        let error;
+        try {
+          assertKnowledgeFileSnapshot(before, after, bytesRead, path);
+        } catch (caught) {
+          error = caught;
+        }
+        if (!error) {
+          failures.push(label + ': snapshot accepted');
+        } else if (error?.code !== changedCode || error?.message !== changedCode + ':' + path) {
+          failures.push(label + ': unstable snapshot error ' + (error?.code ?? error?.name));
+        }
+      }
+    }
+
+    await withRepository(async (repositoryRoot) => {
+      try {
+        const manifest = await loadKnowledgeManifest({ repositoryRoot });
+        assert.equal(manifest.files.filter((row) => row.path.startsWith('references/')).length, 8);
+      } catch (error) {
+        failures.push('normal references regressed: ' + (error?.code ?? error?.name));
+      }
+    });
 
     assert.equal(failures.length, 0, failures.join('\n'));
   });
