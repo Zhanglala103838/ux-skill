@@ -1,1 +1,0 @@
-IMPORT_CLOSURE_REALPATH_AUTHENTICITY_RED rejects symlinked paths missing modules and nonfiles
