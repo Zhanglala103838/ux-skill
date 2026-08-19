@@ -536,3 +536,14 @@ test('TASK5_INTERNAL_BOUNDARY_RED critical invalid emission and Task10 provenanc
  ];
  for(const sentence of planContract)assert.ok(plan.includes(sentence),sentence);
 });
+
+
+test('TASK5_FIXTURE_AUTHORITY_WORDING_RED current fixtures are explicitly non-authoritative',async()=>{
+ const design=await readFile(new URL('../../docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md',import.meta.url),'utf8');
+ assert.equal(design.includes('interface authority fixtures'),false);
+ for(const phrase of [
+  'exact two-argument interface regression fixtures',
+  'non-authority-bearing',
+  'do not prove provenance'
+ ])assert.ok(design.includes(phrase),phrase);
+});
