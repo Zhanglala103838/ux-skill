@@ -159,9 +159,9 @@ test('fixed-design schema domains expose authority, assessment, fingerprint, inq
  assert.deepEqual(authority.$defs.ApprovalDecision.required,['approval_decision_id','sequence','approver_context_digest','approver_authority_ref','envelope_digest','decision','effective_at','expires_at','consumed']);
  assert.deepEqual(authority.$defs.TimeAuthorityPolicy.required,['time_authority_policy_id','authority','key_version','clock_profile','monotonic_profile','effective_at','expires_at','policy_digest']);
  for(const name of ['AssessedPredicate','ClaimAssessmentPolicy','ClaimCheckResult','EvidenceDimensionScore'])assert.ok(claims.$defs[name],`missing claims definition ${name}`);
- assert.ok(claims.$defs.ClaimAssessment.required.includes('assessed_predicate'));
- assert.ok(claims.$defs.ClaimAssessment.required.includes('checks'));
- assert.ok(claims.$defs.ClaimAssessment.required.includes('dimension_scores'));
+ assert.ok(claims.$defs.ClaimAssessmentCoreV1.required.includes('assessed_predicate'));
+ assert.ok(claims.$defs.ClaimAssessmentCoreV1.required.includes('checks'));
+ assert.ok(claims.$defs.ClaimAssessmentCoreV1.required.includes('dimension_scores'));
  assert.deepEqual(claims.$defs.ClaimCheckResult.properties.status.enum,['rejected','unknown','verified_with_limit','verified']);
  const fingerprint=['schema_version','behavior_version','rule_id','rule_version','finding_type','emission_reason_code','canonical_target_locator','target_snapshot_digest','scenario_binding_ids','claim_key'];
  assert.deepEqual(output.$defs.FindingFingerprintV1.required,fingerprint);
