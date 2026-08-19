@@ -21,6 +21,8 @@ if (importFailure) {
 } else {
   const {
     checkKnowledge,
+    KNOWLEDGE_JSON_LIMITS,
+    parseKnowledgeJson,
     knowledgeManifestDigest,
     loadKnowledgeManifest,
     loadPolicyManifest,
@@ -397,6 +399,212 @@ if (importFailure) {
       },
     );
   }
+
+
+  const EXPECTED_JSON_LIMITS = Object.freeze({
+    MAX_BYTES: 1_048_576,
+    MAX_DEPTH: 128,
+    MAX_NODES: 100_000,
+    MAX_STRING_UTF8_BYTES: 262_144,
+  });
+
+  function jsonBytesWithSize(size) {
+    assert.ok(size >= 5);
+    return Buffer.from('null' + ' '.repeat(size - 5) + '\n', 'utf8');
+  }
+
+  function nestedArrayBytes(depth) {
+    return Buffer.from('['.repeat(depth) + 'null' + ']'.repeat(depth) + '\n', 'utf8');
+  }
+
+  // Node units are the root value, every array value, and both the decoded
+  // member-name and value of every object member.
+  function wideArrayWithNodeUnits(total) {
+    assert.ok(total >= 1);
+    return Buffer.from('[' + Array(total - 1).fill('null').join(',') + ']\n', 'utf8');
+  }
+
+  function wideObjectWithNodeUnits(total) {
+    assert.ok(total >= 1);
+    let remaining = total - 1;
+    let nextKey = 0;
+    const members = [];
+    if (remaining % 2 === 1) {
+      assert.ok(remaining >= 3);
+      members.push('"0":[null]');
+      nextKey = 1;
+      remaining -= 3;
+    }
+    for (let index = 0; index < remaining / 2; index += 1) {
+      members.push(JSON.stringify(String(nextKey + index)) + ':null');
+    }
+    return Buffer.from('{' + members.join(',') + '}\n', 'utf8');
+  }
+
+  function escapedStringWithUtf8Bytes(decodedBytes) {
+    assert.ok(decodedBytes >= 0);
+    const pairs = Math.floor(decodedBytes / 2);
+    const tail = decodedBytes % 2 === 1 ? 'a' : '';
+    return Buffer.from('"' + String.raw\`\u00e9\`.repeat(pairs) + tail + '"\n', 'utf8');
+  }
+
+  function objectWithKeyUtf8Bytes(decodedBytes) {
+    return Buffer.from('{"' + 'k'.repeat(decodedBytes) + '":null}\n', 'utf8');
+  }
+
+  test('TASK7_JSON_RESOURCE_LIMIT_RED enforces deterministic parser budgets and totality on every JSON surface', async () => {
+    const failures = [];
+    const resourceCode = 'KNOWLEDGE_JSON_RESOURCE_LIMIT';
+    const fixturePath = 'knowledge/resource-budget-fixture.json';
+
+    if (JSON.stringify(KNOWLEDGE_JSON_LIMITS) !== JSON.stringify(EXPECTED_JSON_LIMITS)) {
+      failures.push(
+        'limit contract mismatch: expected ' + JSON.stringify(EXPECTED_JSON_LIMITS)
+          + ' got ' + JSON.stringify(KNOWLEDGE_JSON_LIMITS),
+      );
+    }
+
+    const expectParse = (label, bytes, expectedCode = null, path = fixturePath) => {
+      if (typeof parseKnowledgeJson !== 'function') {
+        if (!failures.includes('parseKnowledgeJson export missing')) {
+          failures.push('parseKnowledgeJson export missing');
+        }
+        return;
+      }
+      let value;
+      let error;
+      try {
+        value = parseKnowledgeJson(bytes, path, 'KNOWLEDGE_JSON_INVALID');
+      } catch (caught) {
+        error = caught;
+      }
+      if (expectedCode === null) {
+        if (error) failures.push(label + ': unexpected ' + (error.code ?? error.name));
+        return value;
+      }
+      if (!error) {
+        failures.push(label + ': accepted');
+        return undefined;
+      }
+      if (error instanceof RangeError || error?.name === 'RangeError') {
+        failures.push(label + ': leaked RangeError');
+        return undefined;
+      }
+      if (error?.code !== expectedCode) {
+        failures.push(label + ': expected ' + expectedCode + ' got ' + (error?.code ?? error?.name));
+        return undefined;
+      }
+      if (error?.message !== expectedCode + ':' + path) {
+        failures.push(label + ': nondeterministic message ' + error?.message);
+      }
+      return undefined;
+    };
+
+    const expectLoaderResource = async (label, targetPath, bytes) => {
+      await withRepository(async (repositoryRoot) => {
+        await writeJsonBytesAndRebind(repositoryRoot, targetPath, bytes);
+        let error;
+        try {
+          await loadKnowledgeManifest({ repositoryRoot });
+        } catch (caught) {
+          error = caught;
+        }
+        if (!error) {
+          failures.push(label + ': accepted');
+        } else if (error instanceof RangeError || error?.name === 'RangeError') {
+          failures.push(label + ': leaked RangeError');
+        } else if (error?.code !== resourceCode) {
+          failures.push(label + ': expected ' + resourceCode + ' got ' + (error?.code ?? error?.name));
+        } else if (error?.message !== resourceCode + ':' + targetPath) {
+          failures.push(label + ': nondeterministic message ' + error?.message);
+        }
+      });
+    };
+
+    for (const delta of [-1, 0, 1]) {
+      const size = EXPECTED_JSON_LIMITS.MAX_BYTES + delta;
+      expectParse(
+        'raw byte boundary ' + size,
+        jsonBytesWithSize(size),
+        delta <= 0 ? null : resourceCode,
+      );
+    }
+
+    for (const delta of [-1, 0, 1]) {
+      const depth = EXPECTED_JSON_LIMITS.MAX_DEPTH + delta;
+      expectParse(
+        'container depth boundary ' + depth,
+        nestedArrayBytes(depth),
+        delta <= 0 ? null : resourceCode,
+      );
+    }
+    expectParse('12000-level nesting', nestedArrayBytes(12_000), resourceCode);
+
+    for (const delta of [-1, 0, 1]) {
+      const nodes = EXPECTED_JSON_LIMITS.MAX_NODES + delta;
+      expectParse(
+        'wide array node boundary ' + nodes,
+        wideArrayWithNodeUnits(nodes),
+        delta <= 0 ? null : resourceCode,
+      );
+      expectParse(
+        'wide object node boundary ' + nodes,
+        wideObjectWithNodeUnits(nodes),
+        delta <= 0 ? null : resourceCode,
+      );
+    }
+
+    for (const delta of [-1, 0, 1]) {
+      const decodedBytes = EXPECTED_JSON_LIMITS.MAX_STRING_UTF8_BYTES + delta;
+      expectParse(
+        'escaped decoded string UTF-8 boundary ' + decodedBytes,
+        escapedStringWithUtf8Bytes(decodedBytes),
+        delta <= 0 ? null : resourceCode,
+      );
+      expectParse(
+        'decoded object key UTF-8 boundary ' + decodedBytes,
+        objectWithKeyUtf8Bytes(decodedBytes),
+        delta <= 0 ? null : resourceCode,
+      );
+    }
+
+    expectParse(
+      'invalid UTF-8 below raw byte budget',
+      Buffer.from([0xff]),
+      'KNOWLEDGE_JSON_UTF8_INVALID',
+    );
+    const oversizedInvalidUtf8 = jsonBytesWithSize(EXPECTED_JSON_LIMITS.MAX_BYTES + 1);
+    oversizedInvalidUtf8[0] = 0xff;
+    expectParse(
+      'raw byte budget precedes invalid UTF-8 decoding',
+      oversizedInvalidUtf8,
+      resourceCode,
+    );
+
+    const declaredJsonPaths = [
+      'knowledge/manifest.json',
+      'knowledge/assertions.json',
+      'knowledge/decision-policies.json',
+      'knowledge/policy-manifest.json',
+      'knowledge/registries.json',
+      'knowledge/rules.json',
+      'knowledge/sources.json',
+    ];
+    for (const path of declaredJsonPaths) {
+      await expectLoaderResource(
+        'declared JSON surface ' + path,
+        path,
+        jsonBytesWithSize(EXPECTED_JSON_LIMITS.MAX_BYTES + 1),
+      );
+    }
+    await expectLoaderResource(
+      'deep declared JSON surface is total',
+      'knowledge/assertions.json',
+      nestedArrayBytes(12_000),
+    );
+
+    assert.equal(failures.length, 0, failures.join('\n'));
+  });
 
   test('TASK7_DUPLICATE_MEMBER_RED rejects duplicate-aware and hostile JSON bytes at every loader boundary', async () => {
     const duplicateFixtures = [
