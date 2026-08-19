@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -997,5 +997,96 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       await rm(root, { recursive: true, force: true });
     }
     assert.deepEqual(issues, [], `TASK9_MODULE_LOADER_RED:${issues.join(',')}`);
+  });
+
+  test('TASK9_STAGE_LIFECYCLE_RED', async () => {
+    const issues = [];
+    const root = await mkdtemp(join(tmpdir(), 'task9-stage-lifecycle-red-'));
+    const activeProfile = profile('stage-lifecycle-profile', { browser_engine_digest: d('f') });
+    const taskScript = { task_script_id: 'stage-lifecycle-v1', steps: [{ step_id: 'visit', instruction: 'Use registered action.', required_replay_profile_ids: [activeProfile.replay_profile_id] }] };
+    const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
+    const stageNames = async () => new Set((await readdir(tmpdir())).filter((name) => name.startsWith('ux-skill-runner-') || name.startsWith('ux-skill-transport-')));
+    const cleanNewStages = async (before, label) => {
+      const after = await stageNames(), residual = [...after].filter((name) => !before.has(name));
+      if (residual.length) issues.push(`${label}-stage-residue:${residual.length}`);
+      await Promise.all(residual.map((name) => rm(join(tmpdir(), name), { recursive: true, force: true })));
+    };
+    const closureRows = (sources) => Object.entries(sources).map(([relative_path, source]) => ({ relative_path, raw_sha256: sha(Buffer.from(source)) })).sort((left, right) => Buffer.compare(Buffer.from(left.relative_path), Buffer.from(right.relative_path)));
+    const writeCase = async (directory, caseId, locator = 'http://127.0.0.1:9/') => {
+      const publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures');
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      const fixture = { closure_version: 'snapshot-closure-v1', entry_url: locator, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [activeProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      fixture.manifest_digest = snapshotClosureDigest(fixture);
+      const casePath = join(publicDir, `${caseId}.json`);
+      await writeFile(casePath, `${canonicalize({ case_id: caseId, canonical_locator: locator, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript })}\n`);
+      await writeFile(join(fixtureDir, `${caseId}.snapshot-closure.json`), `${canonicalize(fixture)}\n`);
+      return casePath;
+    };
+    const writeRegistry = async (directory, specifications) => {
+      await mkdir(directory, { recursive: true });
+      const entries = [];
+      for (const specification of specifications) {
+        for (const [relativePath, source] of Object.entries({ ...specification.runnerSources, ...specification.transportSources })) await writeFile(join(directory, relativePath), source);
+        entries.push({ case_id: specification.caseId, task_script_digest: taskDigest, runner_path: specification.runnerPath, runner_digest: sha(Buffer.from(specification.runnerSources[specification.runnerPath])), runner_module_closure: closureRows(specification.runnerSources), transport_path: specification.transportPath, transport_digest: sha(Buffer.from(specification.transportSources[specification.transportPath])), transport_module_closure: closureRows(specification.transportSources) });
+      }
+      entries.sort((left, right) => Buffer.compare(Buffer.from(canonicalize([left.case_id, left.task_script_digest])), Buffer.from(canonicalize([right.case_id, right.task_script_digest]))));
+      const manifest = { registry_version: 'snapshot-capture-registry-v1', entries, registry_digest: '' };
+      manifest.registry_digest = captureRegistryDigest(manifest);
+      const manifestPath = join(directory, 'capture-registry.json');
+      await writeFile(manifestPath, `${canonicalize(manifest)}\n`);
+      return manifestPath;
+    };
+    const directRunner = (url) => `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:${JSON.stringify(url)}});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+    const directTransport = "export async function request({url}){const body=Buffer.from(url);return{status:200,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
+    const spec = (caseId, prefix, runnerSource, transportSource = directTransport, extraRunner = {}) => ({ caseId, runnerPath: `${prefix}-runner.mjs`, runnerSources: { [`${prefix}-runner.mjs`]: runnerSource, ...extraRunner }, transportPath: `${prefix}-transport.mjs`, transportSources: { [`${prefix}-transport.mjs`]: transportSource } });
+    const invoke = async (directory, casePath, registry, name) => runCaptureCli(['--case', casePath, '--cas', join(directory, `cas-${name}`), '--output', join(directory, `output-${name}.json`)], { registry });
+    let gateServer;
+    try {
+      const multiRoot = join(root, 'multi'), multiRegistryDir = join(multiRoot, 'registry'), caseA = 'RW-STAGE-MULTI-A', caseB = 'RW-STAGE-MULTI-B';
+      const caseAPath = await writeCase(multiRoot, caseA);
+      await writeCase(multiRoot, caseB);
+      const multiManifest = await writeRegistry(multiRegistryDir, [spec(caseA, 'a', directRunner('http://127.0.0.1:9/a')), spec(caseB, 'b', directRunner('http://127.0.0.1:9/b'))]);
+      const beforeMulti = await stageNames(), multiRegistry = await createCaptureRegistry(multiManifest), multiExit = await invoke(multiRoot, caseAPath, multiRegistry, 'selected-a');
+      if (multiExit !== 0) issues.push(`multi-selected-exit:${multiExit}`);
+      await cleanNewStages(beforeMulti, 'multi-unselected-entry');
+
+      const failureRoot = join(root, 'construction-failure'), beforeFailure = await stageNames();
+      const failureManifest = await writeRegistry(join(failureRoot, 'registry'), [spec('RW-STAGE-CONSTRUCT-A', 'good', directRunner('http://127.0.0.1:9/good')), spec('RW-STAGE-CONSTRUCT-B', 'bad', directRunner('http://127.0.0.1:9/bad'), 'export const notRequest=true;\n')]);
+      await assert.rejects(() => createCaptureRegistry(failureManifest)).catch(() => issues.push('construction-failure-accepted'));
+      await cleanNewStages(beforeFailure, 'construction-failure');
+
+      for (const [label, runnerSource] of [['partial', 'export async function run(){}\n'], ['throw', "export async function run(){throw new Error('runner-throw');}\n"]]) {
+        const branchRoot = join(root, label), caseId = `RW-STAGE-${label.toUpperCase()}`, casePath = await writeCase(branchRoot, caseId), before = await stageNames();
+        const manifestPath = await writeRegistry(join(branchRoot, 'registry'), [spec(caseId, label, runnerSource)]), registry = await createCaptureRegistry(manifestPath), exitCode = await invoke(branchRoot, casePath, registry, label);
+        if (exitCode !== 2) issues.push(`${label}-exit:${exitCode}`);
+        await cleanNewStages(before, label);
+      }
+
+      let gateCount = 0, pendingFirst;
+      gateServer = createServer((request, response) => {
+        if (request.url === '/gate') {
+          gateCount += 1;
+          if (gateCount === 1) { pendingFirst = response; return; }
+          response.writeHead(302, { location: '/second' }); response.end();
+          pendingFirst.writeHead(302, { location: '/first' }); pendingFirst.end(); pendingFirst = null; return;
+        }
+        if (request.url === '/first' || request.url === '/second') { response.writeHead(200, { 'content-type': 'text/plain' }); response.end(request.url); return; }
+        response.writeHead(404).end();
+      });
+      await new Promise((resolve, reject) => { gateServer.once('error', reject); gateServer.listen(0, '127.0.0.1', resolve); });
+      const origin = `http://127.0.0.1:${gateServer.address().port}`, concurrentRoot = join(root, 'concurrent'), concurrentCase = 'RW-STAGE-CONCURRENT', concurrentCasePath = await writeCase(concurrentRoot, concurrentCase, `${origin}/gate`);
+      const concurrentRunner = `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:${JSON.stringify(`${origin}/gate`)}});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});if(response.final_url.endsWith('/second')){await new Promise(resolve=>setTimeout(resolve,200));await import('./delayed-helper.mjs');}});}\n`;
+      const concurrentTransport = `const headers=response=>[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')}));export async function request({url}){const hop=await fetch(url,{redirect:'manual'}),location=new URL(hop.headers.get('location'),url).href,final=await fetch(location,{redirect:'manual'}),body=Buffer.from(await final.arrayBuffer());return{status:final.status,final_url:location,headers:headers(final),body,redirect_chain:[{sequence:0,status:hop.status,url,location,response_headers:headers(hop)}],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n`;
+      const concurrentSpec = spec(concurrentCase, 'concurrent', concurrentRunner, concurrentTransport, { 'delayed-helper.mjs': 'export const verified=true;\n' });
+      const concurrentManifest = await writeRegistry(join(concurrentRoot, 'registry'), [concurrentSpec]), beforeConcurrent = await stageNames(), concurrentRegistry = await createCaptureRegistry(concurrentManifest);
+      const concurrentExits = await Promise.all([invoke(concurrentRoot, concurrentCasePath, concurrentRegistry, 'one'), invoke(concurrentRoot, concurrentCasePath, concurrentRegistry, 'two')]);
+      if (JSON.stringify(concurrentExits.sort()) !== JSON.stringify([0, 0])) issues.push(`concurrent-stage-disposed-early:${concurrentExits.join(',')}`);
+      await cleanNewStages(beforeConcurrent, 'concurrent');
+    } finally {
+      if (gateServer) await new Promise((resolve) => gateServer.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_STAGE_LIFECYCLE_RED:${issues.join(',')}`);
   });
 }
