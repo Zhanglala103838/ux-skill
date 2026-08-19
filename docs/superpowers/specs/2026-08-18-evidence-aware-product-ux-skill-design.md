@@ -719,6 +719,8 @@ observation_records 是 canonical-set；每个 item additionalProperties=false�
 
 `captureClosure(caseManifest,browser)` 的返回值严格是上述 `SnapshotClosureManifest`，不得向 schema-closed manifest 增加 run 或 release 字段。只有当每项 CAS artifact 均不超过 1 MiB、总量不超过 32 MiB、task script 也经同一 put/read-back/digest 路径、每个 profile 至少有一项连续 network record，且候选 manifest 立即用同一 CAS 离线 replay 成功时，capture 才能写 `completeness_status=complete`。`capture:closure` CLI 另行输出 transport wrapper `{closure|null,completeness_status,run_status,release_gate,run_issues}`；目标、浏览器或 CAS 不可用必须原子写出 `incomplete + target_unavailable + no_release` 并以 exit 2 结束。即使 closure complete，CLI wrapper 也固定 `release_gate=no_release`：closure completeness 只证明离线复放资格，不是产品 release 判定。
 
+CLI 不解释自然语言 `instruction`，也不得把入口页或同一 DOM 复制后贴到多个 `task_step_id`。它只接受绑定 exact task-script digest 与 runner digest 的已注册确定性 task runner，以及绑定 digest 的只读 transport。runner 必须按每个 profile 的 task 顺序显式激活每个 step；network 与 observation 的 `task_step_id` 只能由当前 active step 写入，runner 不能直接提供或改写 label。每个 active step 至少产生一项 GET/HEAD network record 和一项真实 observation，跨 step 复用相同 observation bytes、漏步、重排、重复、未知 step、runner/transport 缺失或 task digest 变化一律 `incomplete + target_unavailable + no_release + exit 2`，且不得触达未注册目标。
+
 pinned_repository 固定 owner/repo、commit、license、build/run recipe digest、seed digest；branch 名只能作说明，不能作 ref。
 
 每个 case 另含 portfolio_role=fixed_anchor|rotation_candidate、scenario_stratum 和 comparison_policy=within_case_only。fixed_anchor 用于同一任务的纵向可比性；rotation_candidate 用于检测对固定案例的过拟合。品牌声誉、获奖、流行度、视觉风格相似度和第三方“最佳网站”名单都不是 EvidenceArtifact，也不得提高 EvidenceGrade、Finding 严重度或 Recommendation strength。不同 case 的任务、主体与 measure 不同，禁止跨站总分、排行榜和“谁的 UX 最好”结论。

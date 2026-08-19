@@ -480,6 +480,7 @@ if (importFailure) {
     fixture.manifest_digest = snapshotClosureDigest(fixture);
     const localCase = { case_id: 'RW-LOCAL-TWO-ROUTE-001', canonical_locator: `${origin}/`, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript };
     const transport = {
+      transport_digest: d('f'),
       async request({ method, url }) {
         assert.ok(['GET', 'HEAD'].includes(method));
         return await new Promise((resolve, reject) => {
@@ -521,10 +522,10 @@ if (importFailure) {
       const casePath = join(publicDir, 'local.json');
       await writeFile(casePath, `${JSON.stringify(localCase)}\n`);
       await writeFile(join(fixtureDir, `${localCase.case_id}.snapshot-closure.json`), `${JSON.stringify(fixture)}\n`);
-      const invoke = async (name, selectedRunner) => {
+      const invoke = async (name, selectedRunner, registeredTaskDigest = sha(Buffer.from(canonicalize(taskScript)))) => {
         const casPath = join(root, `cas-${name}`), outputPath = join(root, `output-${name}.json`);
         const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], {
-          taskRunners: selectedRunner ? new Map([[localCase.case_id, selectedRunner]]) : new Map(),
+          taskRunners: selectedRunner ? new Map([[localCase.case_id, { task_script_digest: registeredTaskDigest, runner_digest: d('a'), run: selectedRunner }]]) : new Map(),
           transport,
         });
         let wrapper;
@@ -549,6 +550,25 @@ if (importFailure) {
       if (partial.exitCode !== 2 || partial.wrapper?.completeness_status !== 'incomplete' || partial.wrapper?.run_status !== 'target_unavailable' || partial.wrapper?.release_gate !== 'no_release') issues.push('skipped-step-not-closed');
       if (serverPaths.join(',') !== '/one') issues.push(`partial-runner-synthesized-navigation:${serverPaths.join(',')}`);
       if (partial.wrapper?.closure?.observation_records?.some((row) => row.task_step_id === 'visit-two')) issues.push('skipped-step-observation-synthesized');
+
+      serverPaths.length = 0;
+      const unsupported = await invoke('unsupported', runner, d('9'));
+      if (unsupported.exitCode !== 2 || unsupported.wrapper?.run_status !== 'target_unavailable' || serverPaths.length !== 0) issues.push('unsupported-task-digest-not-closed-before-target');
+
+      serverPaths.length = 0;
+      const reordered = await invoke('reordered', async ({ profiles, executeStep }) => {
+        await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: 'visit-two' }, async () => {});
+      });
+      if (reordered.exitCode !== 2 || reordered.wrapper?.run_status !== 'target_unavailable' || serverPaths.length !== 0) issues.push('reordered-step-not-closed-before-target');
+
+      serverPaths.length = 0;
+      const reused = await invoke('reused', async ({ profiles, steps, executeStep }) => {
+        for (const step of steps) await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: step.step_id }, async ({ request, observe }) => {
+          await request({ method: 'GET', url: `${origin}/${step.step_id === 'visit-one' ? 'one' : 'two'}` });
+          await observe({ evidence_kind: 'dom_snapshot', bytes: Buffer.from('COPIED_DOM') });
+        });
+      });
+      if (reused.exitCode !== 2 || reused.wrapper?.run_status !== 'target_unavailable' || serverPaths.join(',') !== '/one,/two') issues.push('cross-step-observation-reuse-not-closed');
 
       serverPaths.length = 0;
       const absent = await invoke('absent', null);

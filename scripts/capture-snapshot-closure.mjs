@@ -122,7 +122,8 @@ export async function captureClosure(caseManifest,browser){
   }
   const nr=cset(network,x=>[x.replay_profile_id,x.sequence],inc),or=cset(obs,x=>[x.replay_profile_id,x.task_step_id,x.evidence_kind,x.ordinal],inc);
   for(const p of ps){const seq=nr.filter(x=>x.replay_profile_id===p.replay_profile_id).map(x=>x.sequence);if(seq.length<1||seq.some((x,i)=>x!==i))inc()}
-  for(const s of ts.steps)for(const id of s.required_replay_profile_ids)if(!or.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))inc();
+  const observationOwners=new Map();for(const row of or){const key=`${row.replay_profile_id}\0${row.artifact_digest}`,owner=observationOwners.get(key);if(owner!==undefined&&owner!==row.task_step_id)inc();observationOwners.set(key,row.task_step_id)}
+  for(const s of ts.steps)for(const id of s.required_replay_profile_ids){if(!nr.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))inc();if(!or.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))inc()}
   const m={closure_version:'snapshot-closure-v1',entry_url:c.canonical_locator,task_script_digest:td,capture_environment_digest:raw.capture_environment_digest,captured_at:raw.captured_at,authenticated:false,replay_profiles:ps,network_records:nr,observation_records:or,outbound_effect_ledger_digest:sha(jb(raw.outbound_effects)),completeness_status:state.incomplete?'incomplete':'complete',manifest_digest:''};m.manifest_digest=snapshotClosureDigest(m);
   if(!state.incomplete){try{const replay=await replayClosure(m,browser.cas);if(replay.run_status!=='completed'||replay.release_gate!=='eligible'||replay.live_network_events!==0)inc()}catch{inc()}if(state.incomplete){m.completeness_status='incomplete';m.manifest_digest=snapshotClosureDigest(m)}}return m;
 }
@@ -144,9 +145,9 @@ export async function replayClosure(input,cas){
     const hb=await get(cas,r.content_addressed_header_artifact_locator,r.header_digest),body=await get(cas,r.content_addressed_body_artifact_locator,r.raw_body_digest);let hh;try{hh=JSON.parse(hb);if(!jb(hh).equals(hb))unavailable();checkHeaders(hh)}catch{unavailable()}responses.push({...r,redirects,headers:hh,body});
   }
   for(const p of m.replay_profiles){const seq=m.network_records.filter(x=>x.replay_profile_id===p.replay_profile_id).map(x=>x.sequence);if(seq.length<1||seq.some((x,i)=>x!==i))unavailable()}
-  const observations=[];
-  for(const r of m.observation_records){if(!exact(r,OK)||!pids.has(r.replay_profile_id)||!steps.get(r.task_step_id)?.has(r.replay_profile_id)||!['screenshot','dom_snapshot','accessibility_tree','interaction_trace','performance_trace','content_extract'].includes(r.evidence_kind)||!Number.isInteger(r.ordinal)||r.ordinal<0||!dg(r.artifact_digest))unavailable();observations.push({...r,bytes:await get(cas,r.content_addressed_artifact_locator,r.artifact_digest)})}
-  for(const s of ts.steps)for(const id of s.required_replay_profile_ids)if(!m.observation_records.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))unavailable();
+  const observations=[],observationOwners=new Map();
+  for(const r of m.observation_records){if(!exact(r,OK)||!pids.has(r.replay_profile_id)||!steps.get(r.task_step_id)?.has(r.replay_profile_id)||!['screenshot','dom_snapshot','accessibility_tree','interaction_trace','performance_trace','content_extract'].includes(r.evidence_kind)||!Number.isInteger(r.ordinal)||r.ordinal<0||!dg(r.artifact_digest))unavailable();const key=`${r.replay_profile_id}\0${r.artifact_digest}`,owner=observationOwners.get(key);if(owner!==undefined&&owner!==r.task_step_id)unavailable();observationOwners.set(key,r.task_step_id);observations.push({...r,bytes:await get(cas,r.content_addressed_artifact_locator,r.artifact_digest)})}
+  for(const s of ts.steps)for(const id of s.required_replay_profile_ids){if(!m.network_records.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))unavailable();if(!m.observation_records.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))unavailable()}
   return{run_status:'completed',run_issues:[],release_gate:'eligible',live_network_events:0,responses,observations};
 }
 
@@ -180,27 +181,36 @@ const seedProfiles=async(casePath,c)=>{
   try{fixture=JSON.parse(await readFile(fixturePath,'utf8'))}catch{throw E('CAPTURE_PROFILE_FIXTURE_UNAVAILABLE')}
   const copy=snap(fixture);if(!Array.isArray(copy.replay_profiles)||copy.replay_profiles.length<1||copy.manifest_digest!==c.snapshot_closure_digest||snapshotClosureDigest(copy)!==copy.manifest_digest)throw E('CAPTURE_PROFILE_FIXTURE_INVALID');return copy.replay_profiles;
 };
-const playwrightDriver=async(cas,profiles)=>{
-  const {chromium}=await import('playwright');let instance;
+const taskRunnerDriver=(cas,profiles,registration,transport)=>{
+  if(!plain(registration)||!dg(registration.task_script_digest)||!dg(registration.runner_digest)||typeof registration.run!=='function'||!plain(transport)||!dg(transport.transport_digest)||typeof transport.request!=='function')throw E('TASK_RUNNER_UNAVAILABLE');
   return{cas,async capture(c){
-    instance=await chromium.launch({headless:true});const version=instance.version(),engineDigest=sha(Buffer.from(`chromium:${version}`)),network=[],observations=[],outbound=[],transports=[];
-    try{
-      for(const seed of profiles){
-        const p={...seed,browser_engine_digest:engineDigest};
-        const context=await instance.newContext({viewport:{width:p.viewport_width_css_px,height:p.viewport_height_css_px},deviceScaleFactor:p.device_scale_factor,hasTouch:p.input_modality==='touch',locale:p.locale,timezoneId:p.timezone,colorScheme:p.color_scheme,reducedMotion:p.prefers_reduced_motion});const page=await context.newPage(),pending=[];let sequence=0;
-        await page.route('**/*',async route=>{const request=route.request(),method=request.method(),kind=request.resourceType();if(!['GET','HEAD'].includes(method)){transports.push({kind:'api_effect'});await route.abort();return}if(kind==='eventsource'){transports.push({kind:'sse'});await route.abort();return}await route.continue()});
-        page.on('websocket',()=>transports.push({kind:'websocket'}));page.on('download',()=>transports.push({kind:'download'}));
-        page.on('response',response=>{const ordinal=sequence++;pending.push((async()=>{const request=response.request(),method=request.method();if(!['GET','HEAD'].includes(method))return;const resource=request.resourceType(),networkKind=['document','script','stylesheet','image','font','xhr','fetch'].includes(resource)?(resource==='stylesheet'?'style':resource):'other',step=c.task_script.steps.find(row=>row.required_replay_profile_ids.includes(p.replay_profile_id))?.step_id;if(!step)return;let headers,body;try{headers=(await response.headersArray()).map((row,index)=>({sequence:index,name:row.name,value_bytes_base64:Buffer.from(row.value,'latin1').toString('base64')}));body=method==='HEAD'?Buffer.alloc(0):await response.body()}catch{network.push({replay_profile_id:p.replay_profile_id,sequence:ordinal,task_step_id:step,request_method:method,request_url:request.url(),redirect_chain:[],final_url:response.url(),network_kind:networkKind,disposition:'blocked_by_policy',response_status:null,response_headers:null,raw_body_bytes_base64:null});return}network.push({replay_profile_id:p.replay_profile_id,sequence:ordinal,task_step_id:step,request_method:method,request_url:request.url(),redirect_chain:[],final_url:response.url(),network_kind:networkKind,disposition:'captured',response_status:response.status(),response_headers:headers,raw_body_bytes_base64:Buffer.from(body).toString('base64')})})())});
-        await page.goto(c.canonical_locator,{waitUntil:'networkidle',timeout:30000});await Promise.all(pending);const content=await page.content();for(const step of c.task_script.steps)if(step.required_replay_profile_ids.includes(p.replay_profile_id))observations.push({replay_profile_id:p.replay_profile_id,task_step_id:step.step_id,evidence_kind:'dom_snapshot',ordinal:0,artifact_bytes_base64:Buffer.from(content).toString('base64')});await context.close();
-      }
-      network.sort((a,b)=>a.replay_profile_id.localeCompare(b.replay_profile_id)||a.sequence-b.sequence);for(const p of profiles){const rows=network.filter(row=>row.replay_profile_id===p.replay_profile_id);rows.forEach((row,index)=>{row.sequence=index})}
-      return{capture_environment_digest:dsha('ux-skill:capture-environment:v1',jb({browser:`chromium:${version}`,node:process.version})),captured_at:new Date().toISOString(),authenticated:false,replay_profiles:profiles.map(row=>({...row,browser_engine_digest:engineDigest})),network_events:network,observation_events:observations,outbound_effects:outbound,transport_events:transports,live_replay:false};
-    }finally{await instance.close().catch(()=>{});instance=null}
+    const ts=task(snap(c.task_script)),taskDigest=sha(jb(ts));if(taskDigest!==registration.task_script_digest)throw E('TASK_RUNNER_UNSUPPORTED_INSTRUCTION');
+    const expectedByProfile=new Map(profiles.map(row=>[row.replay_profile_id,ts.steps.filter(step=>step.required_replay_profile_ids.includes(row.replay_profile_id)).map(step=>step.step_id)]));
+    const nextByProfile=new Map(profiles.map(row=>[row.replay_profile_id,0])),executed=new Set(),network=[],observations=[],sequenceByProfile=new Map(profiles.map(row=>[row.replay_profile_id,0]));let active=null;
+    const executeStep=async(identity,work)=>{
+      const id=snap(identity);if(!exact(id,['replay_profile_id','task_step_id'])||typeof work!=='function'||active)throw E('TASK_RUNNER_INVALID');
+      const expected=expectedByProfile.get(id.replay_profile_id),next=nextByProfile.get(id.replay_profile_id);if(!expected||expected[next]!==id.task_step_id)throw E('TASK_RUNNER_STEP_ORDER');const key=`${id.replay_profile_id}\0${id.task_step_id}`;if(executed.has(key))throw E('TASK_RUNNER_STEP_DUPLICATE');
+      const state={...id,requests:0,observations:0,ordinals:new Map()};active=state;
+      const request=async(input)=>{
+        if(active!==state)throw E('TASK_RUNNER_INACTIVE_STEP');const value=snap(input),keys=Object.keys(value).sort().join('\0');if(!plain(value)||(keys!=='method\0url'&&keys!=='method\0network_kind\0url')||!['GET','HEAD'].includes(value.method)||!url(value.url)||value.network_kind!==undefined&&!['document','script','style','image','font','xhr','fetch','other'].includes(value.network_kind))throw E('TASK_RUNNER_REQUEST_INVALID');
+        const response=await transport.request(snap(value));if(!plain(response)||!exact(response,['status','final_url','headers','body'])||!Number.isInteger(response.status)||response.status<100||response.status>599||!url(response.final_url)||!Array.isArray(response.headers)||!(response.body instanceof Uint8Array)||utilTypes.isProxy(response.body)||response.body.length>L.maxArtifactBytes)throw E('TASK_RUNNER_RESPONSE_INVALID');
+        const headers=snap(response.headers);canonHeaders(headers);const body=Buffer.from(response.body),sequence=sequenceByProfile.get(state.replay_profile_id);sequenceByProfile.set(state.replay_profile_id,sequence+1);network.push({replay_profile_id:state.replay_profile_id,sequence,task_step_id:state.task_step_id,request_method:value.method,request_url:value.url,redirect_chain:[],final_url:response.final_url,network_kind:value.network_kind??'document',disposition:'captured',response_status:response.status,response_headers:headers,raw_body_bytes_base64:body.toString('base64')});state.requests+=1;return{status:response.status,final_url:response.final_url,headers:snap(headers),body:Buffer.from(body)};
+      };
+      const observe=async(input)=>{
+        if(active!==state||!plain(input)||!exact(input,['evidence_kind','bytes'])||!['screenshot','dom_snapshot','accessibility_tree','interaction_trace','performance_trace','content_extract'].includes(input.evidence_kind)||!(input.bytes instanceof Uint8Array)||utilTypes.isProxy(input.bytes)||input.bytes.length>L.maxArtifactBytes)throw E('TASK_RUNNER_OBSERVATION_INVALID');
+        const ordinal=state.ordinals.get(input.evidence_kind)??0;state.ordinals.set(input.evidence_kind,ordinal+1);observations.push({replay_profile_id:state.replay_profile_id,task_step_id:state.task_step_id,evidence_kind:input.evidence_kind,ordinal,artifact_bytes_base64:Buffer.from(input.bytes).toString('base64')});state.observations+=1;
+      };
+      try{await work(Object.freeze({request,observe}))}finally{active=null}if(state.requests<1||state.observations<1)throw E('TASK_RUNNER_STEP_INCOMPLETE');executed.add(key);nextByProfile.set(id.replay_profile_id,next+1);
+    };
+    await registration.run(Object.freeze({profiles:snap(profiles),steps:snap(ts.steps),executeStep}));if(active)throw E('TASK_RUNNER_INACTIVE_STEP');
+    for(const [profileId,steps] of expectedByProfile)if(nextByProfile.get(profileId)!==steps.length)throw E('TASK_RUNNER_PARTIAL');
+    const observationOwners=new Map();for(const row of observations){const key=`${row.replay_profile_id}\0${sha(Buffer.from(row.artifact_bytes_base64,'base64'))}`,owner=observationOwners.get(key);if(owner!==undefined&&owner!==row.task_step_id)throw E('TASK_RUNNER_OBSERVATION_REUSED');observationOwners.set(key,row.task_step_id)}
+    return{capture_environment_digest:dsha('ux-skill:capture-environment:v1',jb({runner_digest:registration.runner_digest,transport_digest:transport.transport_digest})),captured_at:new Date().toISOString(),authenticated:false,replay_profiles:snap(profiles),network_events:network,observation_events:observations,outbound_effects:[],transport_events:[],live_replay:false};
   }};
 };
-export async function runCaptureCli(argv=process.argv.slice(2)){
+export async function runCaptureCli(argv=process.argv.slice(2),dependencies={}){
   let options;try{options=parseCli(argv)}catch{return 64}let wrapper=cliUnavailable();
-  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),cas=await fileCas(options.casPath),driver=await playwrightDriver(cas,profiles),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}
+  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),registration=dependencies?.taskRunners?.get?.(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,registration,dependencies.transport),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}
   try{await writeJsonAtomic(options.outputPath,wrapper)}catch{return 74}return wrapper.run_status==='completed'?0:2;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)process.exitCode=await runCaptureCli();

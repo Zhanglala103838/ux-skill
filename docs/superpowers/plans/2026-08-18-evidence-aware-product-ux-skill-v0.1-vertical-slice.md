@@ -485,6 +485,7 @@ git commit -m "feat: add pinned HulianUI evidence adapter"
 **Interfaces:**
 - Produces: `captureClosure(caseManifest,browser): SnapshotClosureManifest`, `replayClosure(manifest,cas): ReplayEvidence`.
 - Capture requires an injected browser driver; core evaluator stays browser-independent.
+- The CLI requires a registered deterministic task runner bound to the exact task-script digest plus a registered read-only transport. The runner must activate every required `(replay_profile_id,task_step_id)` in task order; only requests and observations made while that step is active may receive its label. The CLI never infers actions from natural-language `instruction` text.
 
 - [ ] **Step 1: Write closure security tests**
 
@@ -509,7 +510,7 @@ Expected: FAIL with missing capture module.
 
 - [ ] **Step 3: Implement capture/replay contracts**
 
-Capture only anonymous read-only GET/HEAD traffic. Store CanonicalResponseHeaders and bodies in a caller-provided content-addressed store; key network records by `[replay_profile_id,sequence]`; require every task step/profile observation; reject SSE, WebSocket, live replay, missing bytes, digest mismatch, and prohibited effects.
+Capture only anonymous read-only GET/HEAD traffic. Store CanonicalResponseHeaders and bodies in a caller-provided content-addressed store; key network records by `[replay_profile_id,sequence]`; require every task step/profile observation; reject SSE, WebSocket, live replay, missing bytes, digest mismatch, and prohibited effects. A missing, digest-mismatched, unsupported, reordered, duplicated, or partial task runner is `target_unavailable/no_release`; entry-page DOM must never be copied to synthesize unexecuted step coverage.
 
 - [ ] **Step 4: Encode exact case profiles**
 
@@ -522,7 +523,7 @@ pnpm exec playwright install chromium
 pnpm capture:closure -- --case evals/public-cases/apple.json --cas .artifacts/cas --output .artifacts/apple-closure.json
 ```
 
-Expected: either `completeness_status=complete` with no outbound effects, or a machine-readable `target_unavailable/no_release`; never substitute current live bytes after capture.
+Expected: only a case with a registered exact-digest deterministic runner and read-only transport can reach `completeness_status=complete`; otherwise the command atomically writes machine-readable `incomplete + target_unavailable + no_release` and exits 2. Never substitute current live bytes after capture or synthesize observations for an unexecuted step.
 
 - [ ] **Step 5: Verify and commit**
 
