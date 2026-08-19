@@ -1,11 +1,10 @@
 import {createHash} from 'node:crypto';
 import {canonicalSet,jcsBytes} from './canonical.mjs';
 import {validateBySchema} from './validation.mjs';
+import {analyzeTask5DependencyTrace,isTask5ToolStatus,validateTask5DependencyEvaluation} from './dependency-decision.mjs';
 
 const OUTCOMES=new Set(['pass','fail','partial','not_run','not_applicable','unknown','evaluation_error']);
-const TOOL_STATUSES=new Set(['success','partial','not_found','invalid_request','auth_error','timeout','server_error','incompatible_source','cancelled']);
 const REASONS=new Set(['INVALID_INPUT','INVALID_RULE','REQUIRED_TOOL_INVALID_REQUEST','REQUIRED_TOOL_AUTH_ERROR','REQUIRED_TOOL_INCOMPATIBLE_SOURCE','REQUIRED_TOOL_TIMEOUT','REQUIRED_TOOL_SERVER_ERROR','REQUIRED_TOOL_CANCELLED','REQUIRED_INPUT_PARTIAL','REQUIRED_INPUT_NOT_FOUND','APPLICABILITY_EVALUATION_ERROR','APPLICABILITY_FALSE','APPLICABILITY_UNKNOWN','EXCLUSION_TRUE','EXCLUSION_UNKNOWN','PRECONDITION_EVALUATION_ERROR','PRECONDITION_FALSE','PRECONDITION_UNKNOWN','CHECK_PASS','CHECK_FAILED','CHECK_PARTIAL','CHECK_UNKNOWN','CHECK_EVALUATION_ERROR','NONE','RULE_CHECK_FAILED','RULE_PARTIAL','RELEASE_CRITICAL_PARTIAL','RULE_NOT_RUN','RELEASE_CRITICAL_NOT_RUN','RULE_UNKNOWN','RELEASE_CRITICAL_UNKNOWN','RELEASE_CRITICAL_EVALUATION_ERROR','RULE_EVALUATION_ERROR','FINDING_REASON_INVALID']);
-const TOOL_PRIORITY=[['invalid_request','tool_failed','evaluation_error','REQUIRED_TOOL_INVALID_REQUEST'],['auth_error','tool_failed','evaluation_error','REQUIRED_TOOL_AUTH_ERROR'],['incompatible_source','tool_failed','evaluation_error','REQUIRED_TOOL_INCOMPATIBLE_SOURCE'],['timeout','tool_failed','evaluation_error','REQUIRED_TOOL_TIMEOUT'],['server_error','tool_failed','evaluation_error','REQUIRED_TOOL_SERVER_ERROR'],['cancelled','cancelled','not_run','REQUIRED_TOOL_CANCELLED']];
 const BUILTINS=Object.freeze({'always-true.v1':()=>true,'always-false.v1':()=>false});
 const ALL=Object.freeze({T:0,U:1,F:2,E:3}),ANY=Object.freeze({F:0,U:1,T:2,E:3}),MISSING=Symbol('missing');
 const object=(value)=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -63,16 +62,9 @@ function ast(node,input,trace,parent_node_id=null){
 }
 function dependencyTrace(rule,toolResults){
  const byId=new Map();
- for(const result of toolResults){if(!object(result)||!text(result.dependency_id)||!TOOL_STATUSES.has(result.status)||typeof result.complete!=='boolean'||byId.has(result.dependency_id))throw new Error('TOOL');byId.set(result.dependency_id,result);}
+ for(const result of toolResults){if(!object(result)||!text(result.dependency_id)||!isTask5ToolStatus(result.status)||typeof result.complete!=='boolean'||byId.has(result.dependency_id))throw new Error('TOOL');byId.set(result.dependency_id,result);}
  const required=rule.required_dependencies.filter(item=>item.required).sort((a,b)=>compareId(a.dependency_id,b.dependency_id)),seen=new Set();
  return required.map(item=>{if(!text(item.dependency_id)||seen.has(item.dependency_id))throw new Error('DEPENDENCY');seen.add(item.dependency_id);const result=byId.get(item.dependency_id)??{dependency_id:item.dependency_id,status:'not_found',complete:false};return{dependency_id:item.dependency_id,status:result.status,complete:result.complete};});
-}
-function dependencyDecision(trace){
- const decision=(winner,terminal,outcome,reason_code)=>({winner,terminal,outcome,reason_code,run_issue:outcome==='evaluation_error'?exactIssue('/required_dependencies',winner.dependency_id):null});
- for(const [status,terminal,outcome,reason_code] of TOOL_PRIORITY){const winner=trace.find(item=>item.status===status);if(winner)return decision(winner,terminal,outcome,reason_code);}
- const partial=trace.find(item=>item.status==='partial'&&!item.complete);if(partial)return decision(partial,'completed','not_run','REQUIRED_INPUT_PARTIAL');
- const notFound=trace.find(item=>item.status==='not_found');if(notFound)return decision(notFound,'completed','not_run','REQUIRED_INPUT_NOT_FOUND');
- return null;
 }
 const combined=(left,right,rank,identity)=>[left,right].reduce((best,item)=>rank[item]>rank[best]?item:best,identity);
 
@@ -83,7 +75,7 @@ export function evaluateRule(rule,input,toolResults){
   const valid=validateBySchema('Rule',rule);if(!valid.ok)return errorRow(rule,'invalid_rule','INVALID_RULE');const safeRule=valid.value;
   try{validateRegistry(safeRule);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   let dependency_trace;try{dependency_trace=dependencyTrace(safeRule,safeTools);}catch{return errorRow(safeRule,'invalid_input','INVALID_INPUT');}
-  const decision=dependencyDecision(dependency_trace);if(decision)return row(safeRule,decision.terminal,decision.outcome,decision.reason_code,[],dependency_trace,decision.run_issue);
+  const dependency=analyzeTask5DependencyTrace(dependency_trace);if(dependency.kind==='invalid')return errorRow(safeRule,'invalid_input','INVALID_INPUT');if(dependency.kind==='decision')return row(safeRule,dependency.terminal,dependency.outcome,dependency.reason_code,[],dependency_trace,dependency.run_issue);
   const trace=[];let app,exclusion;try{app=ast(safeRule.applicability,safeInput,trace);exclusion=ast(safeRule.exclusion,safeInput,trace);}catch{return errorRow(safeRule,'invalid_rule','INVALID_RULE');}
   const notExclusion=exclusion==='T'?'F':exclusion==='F'?'T':exclusion,effective=combined(app,notExclusion,ALL,'T');
   if(effective==='E')return row(safeRule,'completed','evaluation_error','APPLICABILITY_EVALUATION_ERROR',trace,dependency_trace,{code:'RULE_EVALUATION_ERROR',instance_pointer:'/applicability',dependency_id:null});
@@ -134,7 +126,6 @@ const FINGERPRINT_KEYS=['behavior_version','canonical_target_locator','claim_key
 const FINDING_CONTEXT_KEYS=['behavior_version','canonical_target_locator','claim_key','scenario_binding_ids','schema_version','target_snapshot_digest'];
 const CLAIM_KEYS=['context_id','population_id','predicate_id','time_scope_id'];
 const TRACE_KEYS=['node_id','parent_node_id','value'];
-const DEPENDENCY_KEYS=['complete','dependency_id','status'];
 const exactKeys=(value,keys)=>object(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const wellFormed=(value)=>{for(let i=0;i<value.length;i+=1){const code=value.charCodeAt(i);if(code>=0xd800&&code<=0xdbff){const next=value.charCodeAt(i+1);if(!(next>=0xdc00&&next<=0xdfff))return false;i+=1;}else if(code>=0xdc00&&code<=0xdfff)return false;}return true;};
 const text=(value)=>typeof value==='string'&&value.length>0&&wellFormed(value)&&value.normalize('NFC')===value;
@@ -145,22 +136,17 @@ const lowerHex64=(value)=>{
 };
 const validIssue=(value)=>exactKeys(value,ISSUE_KEYS)&&value.code==='RULE_EVALUATION_ERROR'&&typeof value.instance_pointer==='string'&&(value.dependency_id===null||text(value.dependency_id));
 const validTrace=(value)=>Array.isArray(value)&&value.every(item=>exactKeys(item,TRACE_KEYS)&&text(item.node_id)&&(item.parent_node_id===null||text(item.parent_node_id))&&['T','F','U','E'].includes(item.value));
-function validDependencyTrace(value){
- if(!Array.isArray(value))return false;const seen=new Set();let previous=null;
- for(const item of value){if(!exactKeys(item,DEPENDENCY_KEYS)||!text(item.dependency_id)||!TOOL_STATUSES.has(item.status)||typeof item.complete!=='boolean'||seen.has(item.dependency_id))return false;if(previous!==null&&compareId(previous,item.dependency_id)>=0)return false;seen.add(item.dependency_id);previous=item.dependency_id;}
- return true;
-}
 function validFindingContext(value){
  if(!exactKeys(value,FINDING_CONTEXT_KEYS)||value.schema_version!=='finding-v1'||!text(value.behavior_version)||!text(value.canonical_target_locator)||!lowerHex64(value.target_snapshot_digest)||value.claim_key!==null)return false;
  if(!Array.isArray(value.scenario_binding_ids)||value.scenario_binding_ids.length===0||value.scenario_binding_ids.some(item=>!text(item)))return false;
  try{return jcsBytes(canonicalSet(value.scenario_binding_ids,item=>item)).equals(jcsBytes(value.scenario_binding_ids));}catch{return false;}
 }
 function ruleSignal(value){
- if(!exactKeys(value,RULE_KEYS)||!text(value.rule_id)||!text(value.rule_version)||!text(value.finding_type)||typeof value.release_critical!=='boolean'||!validTrace(value.trace)||!validDependencyTrace(value.dependency_trace))return null;
+ if(!exactKeys(value,RULE_KEYS)||!text(value.rule_id)||!text(value.rule_version)||!text(value.finding_type)||typeof value.release_critical!=='boolean'||!validTrace(value.trace)||analyzeTask5DependencyTrace(value.dependency_trace).kind==='invalid')return null;
  const outcomes=Object.hasOwn(RULE_PAIRS,value.terminal)?RULE_PAIRS[value.terminal]:null;if(outcomes===null||!Object.hasOwn(outcomes,value.outcome)||!outcomes[value.outcome].has(value.reason_code))return null;
  if(value.outcome==='evaluation_error'){if(!validIssue(value.run_issue))return null;}else if(value.run_issue!==null)return null;
  if(value.terminal==='invalid_input'||value.terminal==='invalid_rule'){if(value.trace.length!==0||value.dependency_trace.length!==0||value.run_issue.instance_pointer!==''||value.run_issue.dependency_id!==null)return null;}
- else{const decision=dependencyDecision(value.dependency_trace);if(decision!==null){if(value.trace.length!==0||value.terminal!==decision.terminal||value.outcome!==decision.outcome||value.reason_code!==decision.reason_code)return null;if(!jcsBytes(value.run_issue).equals(jcsBytes(decision.run_issue)))return null;}else if(value.terminal==='tool_failed'||value.terminal==='cancelled'||value.reason_code==='REQUIRED_INPUT_NOT_FOUND')return null;}
+ else if(!validateTask5DependencyEvaluation(value).ok)return null;
  return{kind:'rule',failed:value.terminal==='invalid_input'||value.terminal==='invalid_rule'||(value.outcome==='evaluation_error'&&value.release_critical),gap:['partial','unknown','not_run','evaluation_error'].includes(value.outcome)};
 }
 function validClaimKey(value){return value===null||(exactKeys(value,CLAIM_KEYS)&&CLAIM_KEYS.every(key=>text(value[key])));}

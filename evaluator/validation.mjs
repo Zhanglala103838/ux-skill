@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { assertIJson, assertCanonicalRelativePath, canonicalSet, jcsBytes } from './canonical.mjs';
+import { validateTask5DependencyEvaluation } from './dependency-decision.mjs';
 
 const schemaPaths=[
  '../schemas/adapters/hulian-component-doc-v1.schema.json','../schemas/adapters/hulian-evaluation-request-v1.schema.json',
@@ -170,7 +171,12 @@ const ruleEvaluationErrors=(schemaId,value,candidate)=>{
   if(!isPlainObject(evaluation)){out.push(normalizedError('schema','TYPE_MISMATCH',pointer,schemaId,{expected:'object'}));candidate.rule_evaluations[index]=placeholderRuleEvaluation;return;}
   for(const field of ['terminal','outcome'])if(!Object.hasOwn(evaluation,field))out.push(normalizedError('schema','REQUIRED_MISSING',`${pointer}/${field}`,schemaId,{missingProperty:field}));
   const selected=validators.get(evaluation.terminal+'|'+evaluation.outcome);
-  if(selected){selected(defensiveCopy(evaluation));out.push(...normalizeAjvErrors(schemaId,(selected.errors||[]).map((raw)=>({...raw,instancePath:`${pointer}${raw.instancePath||''}`}))));}
+  if(selected){
+   selected(defensiveCopy(evaluation));
+   out.push(...normalizeAjvErrors(schemaId,(selected.errors||[]).map((raw)=>({...raw,instancePath:`${pointer}${raw.instancePath||''}`}))));
+   const coherence=validateTask5DependencyEvaluation(evaluation);
+   if(!coherence.ok&&!['TRACE_NOT_ARRAY','TRACE_ITEM_INVALID'].includes(coherence.reason))out.push(normalizedError('schema','INVARIANT_SCHEMA_DIAGNOSTIC',coherence.field?`${pointer}/${coherence.field}`:pointer,'Task5DependencyDecision-v1',{reason:coherence.reason}));
+  }
   else if(Object.hasOwn(evaluation,'terminal')&&Object.hasOwn(evaluation,'outcome')){
    const allowed=[...validators.keys()].filter((key)=>key.startsWith(evaluation.terminal+'|')).map((key)=>key.split('|')[1]);
    out.push(normalizedError('schema','ENUM_MISMATCH',`${pointer}/outcome`,schemaId,{allowed}));
