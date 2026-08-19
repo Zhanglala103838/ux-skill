@@ -1270,4 +1270,70 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
     }
     assert.deepEqual(issues, [], `TASK9_MODULE_AUTHORITY_RED:${issues.join(',')}`);
   });
+
+  test('TASK9_AUTHORITY_LEASE_RED', async () => {
+    const issues = [], requests = [];
+    const server = createServer((request, response) => {
+      requests.push(request.url);
+      const send = () => { response.writeHead(200, { 'content-type': 'text/plain' }); response.end(request.url); };
+      if (request.url === '/slow') setTimeout(send, 150); else send();
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const origin = `http://127.0.0.1:${server.address().port}`, root = await mkdtemp(join(tmpdir(), 'task9-authority-lease-red-'));
+    const stageNames = async () => new Set((await readdir(tmpdir())).filter((name) => name.startsWith('ux-skill-runner-') || name.startsWith('ux-skill-transport-')));
+    const leaseProfile = profile('authority-lease-profile', { browser_engine_digest: d('7') });
+    const taskScript = { task_script_id: 'authority-lease-v1', steps: [{ step_id: 'visit', instruction: 'Use registered request capability.', required_replay_profile_ids: [leaseProfile.replay_profile_id] }] };
+    const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
+    const runNodeCli = (arguments_) => new Promise((resolve) => {
+      const child = spawn(process.execPath, ['scripts/capture-snapshot-closure.mjs', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.once('error', (error) => resolve({ code: null, error, stderr, stdout }));
+      child.once('close', (code) => resolve({ code, stderr, stdout }));
+    });
+    const writeScenario = async (label, runnerSource, transportSource, locator) => {
+      const directory = join(root, label), publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures'), registryDir = join(directory, 'registry'), caseId = `RW-AUTHORITY-LEASE-${label.toUpperCase()}`;
+      await mkdir(publicDir, { recursive: true }); await mkdir(fixtureDir, { recursive: true }); await mkdir(registryDir, { recursive: true });
+      const fixture = { closure_version: 'snapshot-closure-v1', entry_url: locator, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [leaseProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      fixture.manifest_digest = snapshotClosureDigest(fixture);
+      const casePath = join(publicDir, `${label}.json`);
+      await writeFile(casePath, `${canonicalize({ case_id: caseId, canonical_locator: locator, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript })}\n`);
+      await writeFile(join(fixtureDir, `${caseId}.snapshot-closure.json`), `${canonicalize(fixture)}\n`);
+      const runnerPath = join(registryDir, 'runner.mjs'), transportPath = join(registryDir, 'transport.mjs'), registryPath = join(registryDir, 'capture-registry.json');
+      await writeFile(runnerPath, runnerSource); await writeFile(transportPath, transportSource);
+      const manifest = { registry_version: 'snapshot-capture-registry-v1', entries: [{ case_id: caseId, task_script_digest: taskDigest, runner_path: 'runner.mjs', runner_digest: sha(Buffer.from(runnerSource)), runner_module_closure: [{ relative_path: 'runner.mjs', raw_sha256: sha(Buffer.from(runnerSource)) }], transport_path: 'transport.mjs', transport_digest: sha(Buffer.from(transportSource)), transport_module_closure: [{ relative_path: 'transport.mjs', raw_sha256: sha(Buffer.from(transportSource)) }] }], registry_digest: '' };
+      manifest.registry_digest = captureRegistryDigest(manifest); await writeFile(registryPath, `${canonicalize(manifest)}\n`);
+      return { casePath, registryPath, casPath: join(directory, 'cas'), outputPath: join(directory, 'output.json') };
+    };
+    const transportPrelude = "const headers=response=>[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')}));";
+    const verifyScenario = async (label, sources, expectedPaths, expectedRecords) => {
+      const paths = await writeScenario(label, sources.runner, sources.transport, sources.locator), before = await stageNames();requests.length = 0;
+      const result = await runNodeCli(['--case', paths.casePath, '--registry', paths.registryPath, '--cas', paths.casPath, '--output', paths.outputPath]);
+      let wrapper; try { wrapper = JSON.parse(await readFile(paths.outputPath, 'utf8')); } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (result.code !== 0 || wrapper?.completeness_status !== 'complete' || wrapper?.run_status !== 'completed') issues.push(`${label}-not-complete:${result.code}`);
+      if (JSON.stringify(requests) !== JSON.stringify(expectedPaths)) issues.push(`${label}-unexpected-target-requests:${requests.join(',')}`);
+      if (wrapper?.closure?.network_records?.length !== expectedRecords) issues.push(`${label}-network-record-count:${wrapper?.closure?.network_records?.length}`);
+      if (/unhandled(?:Promise)?Rejection/i.test(result.stderr)) issues.push(`${label}-unhandled-rejection`);
+      if (wrapper?.closure) {
+        const diskCas = { async get(locator) { try { return await readFile(join(paths.casPath, locator.slice(4))); } catch { return null; } } };
+        try { const replay = await replayClosure(wrapper.closure, diskCas); if (replay.run_status !== 'completed' || replay.live_network_events !== 0) issues.push(`${label}-replay-invalid`); } catch { issues.push(`${label}-replay-failed`); }
+      }
+      const after = await stageNames(), residual = [...after].filter((name) => !before.has(name));if (residual.length) issues.push(`${label}-stage-residue:${residual.length}`);await Promise.all(residual.map((name) => rm(join(tmpdir(), name), { recursive: true, force: true })));
+    };
+    try {
+      const singleRunner = `const target=${JSON.stringify(`${origin}/registered`)};export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:target});await new Promise(resolve=>setTimeout(resolve,80));await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+      const singleTransport = `${transportPrelude}export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());setTimeout(()=>{void fetch(new URL('/late-unrecorded',url)).catch(()=>{});},0);return{status:response.status,final_url:url,headers:headers(response),body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n`;
+      await verifyScenario('single', { runner: singleRunner, transport: singleTransport, locator: `${origin}/registered` }, ['/registered'], 1);
+
+      const overlapRunner = `const origin=${JSON.stringify(origin)};export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const [fast,slow]=await Promise.all([request({method:'GET',url:origin+'/fast'}),request({method:'GET',url:origin+'/slow'})]);await observe({evidence_kind:'dom_snapshot',handle:fast.observation_handles[0]});await observe({evidence_kind:'dom_snapshot',handle:slow.observation_handles[0]});});}\n`;
+      const overlapTransport = `${transportPrelude}export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());if(url.endsWith('/fast'))setTimeout(()=>{void fetch(new URL('/late-unrecorded',url)).catch(()=>{});},20);return{status:response.status,final_url:url,headers:headers(response),body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n`;
+      await verifyScenario('overlap', { runner: overlapRunner, transport: overlapTransport, locator: `${origin}/fast` }, ['/fast', '/slow'], 2);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_AUTHORITY_LEASE_RED:${issues.join(',')}`);
+  });
 }
