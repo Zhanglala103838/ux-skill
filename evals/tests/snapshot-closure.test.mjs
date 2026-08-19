@@ -1180,4 +1180,94 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
     }
     assert.deepEqual(issues, [], `TASK9_PACKAGED_CLI_RED:${issues.join(',')}`);
   });
+
+  test('TASK9_MODULE_AUTHORITY_RED', async () => {
+    const issues = [], requests = [];
+    const server = createServer((request, response) => {
+      requests.push(request.url);
+      response.writeHead(200, { 'content-type': 'text/plain', 'x-authority-route': request.url });
+      response.end(request.url);
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const origin = `http://127.0.0.1:${server.address().port}`, root = await mkdtemp(join(tmpdir(), 'task9-module-authority-red-'));
+    const stageNames = async () => new Set((await readdir(tmpdir())).filter((name) => name.startsWith('ux-skill-runner-') || name.startsWith('ux-skill-transport-')));
+    const pathExists = async (path) => { try { await access(path); return true; } catch { return false; } };
+    const runNodeCli = (arguments_) => new Promise((resolve) => {
+      const child = spawn(process.execPath, ['scripts/capture-snapshot-closure.mjs', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.once('error', (error) => resolve({ code: null, error, stderr, stdout }));
+      child.once('close', (code) => resolve({ code, stderr, stdout }));
+    });
+    const authorityProfile = profile('module-authority-profile', { browser_engine_digest: d('8') });
+    const taskScript = { task_script_id: 'module-authority-v1', steps: [{ step_id: 'visit', instruction: 'Use registered request capability.', required_replay_profile_ids: [authorityProfile.replay_profile_id] }] };
+    const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
+    const writeCase = async (directory, caseId, locator) => {
+      const publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures');
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      const fixture = { closure_version: 'snapshot-closure-v1', entry_url: locator, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [authorityProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      fixture.manifest_digest = snapshotClosureDigest(fixture);
+      const casePath = join(publicDir, `${caseId}.json`);
+      await writeFile(casePath, `${canonicalize({ case_id: caseId, canonical_locator: locator, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript })}\n`);
+      await writeFile(join(fixtureDir, `${caseId}.snapshot-closure.json`), `${canonicalize(fixture)}\n`);
+      return casePath;
+    };
+    const runnerSource = `const target=${JSON.stringify(`${origin}/selected`)};export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:target});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+    const transportFunction = "export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());return{status:response.status,final_url:url,headers:[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')})),body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
+    const writeRegistry = async (directory, specifications) => {
+      await mkdir(directory, { recursive: true });
+      const entries = [];
+      for (const specification of specifications) {
+        const runnerPath = `${specification.prefix}-runner.mjs`, transportPath = `${specification.prefix}-transport.mjs`;
+        await writeFile(join(directory, runnerPath), specification.runnerSource);
+        await writeFile(join(directory, transportPath), specification.transportSource);
+        entries.push({ case_id: specification.caseId, task_script_digest: taskDigest, runner_path: runnerPath, runner_digest: sha(Buffer.from(specification.runnerSource)), runner_module_closure: [{ relative_path: runnerPath, raw_sha256: sha(Buffer.from(specification.runnerSource)) }], transport_path: transportPath, transport_digest: sha(Buffer.from(specification.transportSource)), transport_module_closure: [{ relative_path: transportPath, raw_sha256: sha(Buffer.from(specification.transportSource)) }] });
+      }
+      entries.sort((left, right) => Buffer.compare(Buffer.from(canonicalize([left.case_id, left.task_script_digest])), Buffer.from(canonicalize([right.case_id, right.task_script_digest]))));
+      const manifest = { registry_version: 'snapshot-capture-registry-v1', entries, registry_digest: '' };
+      manifest.registry_digest = captureRegistryDigest(manifest);
+      const registryPath = join(directory, 'capture-registry.json');
+      await writeFile(registryPath, `${canonicalize(manifest)}\n`);
+      return registryPath;
+    };
+    const assertNoStageResidue = async (before, label) => {
+      const after = await stageNames(), residual = [...after].filter((name) => !before.has(name));
+      if (residual.length) issues.push(`${label}-stage-residue:${residual.length}`);
+      await Promise.all(residual.map((name) => rm(join(tmpdir(), name), { recursive: true, force: true })));
+    };
+    try {
+      const invalidRoot = join(root, 'invalid-selected'), invalidCaseId = 'RW-MODULE-AUTHORITY-INVALID', invalidCasePath = await writeCase(invalidRoot, invalidCaseId, `${origin}/selected`);
+      const invalidTransport = `await fetch(${JSON.stringify(`${origin}/unexpected`)});export const notRequest=true;\n`;
+      const invalidRegistry = await writeRegistry(join(invalidRoot, 'registry'), [{ caseId: invalidCaseId, prefix: 'invalid', runnerSource, transportSource: invalidTransport }]);
+      const invalidCas = join(invalidRoot, 'cas'), invalidOutput = join(invalidRoot, 'output.json'), beforeInvalid = await stageNames();
+      requests.length = 0;
+      const invalid = await runNodeCli(['--case', invalidCasePath, '--registry', invalidRegistry, '--cas', invalidCas, '--output', invalidOutput]);
+      let invalidWrapper; try { invalidWrapper = JSON.parse(await readFile(invalidOutput, 'utf8')); } catch {}
+      if (invalid.code !== 2 || invalidWrapper?.closure !== null || invalidWrapper?.completeness_status !== 'incomplete' || invalidWrapper?.run_status !== 'target_unavailable' || invalidWrapper?.release_gate !== 'no_release') issues.push(`invalid-registry-not-closed:${invalid.code}`);
+      if (requests.length) issues.push(`invalid-registry-touched-target:${requests.join(',')}`);
+      if (await pathExists(invalidCas)) issues.push('invalid-registry-touched-cas');
+      await assertNoStageResidue(beforeInvalid, 'invalid-registry');
+
+      const selectedRoot = join(root, 'unselected-entry'), selectedCaseId = 'RW-MODULE-AUTHORITY-SELECTED', unselectedCaseId = 'RW-MODULE-AUTHORITY-UNSELECTED', selectedCasePath = await writeCase(selectedRoot, selectedCaseId, `${origin}/selected`);
+      const unselectedTransport = `await fetch(${JSON.stringify(`${origin}/unselected`)});${transportFunction}`;
+      const selectedRegistry = await writeRegistry(join(selectedRoot, 'registry'), [
+        { caseId: selectedCaseId, prefix: 'selected', runnerSource, transportSource: transportFunction },
+        { caseId: unselectedCaseId, prefix: 'unselected', runnerSource, transportSource: unselectedTransport },
+      ]);
+      const selectedCas = join(selectedRoot, 'cas'), selectedOutput = join(selectedRoot, 'output.json'), beforeSelected = await stageNames();
+      requests.length = 0;
+      const selected = await runNodeCli(['--case', selectedCasePath, '--registry', selectedRegistry, '--cas', selectedCas, '--output', selectedOutput]);
+      let selectedWrapper; try { selectedWrapper = JSON.parse(await readFile(selectedOutput, 'utf8')); } catch {}
+      if (selected.code !== 0 || selectedWrapper?.completeness_status !== 'complete') issues.push(`selected-entry-not-complete:${selected.code}`);
+      if (requests.includes('/unselected')) issues.push('unselected-entry-executed');
+      if (!requests.includes('/selected')) issues.push('selected-entry-not-executed');
+      await assertNoStageResidue(beforeSelected, 'selected-entry');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_MODULE_AUTHORITY_RED:${issues.join(',')}`);
+  });
 }
