@@ -13,7 +13,6 @@ const MAX_SNAPSHOT_BYTES=1_048_576;
 const MAX_DEPTH=64;
 const MAX_NODES=8_192;
 const MAX_STRING_BYTES=1_048_576;
-const MAX_MEMBERS=4_096;
 const TRANSPORT_STATUSES=new Set(['ok','invalid_request','auth_error','timeout','server_error','cancelled']);
 const CONTRACT_KEYS=['adapter_contract_id','component_identity','evidence_scope','npm_integrity','prohibited_claims','provider_namespace','repository_commit','request','server_package','server_version','source_artifact','tool_name'];
 const RESULT_KEYS=['transport_status','isError','content','structuredContent'];
@@ -68,7 +67,7 @@ const preflight=(root)=>{
   seen.add(value);
   if(Array.isArray(value)){
    if(Object.getPrototypeOf(value)!==Array.prototype)fail('IJSON_NON_PLAIN_OBJECT');
-   if(value.length>MAX_MEMBERS)fail('IJSON_MEMBER_LIMIT');
+   if(state.nodes+stack.length+value.length>MAX_NODES)fail('IJSON_NODE_LIMIT');
    const keys=Reflect.ownKeys(value);
    if(keys.length!==value.length+1)fail('IJSON_NON_JSON_PROPERTY');
    addBytes(state,2+(value.length>0?value.length-1:0));
@@ -85,7 +84,7 @@ const preflight=(root)=>{
   }
   if(Object.getPrototypeOf(value)!==Object.prototype)fail('IJSON_NON_PLAIN_OBJECT');
   const keys=Reflect.ownKeys(value);
-  if(keys.length>MAX_MEMBERS)fail('IJSON_MEMBER_LIMIT');
+  if(state.nodes+stack.length+keys.length>MAX_NODES)fail('IJSON_NODE_LIMIT');
   addBytes(state,2+(keys.length>0?keys.length-1:0));
   for(const key of keys){
    if(typeof key!=='string'||!stringValid(key,{empty:true}))fail('IJSON_NON_JSON_PROPERTY');
@@ -132,7 +131,7 @@ const exactKeys=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isAr
 const canonicalRelativePath=(value)=>{
  if(typeof value!=='string'||!isScalarString(value)||value.normalize('NFC')!==value)return false;
  const totalBytes=Buffer.byteLength(value,'utf8');
- if(totalBytes<1||totalBytes>100||!/^[\x20-\x7e]+$/u.test(value))return false;
+ if(totalBytes<1||totalBytes>100||/[\u0000-\u001f\u007f-\u009f]/u.test(value))return false;
  if(value.includes('\\')||/%2f|%5c/iu.test(value)||value.startsWith('/')||value.endsWith('/')||value.includes('//'))return false;
  const segments=value.split('/');
  for(let index=0;index<segments.length;index+=1){
