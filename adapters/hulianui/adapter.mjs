@@ -24,9 +24,7 @@ const isScalarString=(value)=>{
 const stringValid=(value,{empty=false}={})=>typeof value==='string'&&(empty||value.length>0)&&isScalarString(value)&&value.normalize('NFC')===value;
 const exactKeys=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every((key)=>Object.hasOwn(value,key));
 const safeArray=()=>{
- const result=[];Object.setPrototypeOf(result,null);
- Object.defineProperties(result,{toJSON:{value:undefined,enumerable:false},forEach:{value:Array.prototype.forEach,enumerable:false},map:{value:Array.prototype.map,enumerable:false}});
- return result;
+ const result=[];Object.setPrototypeOf(result,null);return result;
 };
 const snapshot=(value,active=new WeakSet())=>{
  if(value===null||typeof value==='boolean')return value;
@@ -56,20 +54,31 @@ const snapshot=(value,active=new WeakSet())=>{
   return result;
  }finally{active.delete(value);}
 };
-const jcs=(value)=>Buffer.from(canonicalize(value),'utf8');
+const trustedJson=(value)=>{
+ if(Array.isArray(value)){const result=[];for(let index=0;index<value.length;index+=1)result.push(trustedJson(value[index]));return result;}
+ if(value!==null&&typeof value==='object'){const result=Object.create(null);for(const key of Object.keys(value))result[key]=trustedJson(value[key]);return result;}
+ return value;
+};
+const jcs=(value)=>Buffer.from(canonicalize(trustedJson(value)),'utf8');
 const contractSnapshot=(contract)=>{
  const value=snapshot(contract);
  if(!exactKeys(value,CONTRACT_KEYS))fail('ADAPTER_CONTRACT_INVALID');
  if(createHash('sha256').update(jcs(value)).digest('hex')!==CONTRACT_DIGEST)fail('ADAPTER_CONTRACT_INVALID');
  return value;
 };
-const stringArray=(value)=>Array.isArray(value)&&value.length<=MAX_COLLECTION_ITEMS&&value.every((item)=>stringValid(item));
+const everyIndexed=(value,predicate)=>{
+ if(!Array.isArray(value)||value.length>MAX_COLLECTION_ITEMS)return false;
+ for(let index=0;index<value.length;index+=1)if(!predicate(value[index]))return false;
+ return true;
+};
+const stringArray=(value)=>everyIndexed(value,(item)=>stringValid(item));
 const sourceValid=(value)=>exactKeys(value,SOURCE_KEYS)&&stringValid(value.path)&&stringValid(value.sha256)&&/^[0-9a-f]{64}$/.test(value.sha256)&&stringValid(value.version);
 const memberValid=(value)=>exactKeys(value,MEMBER_KEYS)&&stringValid(value.owner)&&stringValid(value.name)&&stringValid(value.kind)&&typeof value.required==='boolean'&&(value.description===null||stringValid(value.description,{empty:true}));
-const memberArray=(value)=>Array.isArray(value)&&value.length<=MAX_COLLECTION_ITEMS&&value.every(memberValid);
+const memberArray=(value)=>everyIndexed(value,memberValid);
 const componentValid=(value)=>exactKeys(value,COMPONENT_KEYS)&&stringValid(value.name)&&stringValid(value.slug)&&stringValid(value.category)&&stringValid(value.import,{empty:true})&&stringArray(value.exports)&&memberArray(value.props)&&memberArray(value.events)&&memberArray(value.slots);
-const documentValid=(value)=>exactKeys(value,DOCUMENT_KEYS)&&sourceValid(value.source_artifact)&&Array.isArray(value.components)&&value.components.length<=MAX_COLLECTION_ITEMS&&value.components.every(componentValid)&&stringArray(value.missing)&&(value.versionSkew===null||stringValid(value.versionSkew))&&typeof value.stale==='boolean'&&stringArray(value.fallbacks);
-const contentValid=(value)=>Array.isArray(value)&&value.length<=MAX_COLLECTION_ITEMS&&value.every((item)=>exactKeys(item,['type','text'])&&item.type==='text'&&stringValid(item.text,{empty:true}));
+const componentArray=(value)=>everyIndexed(value,componentValid);
+const documentValid=(value)=>exactKeys(value,DOCUMENT_KEYS)&&sourceValid(value.source_artifact)&&componentArray(value.components)&&stringArray(value.missing)&&(value.versionSkew===null||stringValid(value.versionSkew))&&typeof value.stale==='boolean'&&stringArray(value.fallbacks);
+const contentValid=(value)=>everyIndexed(value,(item)=>exactKeys(item,['type','text'])&&item.type==='text'&&stringValid(item.text,{empty:true}));
 const resultSnapshot=(result)=>{
  const value=snapshot(result);
  if(jcs(value).length>MAX_RESULT_BYTES)fail('ADAPTER_RESULT_OVERSIZE');
@@ -97,7 +106,9 @@ const inspect=(result,contract)=>{
  return{status:'server_error'};
 };
 const canonicalSet=(items,keyOf)=>{
- const entries=items.map((item)=>({item,key:jcs(keyOf(item)),bytes:jcs(item)})).sort((left,right)=>Buffer.compare(left.key,right.key));
+ const entries=[];
+ for(let index=0;index<items.length;index+=1){const item=items[index];entries.push({item,key:jcs(keyOf(item)),bytes:jcs(item)});}
+ entries.sort((left,right)=>Buffer.compare(left.key,right.key));
  const result=[];let previous=null;
  for(const entry of entries){
   if(previous&&entry.key.equals(previous.key)){if(entry.bytes.equals(previous.bytes))continue;fail('DUPLICATE_ID_CONFLICT');}
@@ -106,7 +117,8 @@ const canonicalSet=(items,keyOf)=>{
  return result;
 };
 const memberCopy=(item)=>({owner:item.owner,name:item.name,kind:item.kind,required:item.required,description:item.description});
-const memberSet=(items)=>canonicalSet(items.map(memberCopy),(item)=>[item.owner,item.name,item.kind]);
+const memberSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(memberCopy(items[index]));return canonicalSet(copies,(item)=>[item.owner,item.name,item.kind]);};
+const stringSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(items[index]);return canonicalSet(copies,(item)=>item);};
 
 export const classifyHulianResult=(result,contract)=>inspect(result,contract).status;
 
@@ -119,7 +131,7 @@ export const mapHulianComponentDoc=(result,contract)=>{
  return{
   component_identity:{category:checked.contract.component_identity.category,name:checked.contract.component_identity.name,slug:checked.contract.component_identity.slug},
   events:memberSet(component.events),
-  exports:canonicalSet(component.exports.map((item)=>item),(item)=>item),
+  exports:stringSet(component.exports),
   import:component.import,
   props:memberSet(component.props),
   slots:memberSet(component.slots),
