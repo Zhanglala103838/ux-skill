@@ -159,9 +159,10 @@ export async function replayClosure(input,cas){
 const CLI_ISSUE=Object.freeze({code:'RULE_EVALUATION_ERROR',instance_pointer:'/snapshot_closure',dependency_id:null});
 const cliUnavailable=(closure=null)=>({closure,completeness_status:'incomplete',run_status:'target_unavailable',release_gate:'no_release',run_issues:[CLI_ISSUE]});
 const parseCli=(argv)=>{
+  if(argv[0]==='--')argv=argv.slice(1);
   const values=new Map();
-  for(let index=0;index<argv.length;index+=2){const flag=argv[index],value=argv[index+1];if(!['--case','--cas','--output'].includes(flag)||typeof value!=='string'||values.has(flag))throw E('CLI_INPUT_INVALID');values.set(flag,value)}
-  if(values.size!==3)throw E('CLI_INPUT_INVALID');return{casePath:resolve(values.get('--case')),casPath:resolve(values.get('--cas')),outputPath:resolve(values.get('--output'))};
+  for(let index=0;index<argv.length;index+=2){const flag=argv[index],value=argv[index+1];if(!['--case','--registry','--cas','--output'].includes(flag)||typeof value!=='string'||value.startsWith('--')||values.has(flag))throw E('CLI_INPUT_INVALID');values.set(flag,value)}
+  if(!values.has('--case')||!values.has('--cas')||!values.has('--output'))throw E('CLI_INPUT_INVALID');return{casePath:resolve(values.get('--case')),registryPath:values.has('--registry')?resolve(values.get('--registry')):null,casPath:resolve(values.get('--cas')),outputPath:resolve(values.get('--output'))};
 };
 const safeCasName=locator=>{const match=/^cas\/([0-9a-f]{64})$/.exec(locator);if(!match)throw E('CAS_LOCATOR_INVALID');return match[1]};
 const fileCas=async(rootInput)=>{
@@ -288,7 +289,7 @@ const taskRunnerDriver=(cas,profiles,registration)=>{
 };
 export async function runCaptureCli(argv=process.argv.slice(2),dependencies={}){
   let options;try{options=parseCli(argv)}catch{return 64}let wrapper=cliUnavailable(),invocation;
-  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),state=registryState.get(dependencies?.registry),registration=state?.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');invocation=await loadInvocation(registration);const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,invocation),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}finally{if(invocation)await disposeInvocation(invocation)}
+  try{const registry=dependencies?.registry??(options.registryPath?await createCaptureRegistry(options.registryPath):null),state=registryState.get(registry);if(!state)throw E('TASK_RUNNER_UNAVAILABLE');const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),registration=state.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');invocation=await loadInvocation(registration);const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,invocation),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}finally{if(invocation)await disposeInvocation(invocation)}
   try{await writeJsonAtomic(options.outputPath,wrapper)}catch{return 74}return wrapper.run_status==='completed'?0:2;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)process.exitCode=await runCaptureCli();

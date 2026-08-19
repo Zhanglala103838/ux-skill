@@ -1102,8 +1102,10 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
     });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     const origin = `http://127.0.0.1:${server.address().port}`, root = await mkdtemp(join(tmpdir(), 'task9-packaged-cli-red-'));
-    const runPackageCli = (arguments_) => new Promise((resolve) => {
-      const child = spawn('pnpm', ['capture:closure', '--', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const runCli = (arguments_, packaged = false) => new Promise((resolve) => {
+      const child = packaged
+        ? spawn('pnpm', ['capture:closure', '--', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] })
+        : spawn(process.execPath, ['scripts/capture-snapshot-closure.mjs', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '', stderr = '';
       child.stdout.on('data', (chunk) => { stdout += chunk; });
       child.stderr.on('data', (chunk) => { stderr += chunk; });
@@ -1140,7 +1142,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
 
       const positiveCas = join(root, 'cas-positive'), positiveOutput = join(root, 'output-positive.json');
       requestedPaths.length = 0;
-      const positive = await runPackageCli(['--case', casePath, '--registry', registryPath, '--cas', positiveCas, '--output', positiveOutput]), positiveWrapper = await readWrapper(positiveOutput);
+      const positive = await runCli(['--case', casePath, '--registry', registryPath, '--cas', positiveCas, '--output', positiveOutput], true), positiveWrapper = await readWrapper(positiveOutput);
       if (positive.code !== 0 || positiveWrapper?.completeness_status !== 'complete' || positiveWrapper?.run_status !== 'completed' || positiveWrapper?.release_gate !== 'no_release') issues.push(`packaged-positive-not-complete:${positive.code}`);
       if (requestedPaths.join(',') !== '/one,/two') issues.push(`packaged-positive-steps:${requestedPaths.join(',')}`);
       if (positiveWrapper?.closure) {
@@ -1154,7 +1156,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       const negative = async (label, arguments_, expectedCode) => {
         const casPath = join(root, `cas-${label}`), outputPath = join(root, `output-${label}.json`);
         requestedPaths.length = 0;
-        const result = await runPackageCli([...arguments_, '--cas', casPath, '--output', outputPath]), wrapper = await readWrapper(outputPath);
+        const result = await runCli([...arguments_, '--cas', casPath, '--output', outputPath]), wrapper = await readWrapper(outputPath);
         if (result.code !== expectedCode) issues.push(`${label}-exit:${result.code}`);
         if (expectedCode === 2 && !isClosed(wrapper)) issues.push(`${label}-wrapper-not-closed`);
         if (requestedPaths.length !== 0) issues.push(`${label}-touched-target`);
@@ -1169,7 +1171,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
 
       const unknownCas = join(root, 'cas-unknown'), unknownOutput = join(root, 'output-unknown.json');
       requestedPaths.length = 0;
-      const unknown = await runPackageCli(['--case', casePath, '--registry', registryPath, '--cas', unknownCas, '--output', unknownOutput, '--unknown', 'value']);
+      const unknown = await runCli(['--case', casePath, '--registry', registryPath, '--cas', unknownCas, '--output', unknownOutput, '--unknown', 'value']);
       if (unknown.code !== 64) issues.push(`unknown-arg-exit:${unknown.code}`);
       if (requestedPaths.length !== 0 || await pathExists(unknownCas)) issues.push('unknown-arg-touched-target-or-cas');
     } finally {
