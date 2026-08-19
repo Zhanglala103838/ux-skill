@@ -1089,4 +1089,93 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
     }
     assert.deepEqual(issues, [], `TASK9_STAGE_LIFECYCLE_RED:${issues.join(',')}`);
   });
+
+  test('TASK9_PACKAGED_CLI_RED', async () => {
+    const issues = [];
+    const requestedPaths = [];
+    const server = createServer((request, response) => {
+      requestedPaths.push(request.url);
+      const bodies = { '/one': '<main>CLI_STEP_ONE</main>', '/two': '<main>CLI_STEP_TWO</main>' };
+      const body = bodies[request.url] ?? '<main>NOT_FOUND</main>';
+      response.writeHead(bodies[request.url] ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'x-cli-route': request.url });
+      response.end(body);
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const origin = `http://127.0.0.1:${server.address().port}`, root = await mkdtemp(join(tmpdir(), 'task9-packaged-cli-red-'));
+    const runPackageCli = (arguments_) => new Promise((resolve) => {
+      const child = spawn('pnpm', ['capture:closure', '--', ...arguments_], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.once('error', (error) => resolve({ code: null, error, stderr, stdout }));
+      child.once('close', (code) => resolve({ code, stderr, stdout }));
+    });
+    const readWrapper = async (outputPath) => { try { return JSON.parse(await readFile(outputPath, 'utf8')); } catch { return null; } };
+    const isClosed = (wrapper) => wrapper?.closure === null && wrapper?.completeness_status === 'incomplete' && wrapper?.run_status === 'target_unavailable' && wrapper?.release_gate === 'no_release' && Array.isArray(wrapper?.run_issues) && wrapper.run_issues.length > 0;
+    const pathExists = async (path) => { try { await access(path); return true; } catch { return false; } };
+    try {
+      const publicDir = join(root, 'evals', 'public-cases'), fixtureDir = join(root, 'evals', 'fixtures'), registryDir = join(root, 'registry');
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      await mkdir(registryDir, { recursive: true });
+      const cliProfile = profile('packaged-cli-profile', { browser_engine_digest: d('9') });
+      const taskScript = { task_script_id: 'packaged-cli-v1', steps: [
+        { step_id: 'visit-one', instruction: 'Use registered route one.', required_replay_profile_ids: [cliProfile.replay_profile_id] },
+        { step_id: 'visit-two', instruction: 'Use registered route two.', required_replay_profile_ids: [cliProfile.replay_profile_id] },
+      ] };
+      const taskDigest = sha(Buffer.from(canonicalize(taskScript))), caseId = 'RW-PACKAGED-CLI-001';
+      const fixture = { closure_version: 'snapshot-closure-v1', entry_url: `${origin}/one`, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [cliProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      fixture.manifest_digest = snapshotClosureDigest(fixture);
+      const casePath = join(publicDir, 'packaged-cli.json'), caseManifest = { case_id: caseId, canonical_locator: `${origin}/one`, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript };
+      await writeFile(casePath, `${canonicalize(caseManifest)}\n`);
+      await writeFile(join(fixtureDir, `${caseId}.snapshot-closure.json`), `${canonicalize(fixture)}\n`);
+      const runnerSource = `const origin=${JSON.stringify(origin)};export async function run({profiles,steps,executeStep}){for(const step of steps){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:step.step_id},async({request,observe})=>{const response=await request({method:'GET',url:origin+(step.step_id==='visit-one'?'/one':'/two')});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}}\n`;
+      const transportSource = "const headers=response=>[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')}));export async function request({method,url}){const response=await fetch(url,{method,redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());return{status:response.status,final_url:url,headers:headers(response),body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
+      const runnerPath = join(registryDir, 'runner.mjs'), transportPath = join(registryDir, 'transport.mjs'), registryPath = join(registryDir, 'capture-registry.json');
+      await writeFile(runnerPath, runnerSource);
+      await writeFile(transportPath, transportSource);
+      const registryManifest = { registry_version: 'snapshot-capture-registry-v1', entries: [{ case_id: caseId, task_script_digest: taskDigest, runner_path: 'runner.mjs', runner_digest: sha(Buffer.from(runnerSource)), runner_module_closure: [{ relative_path: 'runner.mjs', raw_sha256: sha(Buffer.from(runnerSource)) }], transport_path: 'transport.mjs', transport_digest: sha(Buffer.from(transportSource)), transport_module_closure: [{ relative_path: 'transport.mjs', raw_sha256: sha(Buffer.from(transportSource)) }] }], registry_digest: '' };
+      registryManifest.registry_digest = captureRegistryDigest(registryManifest);
+      await writeFile(registryPath, `${canonicalize(registryManifest)}\n`);
+
+      const positiveCas = join(root, 'cas-positive'), positiveOutput = join(root, 'output-positive.json');
+      requestedPaths.length = 0;
+      const positive = await runPackageCli(['--case', casePath, '--registry', registryPath, '--cas', positiveCas, '--output', positiveOutput]), positiveWrapper = await readWrapper(positiveOutput);
+      if (positive.code !== 0 || positiveWrapper?.completeness_status !== 'complete' || positiveWrapper?.run_status !== 'completed' || positiveWrapper?.release_gate !== 'no_release') issues.push(`packaged-positive-not-complete:${positive.code}`);
+      if (requestedPaths.join(',') !== '/one,/two') issues.push(`packaged-positive-steps:${requestedPaths.join(',')}`);
+      if (positiveWrapper?.closure) {
+        const diskCas = { async get(locator) { try { return await readFile(join(positiveCas, locator.slice(4))); } catch { return null; } } };
+        try { const replay = await replayClosure(positiveWrapper.closure, diskCas); if (replay.run_status !== 'completed' || replay.live_network_events !== 0) issues.push('packaged-positive-replay-invalid'); } catch { issues.push('packaged-positive-not-replayable'); }
+        const observationBytes = [];
+        for (const row of positiveWrapper.closure.observation_records ?? []) { try { observationBytes.push(await readFile(join(positiveCas, row.content_addressed_artifact_locator.slice(4)), 'utf8')); } catch {} }
+        if (!observationBytes.some((value) => value.includes('CLI_STEP_ONE')) || !observationBytes.some((value) => value.includes('CLI_STEP_TWO'))) issues.push('packaged-positive-artifacts-missing');
+      }
+
+      const negative = async (label, arguments_, expectedCode) => {
+        const casPath = join(root, `cas-${label}`), outputPath = join(root, `output-${label}.json`);
+        requestedPaths.length = 0;
+        const result = await runPackageCli([...arguments_, '--cas', casPath, '--output', outputPath]), wrapper = await readWrapper(outputPath);
+        if (result.code !== expectedCode) issues.push(`${label}-exit:${result.code}`);
+        if (expectedCode === 2 && !isClosed(wrapper)) issues.push(`${label}-wrapper-not-closed`);
+        if (requestedPaths.length !== 0) issues.push(`${label}-touched-target`);
+        if (await pathExists(casPath)) issues.push(`${label}-touched-cas`);
+      };
+      await negative('missing-registry', ['--case', casePath], 2);
+      const malformedRegistry = join(root, 'malformed-registry.json');
+      await writeFile(malformedRegistry, '{not-json\n');
+      await negative('malformed-registry', ['--case', casePath, '--registry', malformedRegistry], 2);
+      await writeFile(transportPath, `${transportSource}// CHANGED_AFTER_MANIFEST\n`);
+      await negative('changed-registry', ['--case', casePath, '--registry', registryPath], 2);
+
+      const unknownCas = join(root, 'cas-unknown'), unknownOutput = join(root, 'output-unknown.json');
+      requestedPaths.length = 0;
+      const unknown = await runPackageCli(['--case', casePath, '--registry', registryPath, '--cas', unknownCas, '--output', unknownOutput, '--unknown', 'value']);
+      if (unknown.code !== 64) issues.push(`unknown-arg-exit:${unknown.code}`);
+      if (requestedPaths.length !== 0 || await pathExists(unknownCas)) issues.push('unknown-arg-touched-target-or-cas');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_PACKAGED_CLI_RED:${issues.join(',')}`);
+  });
 }
