@@ -133,8 +133,10 @@ if (importFailure) {
         task_script_digest: taskScriptDigest,
         runner_path: 'runner.mjs',
         runner_digest: sha(Buffer.from(runnerSource)),
+        runner_module_closure: [{ relative_path: 'runner.mjs', raw_sha256: sha(Buffer.from(runnerSource)) }],
         transport_path: 'transport.mjs',
         transport_digest: sha(Buffer.from(transportSource)),
+        transport_module_closure: [{ relative_path: 'transport.mjs', raw_sha256: sha(Buffer.from(transportSource)) }],
       }],
       registry_digest: '',
     };
@@ -884,7 +886,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
         [['runner.mjs', runnerEntry], ['runner-helper.mjs', activeRunnerHelper]],
         'transport.mjs',
         [['transport.mjs', transportEntry], ['transport-helper.mjs', activeTransportHelper]],
-        { caseId: localCase.case_id, taskDigest, withClosure: false },
+        { caseId: localCase.case_id, taskDigest },
       );
       let registry;
       try { registry = await createCaptureRegistry(race.manifestPath); } catch {}
