@@ -23,24 +23,50 @@ const findingContext=(overrides={})=>({
 });
 const emitExplicit=(evaluation,context)=>rawEmitFinding(evaluation,context);
 
-const fixtureIds=['AST-APP-FE-001','TOOL-MULTI-CANCEL-TIMEOUT-001','FIND-INC-001','EMISSION-REASON-001'];
-const loadFixture=async(id)=>JSON.parse(await readFile(new URL(`../red/${id}.json`,import.meta.url),'utf8'));
+const historicalFixtureIds=['AST-APP-FE-001','TOOL-MULTI-CANCEL-TIMEOUT-001','FIND-INC-001','EMISSION-REASON-001'];
+const currentFindingFixtureIds=['FIND-INC-002','EMISSION-REASON-002'];
+const loadHistoricalFixture=async(id)=>JSON.parse(await readFile(new URL(`../red/${id}.json`,import.meta.url),'utf8'));
+const loadCurrentFixture=async(id)=>JSON.parse(await readFile(new URL(`../fixtures/${id}.json`,import.meta.url),'utf8'));
 
 const fixtureRuleKeys=['dependency_trace','finding_type','outcome','reason_code','release_critical','rule_id','rule_version','run_issue','terminal','trace'];
 const fixtureContextKeys=['behavior_version','canonical_target_locator','claim_key','scenario_binding_ids','schema_version','target_snapshot_digest'];
-test('TASK5_FIXTURE_CONTRACT_RED four Task 5 vectors are executable and contract-linked',async()=>{
- for(const id of fixtureIds){
-  const vector=await loadFixture(id);
+const legacyMixedKeys=['behavior_version','canonical_target_locator','claim_key','finding_type','outcome','reason_code','release_critical','rule_id','rule_version','scenario_binding_ids','schema_version','target_snapshot_digest','terminal'];
+const legacyFindingParts=(row)=>({
+ evaluation:{
+  rule_id:row.rule_id,rule_version:row.rule_version,release_critical:row.release_critical,finding_type:row.finding_type,
+  terminal:row.terminal,outcome:row.outcome,reason_code:row.reason_code,trace:[],dependency_trace:[],run_issue:null
+ },
+ context:{
+  schema_version:row.schema_version,behavior_version:row.behavior_version,
+  canonical_target_locator:row.canonical_target_locator,target_snapshot_digest:row.target_snapshot_digest,
+  scenario_binding_ids:row.scenario_binding_ids,claim_key:row.claim_key
+ }
+});
+test('TASK5_FIXTURE_CONTRACT_RED versioned Finding fixtures preserve legacy and enforce current contract',async()=>{
+ for(const id of historicalFixtureIds){
+  const vector=await loadHistoricalFixture(id);
   assert.equal(vector.vector_id,id);
   assert.ok(Array.isArray(vector.contract_sections)&&vector.contract_sections.length>0);
   let actual;
   if(vector.operation==='evaluateRule')actual=state(evaluateRule(vector.rule,vector.input,vector.tool_results));
   else if(vector.operation==='emitFinding'){
-   assert.deepEqual(Object.keys(vector.rule_evaluation).sort(),fixtureRuleKeys);
-   assert.deepEqual(Object.keys(vector.finding_context).sort(),fixtureContextKeys);
-   const finding=rawEmitFinding(vector.rule_evaluation,vector.finding_context);
+   assert.equal(Object.hasOwn(vector,'finding_context'),false);
+   assert.deepEqual(Object.keys(vector.rule_evaluation).sort(),legacyMixedKeys);
+   const {evaluation,context}=legacyFindingParts(vector.rule_evaluation);
+   const finding=rawEmitFinding(evaluation,context);
    actual=finding===null?null:{finding_type:finding.finding_type,emission_reason_code:finding.emission_reason_code};
   }else assert.fail(`unsupported vector operation ${vector.operation}`);
+  assert.deepEqual(actual,vector.expected);
+ }
+ for(const id of currentFindingFixtureIds){
+  const vector=await loadCurrentFixture(id);
+  assert.equal(vector.vector_id,id);
+  assert.ok(Array.isArray(vector.contract_sections)&&vector.contract_sections.length>0);
+  assert.equal(vector.operation,'emitFinding');
+  assert.deepEqual(Object.keys(vector.rule_evaluation).sort(),fixtureRuleKeys);
+  assert.deepEqual(Object.keys(vector.finding_context).sort(),fixtureContextKeys);
+  const finding=rawEmitFinding(vector.rule_evaluation,vector.finding_context);
+  const actual=finding===null?null:{finding_type:finding.finding_type,emission_reason_code:finding.emission_reason_code};
   assert.deepEqual(actual,vector.expected);
  }
 });
