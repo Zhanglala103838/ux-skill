@@ -382,3 +382,62 @@ test('TASK5_RUN_ISSUE_CODE_RED closes public RunIssue code domain',async()=>{
   assert.equal(validateBySchema(schemaId,{...root,rule_evaluations:[{...nested,run_issue:unknownIssue}]}).ok,false,schemaId+' accepts unknown nested RunIssue');
  }
 });
+
+test('TASK5_INVALID_TERMINAL_BRANCH_RED closes invalid input and invalid rule producer rows',async()=>{
+ const [{default:Ajv2020},{evaluateRule},outputSchema,projectionSchema]=await Promise.all([
+  import('ajv/dist/2020.js'),
+  import('../../evaluator/rules-runtime.mjs'),
+  readFile(new URL('../../schemas/evaluator/output.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse)
+ ]);
+ assert.deepEqual(projectionSchema.$defs.RuleEvaluation,outputSchema.$defs.RuleEvaluation);
+ const baseRule={
+  rule_id:'task5-invalid-terminal',rule_version:'1.0.0',release_critical:true,finding_type:'usability',
+  required_dependencies:[],registered_input_pointers:['/target/enabled'],required_input_pointers:[],
+  applicability:{node_id:'app',op:'literal',value:true},exclusion:{node_id:'exc',op:'literal',value:false},
+  precondition:{node_id:'pre',op:'literal',value:true},check:{node_id:'check',op:'literal',value:true}
+ };
+ const rows=[
+  evaluateRule(baseRule,null,[]),
+  evaluateRule({...baseRule,applicability:{node_id:'bad-app',op:'script'}},{target:{}},[])
+ ];
+ assert.deepEqual(rows.map(({terminal,outcome,reason_code})=>({terminal,outcome,reason_code})),[
+  {terminal:'invalid_input',outcome:'evaluation_error',reason_code:'INVALID_INPUT'},
+  {terminal:'invalid_rule',outcome:'evaluation_error',reason_code:'INVALID_RULE'}
+ ]);
+ for(const row of rows){
+  assert.deepEqual(row.trace,[]);
+  assert.deepEqual(row.dependency_trace,[]);
+  assert.deepEqual(row.run_issue,{code:'RULE_EVALUATION_ERROR',instance_pointer:'',dependency_id:null});
+ }
+ const invalidBranches=outputSchema.$defs.RuleEvaluation.oneOf.filter((branch)=>['invalid_input','invalid_rule'].includes(branch.properties.terminal.const));
+ assert.deepEqual(invalidBranches.map((branch)=>branch.properties.terminal.const),['invalid_input','invalid_rule']);
+ for(const branch of invalidBranches){
+  assert.equal(branch.properties.trace.maxItems,0,branch.properties.terminal.const+' trace is not closed empty');
+  assert.equal(branch.properties.dependency_trace.maxItems,0,branch.properties.terminal.const+' dependency trace is not closed empty');
+ }
+ const traceItem={node_id:'tamper',parent_node_id:null,value:'T'};
+ const dependencyItem={dependency_id:'dependency-tamper',status:'success',complete:true};
+ const tamper=(row)=>[
+  ['trace',{...row,trace:[traceItem]}],
+  ['dependency_trace',{...row,dependency_trace:[dependencyItem]}],
+  ['instance_pointer',{...row,run_issue:{...row.run_issue,instance_pointer:'/check'}}],
+  ['dependency_id',{...row,run_issue:{...row.run_issue,dependency_id:'dependency-tamper'}}]
+ ];
+ const root=(schemaId,row)=>{
+  const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'a'.repeat(64),evaluator_digest:'b'.repeat(64),run_status:'failed',rule_evaluations:[row],findings:[],run_issues:[row.run_issue],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+  return schemaId==='EvaluationOutput'?{...common,validation_errors:[]}:{...common,semantic_digest:'c'.repeat(64)};
+ };
+ const ajv=new Ajv2020({strict:true,allErrors:true});
+ for(const [schemaId,schema] of [['EvaluationOutput',outputSchema],['SemanticProjection',projectionSchema]]){
+  const validate=ajv.compile({$schema:schema.$schema,$defs:schema.$defs,$ref:'#/$defs/RuleEvaluation'});
+  for(const row of rows){
+   assert.equal(validate(row),true,schemaId+' rejects genuine '+row.terminal+': '+JSON.stringify(validate.errors));
+   assert.equal(validateBySchema(schemaId,root(schemaId,row)).ok,true,schemaId+' root rejects genuine '+row.terminal);
+   for(const [field,value] of tamper(row)){
+    assert.equal(validate(value),false,schemaId+' isolated accepts '+row.terminal+' '+field);
+    assert.equal(validateBySchema(schemaId,root(schemaId,value)).ok,false,schemaId+' root accepts '+row.terminal+' '+field);
+   }
+  }
+ }
+});
