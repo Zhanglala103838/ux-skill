@@ -75,7 +75,7 @@ export const snapshotClosureDigest=m=>{const v=snap(m);delete v.manifest_digest;
 export async function captureClosure(caseManifest,browser){
   if(!browser||typeof browser.capture!=='function'||!browser.cas||typeof browser.cas.put!=='function'||typeof browser.cas.get!=='function')throw E('CAPTURE_DRIVER_INVALID');
   const c=snap(caseManifest);if(!plain(c)||!c.case_id||!url(c.canonical_locator)||!plain(c.task_script))bad();const ts=task(snap(c.task_script));
-  let raw;try{raw=snap(await browser.capture(snap(c)))}catch(cause){throw Object.assign(E('CAPTURE_DRIVER_FAILED'),{cause})}
+  let captured;try{captured=await browser.capture(snap(c))}catch(cause){throw Object.assign(E('CAPTURE_DRIVER_FAILED'),{cause})}const raw=snap(captured)
   if(!plain(raw)||!dg(raw.capture_environment_digest)||typeof raw.captured_at!=='string'||!Number.isFinite(Date.parse(raw.captured_at))||typeof raw.authenticated!=='boolean'||!Array.isArray(raw.replay_profiles)||raw.replay_profiles.length<1||raw.replay_profiles.length>L.maxProfiles||!Array.isArray(raw.network_events)||raw.network_events.length>L.maxNetworkRecords||!Array.isArray(raw.observation_events)||raw.observation_events.length>L.maxObservationRecords||!Array.isArray(raw.outbound_effects)||!Array.isArray(raw.transport_events)||typeof raw.live_replay!=='boolean')bad();
   const state={incomplete:raw.authenticated||raw.live_replay||raw.outbound_effects.length>0,total:0},inc=()=>{state.incomplete=true},forbidden=new Set(['beacon','sse','websocket','download','login','cart','key_creation','api_effect']);
   for(const e of raw.transport_events){if(!plain(e)||typeof e.kind!=='string')bad();if(forbidden.has(e.kind))inc();else bad()}
