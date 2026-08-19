@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { validateBySchema } from '../../evaluator/validation.mjs';
 
 let closureApi;
 let importFailure;
@@ -16,7 +17,7 @@ if (importFailure) {
     assert.fail(`TASK9_SNAPSHOT_CLOSURE_RED:${importFailure?.code ?? importFailure?.name ?? 'IMPORT_FAILED'}`);
   });
 } else {
-  const { captureClosure, replayClosure } = closureApi;
+  const { captureClosure, replayClosure, snapshotClosureDigest } = closureApi;
   const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
   const b64 = (value) => Buffer.from(value).toString('base64');
   const d = (char) => char.repeat(64);
@@ -75,7 +76,7 @@ if (importFailure) {
     capture_environment_digest: d('b'),
     captured_at: '2026-08-18T06:03:22Z',
     authenticated: false,
-    replay_profiles: appleProfiles,
+    replay_profiles: structuredClone(appleProfiles),
     network_events: appleProfiles.map((row, index) => ({
       replay_profile_id: row.replay_profile_id,
       sequence: 0,
@@ -132,7 +133,7 @@ if (importFailure) {
     const { manifest, cas } = await capture();
     assert.equal(manifest.completeness_status, 'complete');
     assert.equal(manifest.authenticated, false);
-    assert.deepEqual(manifest.replay_profiles, appleProfiles);
+    assert.deepEqual(manifest.replay_profiles, [...appleProfiles].sort((a, b) => Buffer.compare(Buffer.from(JSON.stringify(a.replay_profile_id)), Buffer.from(JSON.stringify(b.replay_profile_id)))));
     assert.deepEqual(
       manifest.network_records.map((row) => [row.replay_profile_id, row.sequence]),
       appleProfiles.map((row) => [row.replay_profile_id, 0]).sort((a, b) => Buffer.compare(Buffer.from(JSON.stringify(a)), Buffer.from(JSON.stringify(b)))),
@@ -249,6 +250,11 @@ if (importFailure) {
       assert.equal(row.immutable_ref, null);
       assert.match(row.snapshot_closure_digest, /^[0-9a-f]{64}$/);
       assert.equal(JSON.stringify(row).includes('discovery_curl_as_closure'), false);
+      const closure = JSON.parse(await readFile(`evals/fixtures/${row.case_id}.snapshot-closure.json`, 'utf8'));
+      assert.equal(validateBySchema('SnapshotClosureManifest', closure).ok, true);
+      assert.equal(validateBySchema('RealWorldRegressionCase', row).ok, true);
+      assert.equal(snapshotClosureDigest(closure), row.snapshot_closure_digest);
+      assert.equal(closure.completeness_status, 'incomplete');
     }
   });
 }

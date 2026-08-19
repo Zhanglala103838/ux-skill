@@ -1,0 +1,29 @@
+{
+  "closure_version": "snapshot-closure-v1",
+  "entry_url": "https://www.gov.uk/register-to-vote",
+  "task_script_digest": "7282e1cd8559cd36eef58577d7bbe7f7a4647537b19e9b27c78bdf66ca6ee974",
+  "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "captured_at": "2026-08-19T17:51:53.607Z",
+  "authenticated": false,
+  "replay_profiles": [
+    {
+      "replay_profile_id": "govuk-desktop-keyboard-standard",
+      "viewport_width_css_px": 1440,
+      "viewport_height_css_px": 900,
+      "device_scale_factor": 2,
+      "input_modality": "keyboard",
+      "prefers_reduced_motion": "no-preference",
+      "prefers_contrast": "no-preference",
+      "color_scheme": "light",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai",
+      "assistive_technology_id": "none",
+      "browser_engine_digest": "ee37661755341e9fc1babf9c20ec09d6a36e50aa8713ceb08082f8bbe2d8217d"
+    }
+  ],
+  "network_records": [],
+  "observation_records": [],
+  "outbound_effect_ledger_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "completeness_status": "incomplete",
+  "manifest_digest": "fadf34d60ba3888b7038b18f0bc1da5011d507b1cbf8b9f166f1b54a047e006c"
+}

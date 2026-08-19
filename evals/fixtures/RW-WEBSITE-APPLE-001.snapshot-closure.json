@@ -1,0 +1,57 @@
+{
+  "closure_version": "snapshot-closure-v1",
+  "entry_url": "https://www.apple.com.cn/",
+  "task_script_digest": "5b484bd7469fe2d5d0ca290e89277c58a15b987eead241c7dca65f1beff6d97b",
+  "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "captured_at": "2026-08-19T17:52:04.521Z",
+  "authenticated": false,
+  "replay_profiles": [
+    {
+      "replay_profile_id": "apple-desktop-keyboard-reduced",
+      "viewport_width_css_px": 1440,
+      "viewport_height_css_px": 900,
+      "device_scale_factor": 2,
+      "input_modality": "keyboard",
+      "prefers_reduced_motion": "reduce",
+      "prefers_contrast": "no-preference",
+      "color_scheme": "light",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai",
+      "assistive_technology_id": "none",
+      "browser_engine_digest": "ee37661755341e9fc1babf9c20ec09d6a36e50aa8713ceb08082f8bbe2d8217d"
+    },
+    {
+      "replay_profile_id": "apple-desktop-keyboard-standard",
+      "viewport_width_css_px": 1440,
+      "viewport_height_css_px": 900,
+      "device_scale_factor": 2,
+      "input_modality": "keyboard",
+      "prefers_reduced_motion": "no-preference",
+      "prefers_contrast": "no-preference",
+      "color_scheme": "light",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai",
+      "assistive_technology_id": "none",
+      "browser_engine_digest": "ee37661755341e9fc1babf9c20ec09d6a36e50aa8713ceb08082f8bbe2d8217d"
+    },
+    {
+      "replay_profile_id": "apple-mobile-touch-standard",
+      "viewport_width_css_px": 390,
+      "viewport_height_css_px": 844,
+      "device_scale_factor": 3,
+      "input_modality": "touch",
+      "prefers_reduced_motion": "no-preference",
+      "prefers_contrast": "no-preference",
+      "color_scheme": "light",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai",
+      "assistive_technology_id": "none",
+      "browser_engine_digest": "ee37661755341e9fc1babf9c20ec09d6a36e50aa8713ceb08082f8bbe2d8217d"
+    }
+  ],
+  "network_records": [],
+  "observation_records": [],
+  "outbound_effect_ledger_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "completeness_status": "incomplete",
+  "manifest_digest": "a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0"
+}

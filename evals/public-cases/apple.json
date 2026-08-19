@@ -1,0 +1,169 @@
+{
+  "case_id": "RW-WEBSITE-APPLE-001",
+  "scenario_profile_id": "brand-marketing-website",
+  "request_mode": "verify",
+  "target_kind": "black_box_site",
+  "canonical_locator": "https://www.apple.com.cn/",
+  "immutable_ref": null,
+  "snapshot_closure_digest": "a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0",
+  "task_script": {
+    "task_script_id": "apple-product-decision-read-only-v1",
+    "steps": [
+      {
+        "step_id": "iphone-family",
+        "required_replay_profile_ids": [
+          "apple-desktop-keyboard-reduced",
+          "apple-desktop-keyboard-standard",
+          "apple-mobile-touch-standard"
+        ],
+        "instruction": "Find the iPhone product family from the home page."
+      },
+      {
+        "step_id": "choice-factors",
+        "required_replay_profile_ids": [
+          "apple-desktop-keyboard-reduced",
+          "apple-desktop-keyboard-standard",
+          "apple-mobile-touch-standard"
+        ],
+        "instruction": "Identify at least two observable choice factors."
+      },
+      {
+        "step_id": "compare-path",
+        "required_replay_profile_ids": [
+          "apple-desktop-keyboard-reduced",
+          "apple-desktop-keyboard-standard",
+          "apple-mobile-touch-standard"
+        ],
+        "instruction": "Locate the comparison path without purchase effects."
+      },
+      {
+        "step_id": "buy-support-paths",
+        "required_replay_profile_ids": [
+          "apple-desktop-keyboard-reduced",
+          "apple-desktop-keyboard-standard",
+          "apple-mobile-touch-standard"
+        ],
+        "instruction": "Locate buy and support paths; stop before checkout, login, or form submission."
+      }
+    ]
+  },
+  "entry_state": "Public entry URL from a fresh anonymous browser context.",
+  "seed_state": "anonymous; no personal data; stop before checkout/login/form",
+  "inventory": {
+    "actor_ids": [
+      "anonymous-browser-operator"
+    ],
+    "party_ids": [
+      "anonymous-site-visitor"
+    ],
+    "status": "unknown"
+  },
+  "allowed_effects": [
+    "anonymous GET",
+    "anonymous HEAD"
+  ],
+  "prohibited_effects": [
+    "purchase",
+    "checkout",
+    "login",
+    "form submission",
+    "cart",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "beacon",
+    "SSE",
+    "WebSocket",
+    "download"
+  ],
+  "evidence_capability": {
+    "page_content": true,
+    "runtime": true,
+    "code": false,
+    "component_contract": false,
+    "research": false
+  },
+  "baseline_bundle_digest": "4680bc8d2dc58a3bf51f880cd06c5ef1594aa20d8d99b0528364259a28006cdc",
+  "intervention_manifest_digest": "6575145030712fab4ef7fcd54a91003b5eedcbe8817ac7110fa7bdbe2f54dff7",
+  "candidate_bundle_digest": "76052937f5d36026651427a88d690561df90b09f5a60c238239e78e190c901e9",
+  "hypotheses": [
+    {
+      "hypothesis_id": "apple-primary",
+      "predicate_id": "apple-task-clarity",
+      "disconfirming": false
+    },
+    {
+      "hypothesis_id": "apple-negative",
+      "predicate_id": "apple-no-improvement",
+      "disconfirming": true
+    }
+  ],
+  "measures": [
+    {
+      "measure_id": "apple-task-evidence",
+      "kind": "success",
+      "direction": "increase",
+      "measure_role": "success"
+    },
+    {
+      "measure_id": "apple-side-effects",
+      "kind": "guardrail",
+      "direction": "not_increase",
+      "measure_role": "guardrail"
+    },
+    {
+      "measure_id": "apple-negative-control",
+      "kind": "negative-control",
+      "direction": "not_increase",
+      "measure_role": "guardrail"
+    }
+  ],
+  "semantic_delta": {
+    "delta_version": "semantic-delta-v1",
+    "allowed_locators": [
+      "/findings",
+      "/run_issues",
+      "/coverage_gaps"
+    ],
+    "forbidden_locators": [
+      "/input_digest",
+      "/evaluator_digest"
+    ]
+  },
+  "forbidden_claims": [
+    "purchase success",
+    "overall satisfaction",
+    "source code facts",
+    "WCAG conformant",
+    "brand reputation as evidence"
+  ],
+  "replay_oracle": "semantic-delta-v1",
+  "environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "outbound_effect_sink": {
+    "sink_id": "apple-deny-all",
+    "mode": "deny-all",
+    "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "cleanup_contract": {
+    "cleanup_id": "apple-none",
+    "required": false,
+    "procedure_digest": "d1f521a9f0d0cdd1eb362bd0ea521978d43f5f31e96944250fab92c89c8f101f"
+  },
+  "portfolio_role": "fixed_anchor",
+  "scenario_stratum": "brand-marketing-website",
+  "comparison_policy": "within_case_only",
+  "negative_controls": [
+    {
+      "control_id": "apple-no-unregistered-effects",
+      "metric_id": "unregistered-outbound-effects",
+      "transform": "absolute",
+      "unit": "count",
+      "scale_id": "raw-count",
+      "lower_bound": null,
+      "upper_bound": 0,
+      "lower_inclusive": false,
+      "upper_inclusive": true
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+{
+  "case_id": "RW-WEBSITE-GOVUK-001",
+  "scenario_profile_id": "public-service-information",
+  "request_mode": "verify",
+  "target_kind": "black_box_site",
+  "canonical_locator": "https://www.gov.uk/register-to-vote",
+  "immutable_ref": null,
+  "snapshot_closure_digest": "fadf34d60ba3888b7038b18f0bc1da5011d507b1cbf8b9f166f1b54a047e006c",
+  "task_script": {
+    "task_script_id": "govuk-register-to-vote-read-only-v1",
+    "steps": [
+      {
+        "step_id": "purpose",
+        "required_replay_profile_ids": [
+          "govuk-desktop-keyboard-standard"
+        ],
+        "instruction": "Identify the service purpose and expected outcome."
+      },
+      {
+        "step_id": "eligibility",
+        "required_replay_profile_ids": [
+          "govuk-desktop-keyboard-standard"
+        ],
+        "instruction": "Identify eligibility branches without entering personal data."
+      },
+      {
+        "step_id": "requirements",
+        "required_replay_profile_ids": [
+          "govuk-desktop-keyboard-standard"
+        ],
+        "instruction": "Identify required information or materials."
+      },
+      {
+        "step_id": "duration",
+        "required_replay_profile_ids": [
+          "govuk-desktop-keyboard-standard"
+        ],
+        "instruction": "Identify any published duration or timing expectation."
+      },
+      {
+        "step_id": "online-entry",
+        "required_replay_profile_ids": [
+          "govuk-desktop-keyboard-standard"
+        ],
+        "instruction": "Locate but do not activate the online submission journey."
+      },
+      {
+        "step_id": "alternatives",
+        "required_replay_profile_ids": [
+          "govuk-desktop-keyboard-standard"
+        ],
+        "instruction": "Identify paper and assisted alternatives."
+      }
+    ]
+  },
+  "entry_state": "Public entry URL from a fresh anonymous browser context.",
+  "seed_state": "anonymous; no personal data; stop before submission",
+  "inventory": {
+    "actor_ids": [
+      "anonymous-browser-operator"
+    ],
+    "party_ids": [
+      "anonymous-site-visitor"
+    ],
+    "status": "unknown"
+  },
+  "allowed_effects": [
+    "anonymous GET",
+    "anonymous HEAD"
+  ],
+  "prohibited_effects": [
+    "form submission",
+    "login",
+    "account creation",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "beacon",
+    "SSE",
+    "WebSocket",
+    "download"
+  ],
+  "evidence_capability": {
+    "page_content": true,
+    "runtime": true,
+    "code": false,
+    "component_contract": false,
+    "research": false
+  },
+  "baseline_bundle_digest": "deac53b6ad2f00f3bba2c3ab45fe3581a2abd6814e15ab2867ca045766cff1c9",
+  "intervention_manifest_digest": "053b3cbc44fb18531f53ed53d754ceacb0e9ec2b0dd53acb5ad1fb0f3aeb1fa3",
+  "candidate_bundle_digest": "997bd46970516b348fdc6103537b5b7a27b6d9fbe414b9b6841234d6c638ceef",
+  "hypotheses": [
+    {
+      "hypothesis_id": "govuk-primary",
+      "predicate_id": "govuk-task-clarity",
+      "disconfirming": false
+    },
+    {
+      "hypothesis_id": "govuk-negative",
+      "predicate_id": "govuk-no-improvement",
+      "disconfirming": true
+    }
+  ],
+  "measures": [
+    {
+      "measure_id": "govuk-task-evidence",
+      "kind": "success",
+      "direction": "increase",
+      "measure_role": "success"
+    },
+    {
+      "measure_id": "govuk-side-effects",
+      "kind": "guardrail",
+      "direction": "not_increase",
+      "measure_role": "guardrail"
+    },
+    {
+      "measure_id": "govuk-negative-control",
+      "kind": "negative-control",
+      "direction": "not_increase",
+      "measure_role": "guardrail"
+    }
+  ],
+  "semantic_delta": {
+    "delta_version": "semantic-delta-v1",
+    "allowed_locators": [
+      "/findings",
+      "/run_issues",
+      "/coverage_gaps"
+    ],
+    "forbidden_locators": [
+      "/input_digest",
+      "/evaluator_digest"
+    ]
+  },
+  "forbidden_claims": [
+    "complete registration journey",
+    "user success",
+    "source code facts",
+    "WCAG conformant"
+  ],
+  "replay_oracle": "semantic-delta-v1",
+  "environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "outbound_effect_sink": {
+    "sink_id": "govuk-deny-all",
+    "mode": "deny-all",
+    "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "cleanup_contract": {
+    "cleanup_id": "govuk-none",
+    "required": false,
+    "procedure_digest": "cbfa558327ee2d6ebe43872d931423aae16e50d7a9ae7a1547010b49b675b80a"
+  },
+  "portfolio_role": "fixed_anchor",
+  "scenario_stratum": "public-service-information",
+  "comparison_policy": "within_case_only",
+  "negative_controls": [
+    {
+      "control_id": "govuk-no-unregistered-effects",
+      "metric_id": "unregistered-outbound-effects",
+      "transform": "absolute",
+      "unit": "count",
+      "scale_id": "raw-count",
+      "lower_bound": null,
+      "upper_bound": 0,
+      "lower_inclusive": false,
+      "upper_inclusive": true
+    }
+  ]
+}

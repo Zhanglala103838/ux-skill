@@ -1,0 +1,152 @@
+{
+  "record_version": "task9-public-capture-attempt-v1",
+  "evidence_boundary": "Sanitized counts only. Query strings, headers, bodies, cookies, cache, screenshots, and browser storage are excluded.",
+  "environment": {
+    "node_version": "v22.22.1",
+    "playwright_version": "1.62.1",
+    "browser_version": "151.0.7922.138",
+    "browser_executable_sha256": "ee37661755341e9fc1babf9c20ec09d6a36e50aa8713ceb08082f8bbe2d8217d",
+    "os": "darwin-27.0.0-arm64",
+    "locale": "zh-CN",
+    "timezone": "Asia/Shanghai",
+    "request_policy": "anonymous-get-head-only"
+  },
+  "environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "attempts": [
+    {
+      "case_id": "RW-WEBSITE-GOVUK-001",
+      "entry_url": "https://www.gov.uk/register-to-vote",
+      "final_url_sanitized": "https://www.gov.uk/register-to-vote",
+      "capture_started_at": "2026-08-19T17:51:53.607Z",
+      "capture_finished_at": "2026-08-19T17:52:04.510Z",
+      "authenticated": false,
+      "request_policy": "anonymous-get-head-only",
+      "request_count": 11,
+      "response_count": 10,
+      "method_counts": {
+        "GET": 11
+      },
+      "resource_type_counts": {
+        "document": 1,
+        "font": 2,
+        "image": 1,
+        "other": 1,
+        "script": 5,
+        "stylesheet": 1
+      },
+      "response_status_counts": {
+        "200": 10
+      },
+      "completeness_status": "incomplete",
+      "release_gate": "no_release",
+      "reasons": [
+        "TASK_SCRIPT_FULL_CLOSURE_NOT_EXECUTED"
+      ],
+      "snapshot_closure_digest": "fadf34d60ba3888b7038b18f0bc1da5011d507b1cbf8b9f166f1b54a047e006c"
+    },
+    {
+      "case_id": "RW-WEBSITE-APPLE-001",
+      "entry_url": "https://www.apple.com.cn/",
+      "final_url_sanitized": "https://www.apple.com.cn/",
+      "capture_started_at": "2026-08-19T17:52:04.521Z",
+      "capture_finished_at": "2026-08-19T17:52:07.845Z",
+      "authenticated": false,
+      "request_policy": "anonymous-get-head-only",
+      "request_count": 60,
+      "response_count": 60,
+      "method_counts": {
+        "GET": 60
+      },
+      "resource_type_counts": {
+        "document": 1,
+        "fetch": 2,
+        "font": 6,
+        "image": 7,
+        "media": 10,
+        "script": 20,
+        "stylesheet": 12,
+        "xhr": 2
+      },
+      "response_status_counts": {
+        "200": 49,
+        "206": 10,
+        "302": 1
+      },
+      "completeness_status": "incomplete",
+      "release_gate": "no_release",
+      "reasons": [
+        "TASK_SCRIPT_FULL_CLOSURE_NOT_EXECUTED"
+      ],
+      "snapshot_closure_digest": "a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0"
+    },
+    {
+      "case_id": "RW-WEBSITE-IKEA-001",
+      "entry_url": "https://www.ikea.cn/cn/zh/",
+      "final_url_sanitized": "https://www.ikea.cn/cn/zh/",
+      "capture_started_at": "2026-08-19T17:52:07.855Z",
+      "capture_finished_at": "2026-08-19T17:52:12.385Z",
+      "authenticated": false,
+      "request_policy": "anonymous-get-head-only",
+      "request_count": 85,
+      "response_count": 74,
+      "method_counts": {
+        "GET": 75,
+        "POST": 10
+      },
+      "resource_type_counts": {
+        "document": 1,
+        "fetch": 10,
+        "font": 4,
+        "image": 16,
+        "other": 6,
+        "ping": 8,
+        "script": 31,
+        "stylesheet": 7,
+        "xhr": 2
+      },
+      "response_status_counts": {
+        "200": 74
+      },
+      "completeness_status": "incomplete",
+      "release_gate": "no_release",
+      "reasons": [
+        "PROHIBITED_METHOD_POST",
+        "TASK_SCRIPT_FULL_CLOSURE_NOT_EXECUTED"
+      ],
+      "snapshot_closure_digest": "52f514488d50c2865fa1a82cf312446c910df8223cfe0eea5fcdcf0e88bab5ed"
+    },
+    {
+      "case_id": "RW-DOCS-STRIPE-001",
+      "entry_url": "https://docs.stripe.com/",
+      "final_url_sanitized": "https://docs.stripe.com/",
+      "capture_started_at": "2026-08-19T17:52:12.394Z",
+      "capture_finished_at": "2026-08-19T17:52:41.194Z",
+      "authenticated": false,
+      "request_policy": "anonymous-get-head-only",
+      "request_count": 33,
+      "response_count": 20,
+      "method_counts": {
+        "GET": 30,
+        "POST": 3
+      },
+      "resource_type_counts": {
+        "document": 3,
+        "fetch": 6,
+        "image": 3,
+        "script": 19,
+        "stylesheet": 2
+      },
+      "response_status_counts": {
+        "200": 19,
+        "302": 1
+      },
+      "completeness_status": "incomplete",
+      "release_gate": "no_release",
+      "reasons": [
+        "PROHIBITED_METHOD_POST",
+        "TASK_SCRIPT_FULL_CLOSURE_NOT_EXECUTED"
+      ],
+      "snapshot_closure_digest": "a8e80babac6648b6a92ce01648cb64e4936d903ed47358b622aeadf576844052"
+    }
+  ]
+}

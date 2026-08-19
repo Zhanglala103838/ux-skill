@@ -1,0 +1,29 @@
+{
+  "closure_version": "snapshot-closure-v1",
+  "entry_url": "https://www.ikea.cn/cn/zh/",
+  "task_script_digest": "8cc5bef0f51f13e7c6d85c3d6cef8e96da049295470726e111ea472dc2ff3e0e",
+  "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "captured_at": "2026-08-19T17:52:07.855Z",
+  "authenticated": false,
+  "replay_profiles": [
+    {
+      "replay_profile_id": "ikea-beijing-keyboard-standard",
+      "viewport_width_css_px": 1440,
+      "viewport_height_css_px": 900,
+      "device_scale_factor": 2,
+      "input_modality": "keyboard",
+      "prefers_reduced_motion": "no-preference",
+      "prefers_contrast": "no-preference",
+      "color_scheme": "light",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai",
+      "assistive_technology_id": "none",
+      "browser_engine_digest": "ee37661755341e9fc1babf9c20ec09d6a36e50aa8713ceb08082f8bbe2d8217d"
+    }
+  ],
+  "network_records": [],
+  "observation_records": [],
+  "outbound_effect_ledger_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "completeness_status": "incomplete",
+  "manifest_digest": "52f514488d50c2865fa1a82cf312446c910df8223cfe0eea5fcdcf0e88bab5ed"
+}

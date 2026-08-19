@@ -1,0 +1,160 @@
+{
+  "case_id": "RW-DOCS-STRIPE-001",
+  "scenario_profile_id": "developer-documentation",
+  "request_mode": "verify",
+  "target_kind": "black_box_site",
+  "canonical_locator": "https://docs.stripe.com/",
+  "immutable_ref": null,
+  "snapshot_closure_digest": "a8e80babac6648b6a92ce01648cb64e4936d903ed47358b622aeadf576844052",
+  "task_script": {
+    "task_script_id": "stripe-docs-payment-read-only-v1",
+    "steps": [
+      {
+        "step_id": "server-path",
+        "required_replay_profile_ids": [
+          "stripe-desktop-keyboard-standard"
+        ],
+        "instruction": "Locate the server-side payment integration path."
+      },
+      {
+        "step_id": "prerequisites",
+        "required_replay_profile_ids": [
+          "stripe-desktop-keyboard-standard"
+        ],
+        "instruction": "Identify documented prerequisites."
+      },
+      {
+        "step_id": "failure-recovery",
+        "required_replay_profile_ids": [
+          "stripe-desktop-keyboard-standard"
+        ],
+        "instruction": "Locate failure and recovery guidance."
+      },
+      {
+        "step_id": "api-reference",
+        "required_replay_profile_ids": [
+          "stripe-desktop-keyboard-standard"
+        ],
+        "instruction": "Locate the corresponding API reference; stop before login, key creation, or API calls."
+      }
+    ]
+  },
+  "entry_state": "Public entry URL from a fresh anonymous browser context.",
+  "seed_state": "anonymous; no key; no account; read-only documentation",
+  "inventory": {
+    "actor_ids": [
+      "anonymous-browser-operator"
+    ],
+    "party_ids": [
+      "anonymous-site-visitor"
+    ],
+    "status": "unknown"
+  },
+  "allowed_effects": [
+    "anonymous GET",
+    "anonymous HEAD"
+  ],
+  "prohibited_effects": [
+    "login",
+    "key creation",
+    "API call",
+    "form submission",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "beacon",
+    "SSE",
+    "WebSocket",
+    "download"
+  ],
+  "evidence_capability": {
+    "page_content": true,
+    "runtime": true,
+    "code": false,
+    "component_contract": false,
+    "research": false
+  },
+  "baseline_bundle_digest": "1c1c059772781ecc0a786d13f42cc7cf45584057c94c7fe2dc211b0516a407d9",
+  "intervention_manifest_digest": "05f8e23f6b5aa1a312c0ec9edbddec93e5d8197a267aecd3b298d5324f53eddb",
+  "candidate_bundle_digest": "948e3ba97d57b56e3b16adbc9b0e3960cdb06f81c47cbc1652ba417d8b5963ad",
+  "hypotheses": [
+    {
+      "hypothesis_id": "stripe-primary",
+      "predicate_id": "stripe-task-clarity",
+      "disconfirming": false
+    },
+    {
+      "hypothesis_id": "stripe-negative",
+      "predicate_id": "stripe-no-improvement",
+      "disconfirming": true
+    }
+  ],
+  "measures": [
+    {
+      "measure_id": "stripe-task-evidence",
+      "kind": "success",
+      "direction": "increase",
+      "measure_role": "success"
+    },
+    {
+      "measure_id": "stripe-side-effects",
+      "kind": "guardrail",
+      "direction": "not_increase",
+      "measure_role": "guardrail"
+    },
+    {
+      "measure_id": "stripe-negative-control",
+      "kind": "negative-control",
+      "direction": "not_increase",
+      "measure_role": "guardrail"
+    }
+  ],
+  "semantic_delta": {
+    "delta_version": "semantic-delta-v1",
+    "allowed_locators": [
+      "/findings",
+      "/run_issues",
+      "/coverage_gaps"
+    ],
+    "forbidden_locators": [
+      "/input_digest",
+      "/evaluator_digest"
+    ]
+  },
+  "forbidden_claims": [
+    "API availability",
+    "integration correctness",
+    "developer success",
+    "source code facts",
+    "cross-site ranking"
+  ],
+  "replay_oracle": "semantic-delta-v1",
+  "environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+  "outbound_effect_sink": {
+    "sink_id": "stripe-deny-all",
+    "mode": "deny-all",
+    "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "cleanup_contract": {
+    "cleanup_id": "stripe-none",
+    "required": false,
+    "procedure_digest": "41b2f2712f18c8d7555e6742c6dbd9722f4be819fb61b2172a5dda0df1558af2"
+  },
+  "portfolio_role": "rotation_candidate",
+  "scenario_stratum": "developer-documentation",
+  "comparison_policy": "within_case_only",
+  "negative_controls": [
+    {
+      "control_id": "stripe-no-unregistered-effects",
+      "metric_id": "unregistered-outbound-effects",
+      "transform": "absolute",
+      "unit": "count",
+      "scale_id": "raw-count",
+      "lower_bound": null,
+      "upper_bound": 0,
+      "lower_inclusive": false,
+      "upper_inclusive": true
+    }
+  ]
+}
