@@ -445,7 +445,7 @@ if (importFailure) {
     assert.ok(decodedBytes >= 0);
     const pairs = Math.floor(decodedBytes / 2);
     const tail = decodedBytes % 2 === 1 ? 'a' : '';
-    return Buffer.from('"' + String.raw\`\u00e9\`.repeat(pairs) + tail + '"\n', 'utf8');
+    return Buffer.from('"' + String.raw`\u00e9`.repeat(pairs) + tail + '"\n', 'utf8');
   }
 
   function objectWithKeyUtf8Bytes(decodedBytes) {
