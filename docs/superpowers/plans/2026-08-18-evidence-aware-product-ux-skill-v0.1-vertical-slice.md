@@ -485,7 +485,7 @@ git commit -m "feat: add pinned HulianUI evidence adapter"
 **Interfaces:**
 - Produces: `captureClosure(caseManifest,browser): SnapshotClosureManifest`, `replayClosure(manifest,cas): ReplayEvidence`.
 - Capture requires an injected browser driver; core evaluator stays browser-independent.
-- The CLI requires a registered deterministic task runner bound to the exact task-script digest plus a registered read-only transport. The runner must activate every required `(replay_profile_id,task_step_id)` in task order; only requests and observations made while that step is active may receive its label. The CLI never infers actions from natural-language `instruction` text.
+- The CLI requires an immutable capture-registry manifest whose runner and transport module bytes are rehashed before import and bound to the exact case/task-script digest. The runner must activate every required `(replay_profile_id,task_step_id)` in task order; only requests and observations made while that step is active may receive its label. The CLI never accepts caller-self-reported implementation digests or infers actions from natural-language `instruction` text.
 
 - [ ] **Step 1: Write closure security tests**
 
@@ -510,7 +510,7 @@ Expected: FAIL with missing capture module.
 
 - [ ] **Step 3: Implement capture/replay contracts**
 
-Capture only anonymous read-only GET/HEAD traffic. Store CanonicalResponseHeaders and bodies in a caller-provided content-addressed store; key network records by `[replay_profile_id,sequence]`; require every task step/profile observation; reject SSE, WebSocket, live replay, missing bytes, digest mismatch, and prohibited effects. A missing, digest-mismatched, unsupported, reordered, duplicated, or partial task runner is `target_unavailable/no_release`; entry-page DOM must never be copied to synthesize unexecuted step coverage.
+Capture only anonymous read-only GET/HEAD traffic. Store CanonicalResponseHeaders and bodies in a caller-provided content-addressed store; key network records by `[replay_profile_id,sequence]`; require every task step/profile observation; reject SSE, WebSocket, live replay, missing bytes, digest mismatch, and prohibited effects. The closed transport response includes the complete ordered redirect chain and transport-owned observation artifacts. Runtime converts those artifacts to single-use opaque handles; runner code can request/consume a handle but cannot submit bytes. A missing, digest-mismatched, unsupported, reordered, duplicated, or partial runner/transport/redirect chain is `target_unavailable/no_release`.
 
 - [ ] **Step 4: Encode exact case profiles**
 

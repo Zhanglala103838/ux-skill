@@ -22,7 +22,7 @@ if (importFailure) {
     assert.fail(`TASK9_SNAPSHOT_CLOSURE_RED:${importFailure?.code ?? importFailure?.name ?? 'IMPORT_FAILED'}`);
   });
 } else {
-  const { captureClosure, replayClosure, runCaptureCli, snapshotClosureDigest } = closureApi;
+  const { captureClosure, captureRegistryDigest, createCaptureRegistry, replayClosure, runCaptureCli, snapshotClosureDigest } = closureApi;
   const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
   const b64 = (value) => Buffer.from(value).toString('base64');
   const d = (char) => char.repeat(64);
@@ -121,6 +121,26 @@ if (importFailure) {
     const cas = makeCas();
     const manifest = await captureClosure(caseManifest(), browser(cas, payload));
     return { manifest, cas };
+  };
+  const makeCaptureRegistry = async (directory, caseId, taskScript, runnerSource, transportSource, taskScriptDigest = sha(Buffer.from(canonicalize(taskScript)))) => {
+    const runnerPath = join(directory, 'runner.mjs'), transportPath = join(directory, 'transport.mjs'), manifestPath = join(directory, 'capture-registry.json');
+    await writeFile(runnerPath, runnerSource);
+    await writeFile(transportPath, transportSource);
+    const manifest = {
+      registry_version: 'snapshot-capture-registry-v1',
+      entries: [{
+        case_id: caseId,
+        task_script_digest: taskScriptDigest,
+        runner_path: 'runner.mjs',
+        runner_digest: sha(Buffer.from(runnerSource)),
+        transport_path: 'transport.mjs',
+        transport_digest: sha(Buffer.from(transportSource)),
+      }],
+      registry_digest: '',
+    };
+    manifest.registry_digest = captureRegistryDigest(manifest);
+    await writeFile(manifestPath, `${canonicalize(manifest)}\n`);
+    return createCaptureRegistry(manifestPath);
   };
   const assertUnavailable = async (manifest, cas, mutation) => {
     const next = structuredClone(manifest);
@@ -479,33 +499,24 @@ if (importFailure) {
     };
     fixture.manifest_digest = snapshotClosureDigest(fixture);
     const localCase = { case_id: 'RW-LOCAL-TWO-ROUTE-001', canonical_locator: `${origin}/`, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript };
-    const transport = {
-      transport_digest: d('f'),
-      async request({ method, url }) {
-        assert.ok(['GET', 'HEAD'].includes(method));
-        return await new Promise((resolve, reject) => {
-          const request = httpRequest(url, { method }, (response) => {
-            const chunks = [];
-            response.on('data', (chunk) => chunks.push(chunk));
-            response.on('end', () => resolve({
-              status: response.statusCode,
-              final_url: url,
-              headers: response.rawHeaders.reduce((rows, value, index, all) => index % 2 === 0 ? [...rows, { sequence: rows.length, name: value, value_bytes_base64: Buffer.from(all[index + 1], 'latin1').toString('base64') }] : rows, []),
-              body: Buffer.concat(chunks),
-            }));
-          });
-          request.once('error', reject);
-          request.end();
-        });
-      },
-    };
+    const transportSource = `import { request as httpRequest } from 'node:http';
+const rawRequest = (url, method) => new Promise((resolve, reject) => {
+  const request = httpRequest(url, { method }, (response) => {
+    const chunks = [];
+    response.on('data', (chunk) => chunks.push(chunk));
+    response.on('end', () => resolve({ status: response.statusCode, final_url: url, headers: response.rawHeaders.reduce((rows, value, index, all) => index % 2 === 0 ? [...rows, { sequence: rows.length, name: value, value_bytes_base64: Buffer.from(all[index + 1], 'latin1').toString('base64') }] : rows, []), body: Buffer.concat(chunks) }));
+  });
+  request.once('error', reject); request.end();
+});
+export async function request({ method, url }) { const response = await rawRequest(url, method); return { ...response, redirect_chain: [], observation_artifacts: [{ evidence_kind: 'dom_snapshot', artifact_bytes: response.body }] }; }
+`;
     const runner = async ({ profiles, steps, executeStep }) => {
       for (const row of profiles) {
         for (const step of steps) {
           const route = step.step_id === 'visit-one' ? '/one' : '/two';
           await executeStep({ replay_profile_id: row.replay_profile_id, task_step_id: step.step_id }, async ({ request, observe }) => {
             const response = await request({ method: 'GET', url: `${origin}${route}` });
-            await observe({ evidence_kind: 'dom_snapshot', bytes: response.body });
+            await observe({ evidence_kind: 'dom_snapshot', handle: response.observation_handles[0] });
           });
         }
       }
@@ -513,7 +524,7 @@ if (importFailure) {
     const partialRunner = async ({ profiles, executeStep }) => {
       await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: 'visit-one' }, async ({ request, observe }) => {
         const response = await request({ method: 'GET', url: `${origin}/one` });
-        await observe({ evidence_kind: 'dom_snapshot', bytes: response.body });
+        await observe({ evidence_kind: 'dom_snapshot', handle: response.observation_handles[0] });
       });
     };
     try {
@@ -524,9 +535,15 @@ if (importFailure) {
       await writeFile(join(fixtureDir, `${localCase.case_id}.snapshot-closure.json`), `${JSON.stringify(fixture)}\n`);
       const invoke = async (name, selectedRunner, registeredTaskDigest = sha(Buffer.from(canonicalize(taskScript)))) => {
         const casPath = join(root, `cas-${name}`), outputPath = join(root, `output-${name}.json`);
+        let registry;
+        if (selectedRunner) {
+          const registryDir = join(root, `registry-${name}`);
+          await mkdir(registryDir, { recursive: true });
+          const runnerSource = `const origin=${JSON.stringify(origin)};\nexport const run=${selectedRunner.toString()};\n`;
+          registry = await makeCaptureRegistry(registryDir, localCase.case_id, taskScript, runnerSource, transportSource, registeredTaskDigest);
+        }
         const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], {
-          taskRunners: selectedRunner ? new Map([[localCase.case_id, { task_script_digest: registeredTaskDigest, runner_digest: d('a'), run: selectedRunner }]]) : new Map(),
-          transport,
+          registry,
         });
         let wrapper;
         try { wrapper = JSON.parse(await readFile(outputPath, 'utf8')); } catch {}
@@ -563,9 +580,11 @@ if (importFailure) {
 
       serverPaths.length = 0;
       const reused = await invoke('reused', async ({ profiles, steps, executeStep }) => {
+        let firstHandle;
         for (const step of steps) await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: step.step_id }, async ({ request, observe }) => {
-          await request({ method: 'GET', url: `${origin}/${step.step_id === 'visit-one' ? 'one' : 'two'}` });
-          await observe({ evidence_kind: 'dom_snapshot', bytes: Buffer.from('COPIED_DOM') });
+          const response = await request({ method: 'GET', url: `${origin}/${step.step_id === 'visit-one' ? 'one' : 'two'}` });
+          firstHandle ??= response.observation_handles[0];
+          await observe({ evidence_kind: 'dom_snapshot', handle: firstHandle });
         });
       });
       if (reused.exitCode !== 2 || reused.wrapper?.run_status !== 'target_unavailable' || serverPaths.join(',') !== '/one,/two') issues.push('cross-step-observation-reuse-not-closed');
@@ -628,24 +647,13 @@ if (importFailure) {
       const final = await rawRequest(finalUrl);
       return { hop, final, finalUrl };
     };
-    const completeTransport = {
-      transport_digest: d('8'),
-      async request() {
-        const { hop, final, finalUrl } = await follow();
-        return {
-          status: final.status,
-          final_url: finalUrl,
-          headers: final.headers,
-          body: final.body,
-          redirect_chain: [{ sequence: 0, status: hop.status, url: hop.url, location: finalUrl, response_headers: hop.headers }],
-          observation_artifacts: [{ evidence_kind: 'dom_snapshot', artifact_bytes: final.body }],
-        };
-      },
-    };
-    const missingChainTransport = {
-      transport_digest: d('8'),
-      async request() { const { final, finalUrl } = await follow(); return { status: final.status, final_url: finalUrl, headers: final.headers, body: final.body }; },
-    };
+    const transportPrelude = `import { request as httpRequest } from 'node:http';
+const rawRequest = (url) => new Promise((resolve, reject) => { const request = httpRequest(url, { method: 'GET' }, (response) => { const chunks=[]; response.on('data', chunk => chunks.push(chunk)); response.on('end', () => resolve({ status:response.statusCode, url, location:response.headers.location??null, headers:response.rawHeaders.reduce((rows,value,index,all)=>index%2===0?[...rows,{sequence:rows.length,name:value,value_bytes_base64:Buffer.from(all[index+1],'latin1').toString('base64')}]:rows,[]), body:Buffer.concat(chunks) })); }); request.once('error',reject); request.end(); });
+const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new URL(hop.location,hop.url).href, final=await rawRequest(finalUrl); return {hop,final,finalUrl}; };
+`;
+    const completeTransportSource = `${transportPrelude}export async function request({url}) { const {hop,final,finalUrl}=await follow(url); return {status:final.status,final_url:finalUrl,headers:final.headers,body:final.body,redirect_chain:[{sequence:0,status:hop.status,url:hop.url,location:finalUrl,response_headers:hop.headers}],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:final.body}]}; }\n`;
+    const missingChainTransportSource = `${transportPrelude}export async function request({url}) { const {final,finalUrl}=await follow(url); return {status:final.status,final_url:finalUrl,headers:final.headers,body:final.body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:final.body}]}; }\n`;
+    const reorderedChainTransportSource = `${transportPrelude}export async function request({url}) { const {hop,final,finalUrl}=await follow(url); return {status:final.status,final_url:finalUrl,headers:final.headers,body:final.body,redirect_chain:[{sequence:1,status:hop.status,url:hop.url,location:finalUrl,response_headers:hop.headers}],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:final.body}]}; }\n`;
     const opaqueRunner = async ({ profiles, steps, executeStep }) => {
       await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: steps[0].step_id }, async ({ request, observe }) => {
         const response = await request({ method: 'GET', url: `${origin}/start` });
@@ -665,19 +673,19 @@ if (importFailure) {
       await writeFile(casePath, `${JSON.stringify(localCase)}\n`);
       await writeFile(join(fixtureDir, `${localCase.case_id}.snapshot-closure.json`), `${JSON.stringify(seed)}\n`);
       const taskDigest = sha(Buffer.from(canonicalize(redirectTask)));
-      const invoke = async (name, runner, transport, registration = {}) => {
+      const invoke = async (name, runner, transportSource, legacy = false) => {
         const casPath = join(root, `cas-${name}`), outputPath = join(root, `output-${name}.json`);
-        const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], {
-          taskRunners: new Map([[localCase.case_id, { task_script_digest: taskDigest, runner_digest: d('9'), run: runner, ...registration }]]),
-          transport,
-        });
+        let dependencies;
+        if (legacy) dependencies = { taskRunners: new Map([[localCase.case_id, { task_script_digest: taskDigest, runner_digest: d('9'), run: runner }]]), transport: { transport_digest: d('8'), async request() { return null; } } };
+        else { const registryDir=join(root,`registry-${name}`);await mkdir(registryDir,{recursive:true});const runnerSource=`const origin=${JSON.stringify(origin)};\nexport const run=${runner.toString()};\n`;dependencies={registry:await makeCaptureRegistry(registryDir,localCase.case_id,redirectTask,runnerSource,transportSource)}; }
+        const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], dependencies);
         let wrapper;
         try { wrapper = JSON.parse(await readFile(outputPath, 'utf8')); } catch {}
         return { casPath, exitCode, wrapper };
       };
 
       paths.length = 0;
-      const complete = await invoke('complete', opaqueRunner, completeTransport);
+      const complete = await invoke('complete', opaqueRunner, completeTransportSource);
       if (complete.exitCode !== 0 || complete.wrapper?.completeness_status !== 'complete') issues.push('complete-redirect-chain-not-supported');
       const record = complete.wrapper?.closure?.network_records?.[0], hop = record?.redirect_chain?.[0];
       if (record?.request_url !== `${origin}/start` || record?.final_url !== `${origin}/final` || hop?.sequence !== 0 || hop?.status !== 302 || hop?.url !== `${origin}/start` || hop?.location !== `${origin}/final`) issues.push('redirect-hop-provenance-missing');
@@ -698,17 +706,23 @@ if (importFailure) {
       }
 
       paths.length = 0;
-      const missing = await invoke('missing', forgedRunner, missingChainTransport);
+      const missing = await invoke('missing', opaqueRunner, missingChainTransportSource);
       if (missing.exitCode !== 2 || missing.wrapper?.run_status !== 'target_unavailable' || missing.wrapper?.release_gate !== 'no_release') issues.push('missing-redirect-chain-certified-complete');
       if (paths.join(',') !== '/start,/final') issues.push(`missing-chain-paths:${paths.join(',')}`);
 
       paths.length = 0;
-      const forged = await invoke('forged', forgedRunner, missingChainTransport);
+      const forged = await invoke('forged', forgedRunner, completeTransportSource);
       if (forged.exitCode !== 2 || forged.wrapper?.run_status !== 'target_unavailable') issues.push('runner-forged-observation-certified-complete');
 
-      const reusedDigest = await invoke('digest-reuse', async (context) => forgedRunner(context), missingChainTransport, { runner_digest: d('9') });
+      paths.length = 0;
+      const reorderedTransport = await invoke('reordered-transport', opaqueRunner, reorderedChainTransportSource);
+      if (reorderedTransport.exitCode !== 2 || reorderedTransport.wrapper?.run_status !== 'target_unavailable') issues.push('reordered-transport-chain-certified-complete');
+
+      paths.length = 0;
+      const reusedDigest = await invoke('digest-reuse', async (context) => forgedRunner(context), completeTransportSource, true);
       if (reusedDigest.exitCode !== 2 || reusedDigest.wrapper?.run_status !== 'target_unavailable') issues.push('caller-reused-runner-digest-accepted');
-      if (typeof closureApi.createCaptureRegistry !== 'function') issues.push('immutable-capture-registry-absent');
+      if (paths.length !== 0) issues.push('caller-self-reported-digest-touched-target');
+      if (typeof createCaptureRegistry !== 'function') issues.push('immutable-capture-registry-absent');
     } finally {
       await new Promise((resolve) => server.close(resolve));
       await rm(root, { recursive: true, force: true });

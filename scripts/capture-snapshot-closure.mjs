@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { types as utilTypes } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { canonicalize } from 'json-canonicalize';
@@ -17,6 +17,8 @@ const HK=['sequence','name_lower_ascii','value_bytes_base64'];
 const HX=/^[0-9a-f]{64}$/;
 const B64=/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const HN=/^[a-z0-9!#$%&'*+.^_\x60|~-]+$/;
+const REGISTRY_DOMAIN='ux-skill:capture-registry:v1';
+const registryState=new WeakMap();
 const E=(code,result)=>Object.assign(new TypeError(code),{code,...(result?{result}:{})});
 const bad=()=>{throw E('CAPTURE_INPUT_INVALID')};
 const unavailable=()=>{throw E('TARGET_UNAVAILABLE',{run_status:'target_unavailable',run_issues:[{code:'RULE_EVALUATION_ERROR',instance_pointer:'/snapshot_closure',dependency_id:null}],release_gate:'no_release'})};
@@ -181,36 +183,57 @@ const seedProfiles=async(casePath,c)=>{
   try{fixture=JSON.parse(await readFile(fixturePath,'utf8'))}catch{throw E('CAPTURE_PROFILE_FIXTURE_UNAVAILABLE')}
   const copy=snap(fixture);if(!Array.isArray(copy.replay_profiles)||copy.replay_profiles.length<1||copy.manifest_digest!==c.snapshot_closure_digest||snapshotClosureDigest(copy)!==copy.manifest_digest)throw E('CAPTURE_PROFILE_FIXTURE_INVALID');return copy.replay_profiles;
 };
-const taskRunnerDriver=(cas,profiles,registration,transport)=>{
-  if(!plain(registration)||!dg(registration.task_script_digest)||!dg(registration.runner_digest)||typeof registration.run!=='function'||!plain(transport)||!dg(transport.transport_digest)||typeof transport.request!=='function')throw E('TASK_RUNNER_UNAVAILABLE');
+export const captureRegistryDigest=manifest=>{const value=snap(manifest);delete value.registry_digest;return dsha(REGISTRY_DOMAIN,jb(value))};
+const registryPath=async(root,relative)=>{
+  if(typeof relative!=='string'||relative.length<1||relative.includes('\\')||relative.startsWith('/')||relative.split('/').some(part=>part===''||part==='.'||part==='..'))throw E('CAPTURE_REGISTRY_PATH_INVALID');
+  const candidate=resolve(root,relative);if(candidate!==root&&!candidate.startsWith(root+sep))throw E('CAPTURE_REGISTRY_PATH_INVALID');const stat=await lstat(candidate);if(!stat.isFile()||stat.isSymbolicLink())throw E('CAPTURE_REGISTRY_PATH_INVALID');const actual=await realpath(candidate);if(actual!==candidate)throw E('CAPTURE_REGISTRY_PATH_INVALID');return candidate;
+};
+export async function createCaptureRegistry(manifestPath){
+  const absolute=resolve(manifestPath),manifestStat=await lstat(absolute);if(!manifestStat.isFile()||manifestStat.isSymbolicLink()||manifestStat.size>L.maxArtifactBytes)throw E('CAPTURE_REGISTRY_INVALID');const root=await realpath(dirname(absolute)),manifest=snap(JSON.parse(await readFile(absolute,'utf8')));
+  if(!exact(manifest,['registry_version','entries','registry_digest'])||manifest.registry_version!=='snapshot-capture-registry-v1'||!Array.isArray(manifest.entries)||manifest.entries.length<1||manifest.entries.length>L.maxProfiles||!dg(manifest.registry_digest)||captureRegistryDigest(manifest)!==manifest.registry_digest)throw E('CAPTURE_REGISTRY_INVALID');
+  const entries=new Map(),orderedEntries=[...manifest.entries].sort((a,b)=>cmp([a.case_id,a.task_script_digest],[b.case_id,b.task_script_digest]));if(!jb(manifest.entries).equals(jb(orderedEntries)))throw E('CAPTURE_REGISTRY_INVALID');
+  for(const entry of manifest.entries){
+    if(!exact(entry,['case_id','task_script_digest','runner_path','runner_digest','transport_path','transport_digest'])||typeof entry.case_id!=='string'||!entry.case_id||!dg(entry.task_script_digest)||!dg(entry.runner_digest)||!dg(entry.transport_digest)||entries.has(entry.case_id))throw E('CAPTURE_REGISTRY_INVALID');
+    const runnerPath=await registryPath(root,entry.runner_path),transportPath=await registryPath(root,entry.transport_path),runnerBytes=await readFile(runnerPath),transportBytes=await readFile(transportPath);if(runnerBytes.length>L.maxArtifactBytes||transportBytes.length>L.maxArtifactBytes||sha(runnerBytes)!==entry.runner_digest||sha(transportBytes)!==entry.transport_digest)throw E('CAPTURE_REGISTRY_DIGEST_MISMATCH');
+    const runnerSource=runnerBytes.toString('utf8');if(/\b(?:fetch|WebSocket|EventSource|XMLHttpRequest|process|require)\b|(?:^|[;\n])\s*import\s|\bimport\s*\(/u.test(runnerSource))throw E('CAPTURE_RUNNER_AMBIENT_AUTHORITY');
+    const runnerModule=await import(`${pathToFileURL(runnerPath).href}?sha256=${entry.runner_digest}`),transportModule=await import(`${pathToFileURL(transportPath).href}?sha256=${entry.transport_digest}`);if(typeof runnerModule.run!=='function'||typeof transportModule.request!=='function')throw E('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID');
+    entries.set(entry.case_id,Object.freeze({...entry,run:runnerModule.run,request:transportModule.request}));
+  }
+  const registry=Object.freeze({registry_version:manifest.registry_version,registry_digest:manifest.registry_digest});registryState.set(registry,Object.freeze({entries}));return registry;
+}
+const taskRunnerDriver=(cas,profiles,registration)=>{
+  if(!plain(registration)||!dg(registration.task_script_digest)||!dg(registration.runner_digest)||!dg(registration.transport_digest)||typeof registration.run!=='function'||typeof registration.request!=='function')throw E('TASK_RUNNER_UNAVAILABLE');
   return{cas,async capture(c){
     const ts=task(snap(c.task_script)),taskDigest=sha(jb(ts));if(taskDigest!==registration.task_script_digest)throw E('TASK_RUNNER_UNSUPPORTED_INSTRUCTION');
     const expectedByProfile=new Map(profiles.map(row=>[row.replay_profile_id,ts.steps.filter(step=>step.required_replay_profile_ids.includes(row.replay_profile_id)).map(step=>step.step_id)]));
-    const nextByProfile=new Map(profiles.map(row=>[row.replay_profile_id,0])),executed=new Set(),network=[],observations=[],sequenceByProfile=new Map(profiles.map(row=>[row.replay_profile_id,0]));let active=null;
+    const nextByProfile=new Map(profiles.map(row=>[row.replay_profile_id,0])),executed=new Set(),network=[],observations=[],sequenceByProfile=new Map(profiles.map(row=>[row.replay_profile_id,0])),handleState=new WeakMap();let active=null;
     const executeStep=async(identity,work)=>{
       const id=snap(identity);if(!exact(id,['replay_profile_id','task_step_id'])||typeof work!=='function'||active)throw E('TASK_RUNNER_INVALID');
       const expected=expectedByProfile.get(id.replay_profile_id),next=nextByProfile.get(id.replay_profile_id);if(!expected||expected[next]!==id.task_step_id)throw E('TASK_RUNNER_STEP_ORDER');const key=`${id.replay_profile_id}\0${id.task_step_id}`;if(executed.has(key))throw E('TASK_RUNNER_STEP_DUPLICATE');
       const state={...id,requests:0,observations:0,ordinals:new Map()};active=state;
       const request=async(input)=>{
         if(active!==state)throw E('TASK_RUNNER_INACTIVE_STEP');const value=snap(input),keys=Object.keys(value).sort().join('\0');if(!plain(value)||(keys!=='method\0url'&&keys!=='method\0network_kind\0url')||!['GET','HEAD'].includes(value.method)||!url(value.url)||value.network_kind!==undefined&&!['document','script','style','image','font','xhr','fetch','other'].includes(value.network_kind))throw E('TASK_RUNNER_REQUEST_INVALID');
-        const response=await transport.request(snap(value));if(!plain(response)||!exact(response,['status','final_url','headers','body'])||!Number.isInteger(response.status)||response.status<100||response.status>599||!url(response.final_url)||!Array.isArray(response.headers)||!(response.body instanceof Uint8Array)||utilTypes.isProxy(response.body)||response.body.length>L.maxArtifactBytes)throw E('TASK_RUNNER_RESPONSE_INVALID');
-        const headers=snap(response.headers);canonHeaders(headers);const body=Buffer.from(response.body),sequence=sequenceByProfile.get(state.replay_profile_id);sequenceByProfile.set(state.replay_profile_id,sequence+1);network.push({replay_profile_id:state.replay_profile_id,sequence,task_step_id:state.task_step_id,request_method:value.method,request_url:value.url,redirect_chain:[],final_url:response.final_url,network_kind:value.network_kind??'document',disposition:'captured',response_status:response.status,response_headers:headers,raw_body_bytes_base64:body.toString('base64')});state.requests+=1;return{status:response.status,final_url:response.final_url,headers:snap(headers),body:Buffer.from(body)};
+        const response=await registration.request(snap(value));if(!plain(response)||!exact(response,['status','final_url','headers','body','redirect_chain','observation_artifacts'])||!Number.isInteger(response.status)||response.status<100||response.status>599||!url(response.final_url)||!Array.isArray(response.headers)||!Array.isArray(response.redirect_chain)||response.redirect_chain.length>L.maxRedirectHops||!Array.isArray(response.observation_artifacts)||!(response.body instanceof Uint8Array)||utilTypes.isProxy(response.body)||response.body.length>L.maxArtifactBytes)throw E('TASK_RUNNER_RESPONSE_INVALID');
+        const headers=snap(response.headers);canonHeaders(headers);const redirects=[];let expectedUrl=value.url;
+        for(let index=0;index<response.redirect_chain.length;index+=1){const hop=response.redirect_chain[index];if(!plain(hop)||!exact(hop,['sequence','status','url','location','response_headers'])||hop.sequence!==index||!Number.isInteger(hop.status)||hop.status<300||hop.status>399||!url(hop.url)||!url(hop.location)||hop.url!==expectedUrl||!Array.isArray(hop.response_headers))throw E('TASK_RUNNER_REDIRECT_INVALID');const hopHeaders=snap(hop.response_headers),canonical=canonHeaders(hopHeaders),locations=canonical.headers.filter(row=>row.name_lower_ascii==='location').map(row=>Buffer.from(row.value_bytes_base64,'base64').toString('latin1'));if(locations.length<1||!locations.some(location=>{try{return new URL(location,hop.url).href===hop.location}catch{return false}}))throw E('TASK_RUNNER_REDIRECT_INVALID');redirects.push({sequence:index,status:hop.status,url:hop.url,location:hop.location,response_headers:hopHeaders});expectedUrl=hop.location}
+        if(response.final_url!==expectedUrl)throw E('TASK_RUNNER_REDIRECT_INCOMPLETE');const body=Buffer.from(response.body),sequence=sequenceByProfile.get(state.replay_profile_id);sequenceByProfile.set(state.replay_profile_id,sequence+1);network.push({replay_profile_id:state.replay_profile_id,sequence,task_step_id:state.task_step_id,request_method:value.method,request_url:value.url,redirect_chain:redirects,final_url:response.final_url,network_kind:value.network_kind??'document',disposition:'captured',response_status:response.status,response_headers:headers,raw_body_bytes_base64:body.toString('base64')});state.requests+=1;
+        const observationHandles=[];for(const artifact of response.observation_artifacts){if(!plain(artifact)||!exact(artifact,['evidence_kind','artifact_bytes'])||!['screenshot','dom_snapshot','accessibility_tree','interaction_trace','performance_trace','content_extract'].includes(artifact.evidence_kind)||!(artifact.artifact_bytes instanceof Uint8Array)||utilTypes.isProxy(artifact.artifact_bytes)||artifact.artifact_bytes.length>L.maxArtifactBytes)throw E('TASK_RUNNER_OBSERVATION_INVALID');const handle=Object.freeze({});handleState.set(handle,{state,evidence_kind:artifact.evidence_kind,bytes:Buffer.from(artifact.artifact_bytes),used:false});observationHandles.push(handle)}return Object.freeze({status:response.status,final_url:response.final_url,observation_handles:Object.freeze(observationHandles)});
       };
       const observe=async(input)=>{
-        if(active!==state||!plain(input)||!exact(input,['evidence_kind','bytes'])||!['screenshot','dom_snapshot','accessibility_tree','interaction_trace','performance_trace','content_extract'].includes(input.evidence_kind)||!(input.bytes instanceof Uint8Array)||utilTypes.isProxy(input.bytes)||input.bytes.length>L.maxArtifactBytes)throw E('TASK_RUNNER_OBSERVATION_INVALID');
-        const ordinal=state.ordinals.get(input.evidence_kind)??0;state.ordinals.set(input.evidence_kind,ordinal+1);observations.push({replay_profile_id:state.replay_profile_id,task_step_id:state.task_step_id,evidence_kind:input.evidence_kind,ordinal,artifact_bytes_base64:Buffer.from(input.bytes).toString('base64')});state.observations+=1;
+        if(active!==state||!plain(input)||!exact(input,['evidence_kind','handle'])||!['screenshot','dom_snapshot','accessibility_tree','interaction_trace','performance_trace','content_extract'].includes(input.evidence_kind))throw E('TASK_RUNNER_OBSERVATION_INVALID');const evidence=handleState.get(input.handle);if(!evidence||evidence.state!==state||evidence.used||evidence.evidence_kind!==input.evidence_kind)throw E('TASK_RUNNER_OBSERVATION_HANDLE_INVALID');evidence.used=true;
+        const ordinal=state.ordinals.get(input.evidence_kind)??0;state.ordinals.set(input.evidence_kind,ordinal+1);observations.push({replay_profile_id:state.replay_profile_id,task_step_id:state.task_step_id,evidence_kind:input.evidence_kind,ordinal,artifact_bytes_base64:evidence.bytes.toString('base64')});state.observations+=1;
       };
       try{await work(Object.freeze({request,observe}))}finally{active=null}if(state.requests<1||state.observations<1)throw E('TASK_RUNNER_STEP_INCOMPLETE');executed.add(key);nextByProfile.set(id.replay_profile_id,next+1);
     };
     await registration.run(Object.freeze({profiles:snap(profiles),steps:snap(ts.steps),executeStep}));if(active)throw E('TASK_RUNNER_INACTIVE_STEP');
     for(const [profileId,steps] of expectedByProfile)if(nextByProfile.get(profileId)!==steps.length)throw E('TASK_RUNNER_PARTIAL');
     const observationOwners=new Map();for(const row of observations){const key=`${row.replay_profile_id}\0${sha(Buffer.from(row.artifact_bytes_base64,'base64'))}`,owner=observationOwners.get(key);if(owner!==undefined&&owner!==row.task_step_id)throw E('TASK_RUNNER_OBSERVATION_REUSED');observationOwners.set(key,row.task_step_id)}
-    return{capture_environment_digest:dsha('ux-skill:capture-environment:v1',jb({runner_digest:registration.runner_digest,transport_digest:transport.transport_digest})),captured_at:new Date().toISOString(),authenticated:false,replay_profiles:snap(profiles),network_events:network,observation_events:observations,outbound_effects:[],transport_events:[],live_replay:false};
+    return{capture_environment_digest:dsha('ux-skill:capture-environment:v1',jb({runner_digest:registration.runner_digest,transport_digest:registration.transport_digest})),captured_at:new Date().toISOString(),authenticated:false,replay_profiles:snap(profiles),network_events:network,observation_events:observations,outbound_effects:[],transport_events:[],live_replay:false};
   }};
 };
 export async function runCaptureCli(argv=process.argv.slice(2),dependencies={}){
   let options;try{options=parseCli(argv)}catch{return 64}let wrapper=cliUnavailable();
-  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),registration=dependencies?.taskRunners?.get?.(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,registration,dependencies.transport),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}
+  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),state=registryState.get(dependencies?.registry),registration=state?.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,registration),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}
   try{await writeJsonAtomic(options.outputPath,wrapper)}catch{return 74}return wrapper.run_status==='completed'?0:2;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)process.exitCode=await runCaptureCli();
