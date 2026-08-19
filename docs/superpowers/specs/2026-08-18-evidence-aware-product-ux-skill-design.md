@@ -438,6 +438,26 @@ SemanticProjection-v1 只含这些 top-level fields：schema_version、behavior_
 计算统一为 SHA-256(UTF8(domain)||preimage bytes)，小写 64 hex。SemanticProjection.evaluator_digest 必须等于 evaluator row 的结果；运行时二进制路径、编译时间和 host metadata 不进入 preimage。missing 字段按 schema 缺失，不转 null。finding_id/effect/capability id 使用已定义 full digest 派生；truncation collision fatal。
 
 
+### 12.6 Evaluator import closure and manifest parity
+
+Task 10 固定的 evaluator 模块集合是 Task 6 结束时已经存在的八个模块，加上 Task 10 将创建的 `evaluator/index.mjs`，组成以下 exact canonical nine paths：
+
+- `evaluator/authority.mjs`
+- `evaluator/canonical.mjs`
+- `evaluator/claims.mjs`
+- `evaluator/dependency-decision.mjs`
+- `evaluator/digests.mjs`
+- `evaluator/index.mjs`
+- `evaluator/projection.mjs`
+- `evaluator/rules-runtime.mjs`
+- `evaluator/validation.mjs`
+
+以 `evaluator/index.mjs` 为根递归解析所有本地相对 `.mjs` import，所得 canonical path set 必须与 `evaluator/manifest.json` 的 evaluator file path set byte-equal；`knowledge/artifact-manifest.json` 中 evaluator `.mjs` 子集也必须与二者 byte-equal。missing、extra、duplicate、nonlocal、unimported path 或硬编码旧数量均 invalid。
+
+<!-- evaluator-import-closure:v1
+{"task10_evaluator_manifest_paths":["evaluator/authority.mjs","evaluator/canonical.mjs","evaluator/claims.mjs","evaluator/dependency-decision.mjs","evaluator/digests.mjs","evaluator/index.mjs","evaluator/projection.mjs","evaluator/rules-runtime.mjs","evaluator/validation.mjs"],"task13_artifact_manifest_evaluator_paths":["evaluator/authority.mjs","evaluator/canonical.mjs","evaluator/claims.mjs","evaluator/dependency-decision.mjs","evaluator/digests.mjs","evaluator/index.mjs","evaluator/projection.mjs","evaluator/rules-runtime.mjs","evaluator/validation.mjs"]}
+-->
+
 ## 13. HulianUI adapter v1 固定 row
 
 首个 contract 只使用 get_component_doc 精确获取 AlertDialog；“破坏性操作为何需要确认”由 UX rule 决定，MCP 只证明实现候选存在及其文档字段。
