@@ -1,0 +1,1 @@
+IMPORT_CLOSURE_LEXICAL_AUTHENTICITY_RED parses only executable module edges and rejects invalid graphs
