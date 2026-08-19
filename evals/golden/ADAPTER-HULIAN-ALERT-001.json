@@ -57,6 +57,11 @@
   ],
   "source_artifact_identity": {
     "path": "apps/www/public/llms-props.json",
+    "schema_identity": {
+      "id": "https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json",
+      "path": "schemas/adapters/hulian-component-doc-v1.schema.json",
+      "raw_sha256": "86a4dc87401cbc8c5bb12ac181e3f9aa06fa02b87ffa662dc6093c1279ea46bb"
+    },
     "sha256": "729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5",
     "version": "0.52.0"
   }

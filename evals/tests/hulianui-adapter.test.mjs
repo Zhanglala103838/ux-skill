@@ -26,7 +26,7 @@ test('adapter surface is two pure functions with no evaluator, MCP, or HulianUI 
  assert.deepEqual(Object.keys(adapter).sort(),['classifyHulianResult','mapHulianComponentDoc']);
  const source=await readFile(new URL('../../adapters/hulianui/adapter.mjs',import.meta.url),'utf8');await init;
  const specifiers=parse(source,'adapter.mjs')[0].map((row)=>row.n).filter((row)=>typeof row==='string').sort();
- assert.deepEqual(specifiers,['json-canonicalize','node:crypto','node:util']);
+ assert.deepEqual(specifiers,['ajv-formats','ajv/dist/2020.js','json-canonicalize','node:crypto','node:fs','node:util']);
  assert.equal(specifiers.some((row)=>/evaluator|mcp|hulianui/i.test(row)),false);
 });
 
@@ -150,7 +150,9 @@ test('TASK8_SCHEMA_TOTALITY_RED exact schema parity and bounded snapshots',async
  const schema=JSON.parse(schemaRaw);
  record('schema-raw-digest',sha(schemaRaw)===TASK8_SCHEMA_DIGEST,sha(schemaRaw));
  record('schema-id',schema.$id===TASK8_SCHEMA_ID,String(schema.$id));
- record('contract-schema-binding',contract.result_schema?.id===TASK8_SCHEMA_ID&&contract.result_schema?.raw_sha256===TASK8_SCHEMA_DIGEST);
+ let boundEvidence=null;try{boundEvidence=map(valid());}catch{}
+ const schemaIdentity=boundEvidence?.source_artifact_identity?.schema_identity;
+ record('schema-source-binding',schemaIdentity?.id===TASK8_SCHEMA_ID&&schemaIdentity?.path==='schemas/adapters/hulian-component-doc-v1.schema.json'&&schemaIdentity?.raw_sha256===TASK8_SCHEMA_DIGEST);
 
  const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});
  addFormats(ajv);
