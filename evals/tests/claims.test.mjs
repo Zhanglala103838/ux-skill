@@ -181,3 +181,54 @@ test('TASK6_AUTHORITY_UNION_RED requirement kinds form a closed authority materi
  expectInvalid(assess('none',a,false));
  expectInvalid(assess('none',null,true));
 });
+
+test('TASK6_PARITY_RED reducers have closed CoreV1 contracts and Task10 public materializers',async()=>{
+ const [{default:Ajv2020},runtime]=await Promise.all([import('ajv/dist/2020.js'),loadRuntime()]);
+ const [coreSchema,outputSchema,projectionSchema,design,plan]=await Promise.all([
+  readFile(new URL('../../schemas/core/claims.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/output.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md',import.meta.url),'utf8'),
+  readFile(new URL('../../docs/superpowers/plans/2026-08-18-evidence-aware-product-ux-skill-v0.1-vertical-slice.md',import.meta.url),'utf8')
+ ]);
+ const a=action();
+ const claimIds=[['temporal','validity'],['comparator','directness'],['identification','validity'],['estimand','precision'],['transport','transportability']];
+ const samples={
+  ClaimAssessmentCoreV1:runtime.assessClaim(baseClaim(),evidence(claimIds.map(([id])=>[id,'verified','core-'+id]),{intervention_id:'do-x',counterfactual_id:'no-x',effect_estimand_id:'ate'}),policy('causal',claimIds)),
+  RiskDecisionCoreV1:runtime.assessRisk({mandatory_fail:false,hard_unsat:false,hard_decision:'none',release_critical:false,outcome:'pass'},{severity:'moderate',likelihood:'known',exposure:'known',reversibility:'reversible',key_factor_status:'verified',purpose:'other',materially_relies_on:false,inference_kind:'other',prohibition_status:'not_applicable',mandatory_check_status:'pass',other_hard_checks_status:'pass',signal_policy_row:null}),
+  RecommendationDecisionCoreV1:runtime.assessRecommendation({action:a,authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'none',required_action:null,outcome_equivalent_verified:false},evidence:{admissible_conclusion:'causal',overall:'high',assessed_action:a},risk_decision:'clear',reversibility:'reversible',exact_mandatory_action:false,hard_decision:'clear',sensitive_decision:'continue'}),
+  ReleaseDecisionCoreV1:runtime.reduceRelease({gates:['clear'],selection:'decided',authority_complete:true,critical_status:'pass',tail_unknown:false,conditions:[]})
+ };
+ const coreNames=Object.keys(samples),publicNames=['ClaimAssessment','RiskAssessment','RecommendationAssessment','ReleaseRecommendation'];
+ for(const name of coreNames)assert.ok(coreSchema.$defs[name],'missing internal '+name);
+ for(const name of publicNames)assert.equal(coreSchema.$defs[name],undefined,'internal/public same-name ambiguity: '+name);
+ assert.equal(coreSchema.properties.claim_assessments.items.$ref,'#/$defs/ClaimAssessmentCoreV1');
+ const ajv=new Ajv2020({strict:true,allErrors:true});
+ for(const [name,sample] of Object.entries(samples)){
+  const validate=ajv.compile({$schema:coreSchema.$schema,$defs:coreSchema.$defs,$ref:'#/$defs/'+name});
+  assert.equal(validate(sample),true,name+' rejects runtime result: '+JSON.stringify(validate.errors));
+  assert.equal(validate({...sample,unexpected:true}),false,name+' is not closed');
+  const missing=structuredClone(sample);delete missing[coreSchema.$defs[name].required[0]];assert.equal(validate(missing),false,name+' accepts missing required member');
+  const wrong=structuredClone(sample);wrong[coreSchema.$defs[name].required.at(-1)]=42;assert.equal(validate(wrong),false,name+' accepts wrong type');
+ }
+ for(const name of publicNames)assert.deepEqual(projectionSchema.$defs[name],outputSchema.$defs[name],name+' differs between output and semantic projection');
+ assert.deepEqual(outputSchema.$defs.RiskAssessment.properties.likelihood.enum,['known','unknown']);
+ assert.deepEqual(outputSchema.$defs.RiskAssessment.properties.exposure.enum,['known','unknown']);
+ assert.ok(outputSchema.$defs.RiskAssessment.required.includes('finding_id'));
+ const recommendationDef=outputSchema.$defs.RecommendationAssessment;
+ for(const key of ['action_id','output_kind','recommendation','research_question','policy_version'])assert.ok(recommendationDef.required.includes(key),'missing recommendation public member '+key);
+ const validateRecommendation=ajv.compile({$schema:outputSchema.$schema,$defs:outputSchema.$defs,$ref:'#/$defs/RecommendationAssessment'});
+ const recommendationBase={recommendation_assessment_id:'rma_1',status:'complete',action_id:a.action_id,authority_ceiling:'required',evidence_ceiling:'strong_advice',risk_ceiling:'required',reversibility_ceiling:'required',strength:'strong_advice',policy_version:'registry-v1',reason_codes:[]};
+ const recommendation={...recommendationBase,output_kind:'recommendation',recommendation:{recommendation_id:'rec_1',action:a,strength:'strong_advice'},research_question:null};
+ const inquiry={...recommendationBase,output_kind:'research_question',strength:'none',recommendation:null,research_question:{question_id:'rq_1',kind:'decision_gap',prompt_code:'EVIDENCE_OR_AUTHORITY_GAP'}};
+ assert.equal(validateRecommendation(recommendation),true,JSON.stringify(validateRecommendation.errors));
+ assert.equal(validateRecommendation(inquiry),true,JSON.stringify(validateRecommendation.errors));
+ assert.equal(validateRecommendation({...recommendation,research_question:inquiry.research_question}),false,'public recommendation branches are not mutually exclusive');
+ const releaseDef=outputSchema.$defs.ReleaseRecommendation;
+ for(const key of ['condition_ids','conditions','reason_code'])assert.ok(releaseDef.required.includes(key),'missing release public member '+key);
+ assert.equal(outputSchema.$defs.ReleaseCondition.additionalProperties,false);
+ assert.deepEqual(outputSchema.$defs.ReleaseCondition.required,['condition_id','predicate','owner','deadline','verification_method','status']);
+ const docs=design+plan;
+ for(const text of ['ClaimAssessmentCoreV1','RiskDecisionCoreV1','RecommendationDecisionCoreV1','ReleaseDecisionCoreV1','ux-skill:risk-assessment:v1','ux-skill:recommendation:v1','ux-skill:recommendation-assessment:v1','ux-skill:release-condition:v1','required_check_id + ":" + status','validity,directness,precision,transportability','condition_ids 按 condition_id','Task 10 is the sole public materializer'])assert.ok(docs.includes(text),'Task10 materializer contract missing: '+text);
+ assert.ok(plan.includes('Task 10 materializer acceptance'),'Task10 plan lacks materializer acceptance wording');
+});
