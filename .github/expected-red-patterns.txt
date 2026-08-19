@@ -1,0 +1,1 @@
+TASK5_PUBLIC_DEPENDENCY_COHERENCE_RED reuses Task5 dependency decision semantics

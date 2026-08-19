@@ -442,3 +442,73 @@ test('TASK5_INVALID_TERMINAL_BRANCH_RED closes invalid input and invalid rule pr
   }
  }
 });
+
+test('TASK5_PUBLIC_DEPENDENCY_COHERENCE_RED reuses Task5 dependency decision semantics',async()=>{
+ const {evaluateRule}=await import('../../evaluator/rules-runtime.mjs');
+ const dep=(dependency_id,status,complete=true)=>({dependency_id,status,complete});
+ const rule=(rule_id)=>({
+  rule_id,rule_version:'1.0.0',release_critical:false,finding_type:'usability',
+  required_dependencies:[{dependency_id:'dep-z',required:true},{dependency_id:'dep-a',required:true}],
+  registered_input_pointers:[],required_input_pointers:[],
+  applicability:{node_id:'app',op:'literal',value:true},exclusion:{node_id:'exc',op:'literal',value:false},
+  precondition:{node_id:'pre',op:'literal',value:true},check:{node_id:'check',op:'literal',value:true}
+ });
+ const root=(schemaId,row)=>{
+  const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'d'.repeat(64),evaluator_digest:'e'.repeat(64),run_status:row.outcome==='pass'?'completed_clear':'completed_with_gaps',rule_evaluations:[row],findings:[],run_issues:row.run_issue?[row.run_issue]:[],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+  return schemaId==='EvaluationOutput'?{...common,validation_errors:[]}:{...common,semantic_digest:'f'.repeat(64)};
+ };
+ const validEverywhere=(row,label)=>{for(const schemaId of ['EvaluationOutput','SemanticProjection'])assert.equal(validateBySchema(schemaId,root(schemaId,row)).ok,true,schemaId+' rejects '+label);};
+ const invalidEverywhere=(row,label)=>{for(const schemaId of ['EvaluationOutput','SemanticProjection'])assert.equal(validateBySchema(schemaId,root(schemaId,row)).ok,false,schemaId+' accepts '+label);};
+ const cases=[
+  ['invalid_request','tool_failed','evaluation_error','REQUIRED_TOOL_INVALID_REQUEST',true],
+  ['auth_error','tool_failed','evaluation_error','REQUIRED_TOOL_AUTH_ERROR',true],
+  ['incompatible_source','tool_failed','evaluation_error','REQUIRED_TOOL_INCOMPATIBLE_SOURCE',true],
+  ['timeout','tool_failed','evaluation_error','REQUIRED_TOOL_TIMEOUT',true],
+  ['server_error','tool_failed','evaluation_error','REQUIRED_TOOL_SERVER_ERROR',true],
+  ['cancelled','cancelled','not_run','REQUIRED_TOOL_CANCELLED',false],
+  ['partial','completed','not_run','REQUIRED_INPUT_PARTIAL',false],
+  ['not_found','completed','not_run','REQUIRED_INPUT_NOT_FOUND',false]
+ ];
+ const rows=[];
+ for(const [status,terminal,outcome,reason_code,hasIssue] of cases){
+  const tools=status==='not_found'?[dep('dep-z','success')]:[dep('dep-z','success'),dep('dep-a',status,status==='partial'?false:true)];
+  const row=evaluateRule(rule('dependency-'+status),{target:{}},tools);
+  assert.deepEqual({terminal:row.terminal,outcome:row.outcome,reason_code:row.reason_code},{terminal,outcome,reason_code});
+  assert.deepEqual(row.dependency_trace.map(({dependency_id})=>dependency_id),['dep-a','dep-z']);
+  assert.deepEqual(row.trace,[]);
+  assert.deepEqual(row.run_issue,hasIssue?{code:'RULE_EVALUATION_ERROR',instance_pointer:'/required_dependencies',dependency_id:'dep-a'}:null);
+  validEverywhere(row,'genuine '+status);
+  rows.push({status,row,hasIssue});
+ }
+ const astTrace=[{node_id:'tamper',parent_node_id:null,value:'T'}];
+ const alternateReason=(reason)=>reason==='REQUIRED_INPUT_PARTIAL'?'REQUIRED_INPUT_NOT_FOUND':reason==='REQUIRED_INPUT_NOT_FOUND'?'REQUIRED_INPUT_PARTIAL':reason==='REQUIRED_TOOL_INVALID_REQUEST'?'REQUIRED_TOOL_AUTH_ERROR':'REQUIRED_TOOL_INVALID_REQUEST';
+ for(const {status,row,hasIssue} of rows){
+  const [first,second]=row.dependency_trace;
+  const invalid=[
+   ['empty dependency trace',{...row,dependency_trace:[]}],
+   ['reason mismatch',{...row,reason_code:alternateReason(row.reason_code)}],
+   ['terminal mismatch',{...row,terminal:row.terminal==='completed'?'cancelled':'completed'}],
+   ['outcome mismatch',{...row,outcome:row.outcome==='not_run'?'evaluation_error':'not_run'}],
+   ['noncanonical dependency order',{...row,dependency_trace:[second,first]}],
+   ['duplicate dependency id',{...row,dependency_trace:[first,{...first},second]}],
+   ['invalid dependency status',{...row,dependency_trace:[{...first,status:'invalid'},second]}],
+   ['invalid dependency complete',{...row,dependency_trace:[{...first,complete:'true'},second]}],
+   ['nonempty AST trace',{...row,trace:astTrace}]
+  ];
+  if(hasIssue){
+   invalid.push(
+    ['winner mismatch',{...row,dependency_trace:[{...first,status:'success'},{...second,status}],run_issue:{...row.run_issue,dependency_id:'dep-a'}}],
+    ['pointer mismatch',{...row,run_issue:{...row.run_issue,instance_pointer:'/check'}}],
+    ['dependency id mismatch',{...row,run_issue:{...row.run_issue,dependency_id:'missing-dependency'}}]
+   );
+  }
+  for(const [label,value] of invalid)invalidEverywhere(value,status+' '+label);
+ }
+ const ready=evaluateRule(rule('dependency-ready'),{target:{}},[dep('dep-z','success'),dep('dep-a','success')]);
+ assert.equal(ready.outcome,'pass');
+ assert.ok(ready.trace.length>0);
+ validEverywhere(ready,'ready dependency AST result');
+ invalidEverywhere({...ready,terminal:'tool_failed',outcome:'evaluation_error',reason_code:'REQUIRED_TOOL_TIMEOUT',trace:[],run_issue:{code:'RULE_EVALUATION_ERROR',instance_pointer:'/required_dependencies',dependency_id:'dep-a'}},'tool-derived reason when dependencyDecision is null');
+ invalidEverywhere({...ready,dependency_trace:[...ready.dependency_trace].reverse()},'ready noncanonical dependency order');
+ invalidEverywhere({...ready,dependency_trace:[ready.dependency_trace[0],{...ready.dependency_trace[0]},ready.dependency_trace[1]]},'ready duplicate dependency id');
+});
