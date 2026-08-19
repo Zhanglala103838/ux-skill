@@ -232,3 +232,102 @@ test('TASK6_PARITY_RED reducers have closed CoreV1 contracts and Task10 public m
  for(const text of ['ClaimAssessmentCoreV1','RiskDecisionCoreV1','RecommendationDecisionCoreV1','ReleaseDecisionCoreV1','ux-skill:risk-assessment:v1','ux-skill:recommendation:v1','ux-skill:recommendation-assessment:v1','ux-skill:release-condition:v1','required_check_id + ":" + status','validity,directness,precision,transportability','condition_ids 按 condition_id','Task 10 is the sole public materializer'])assert.ok(docs.includes(text),'Task10 materializer contract missing: '+text);
  assert.ok(plan.includes('Task 10 materializer acceptance'),'Task10 plan lacks materializer acceptance wording');
 });
+
+
+test('TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to normalized source',async()=>{
+ const [{default:Ajv2020},outputSchema,projectionSchema,design,plan]=await Promise.all([
+  import('ajv/dist/2020.js'),
+  readFile(new URL('../../schemas/evaluator/output.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md',import.meta.url),'utf8'),
+  readFile(new URL('../../docs/superpowers/plans/2026-08-18-evidence-aware-product-ux-skill-v0.1-vertical-slice.md',import.meta.url),'utf8')
+ ]);
+ const names=['ClaimAssessment','RiskAssessment','RecommendationAssessment','ReleaseRecommendation'];
+ for(const name of names)assert.deepEqual(projectionSchema.$defs[name],outputSchema.$defs[name],name+' public schema parity');
+ const required={
+  ClaimAssessment:['claim_assessment_id','source_material_digest','claim_id','policy_id','admissible_conclusion','assessed_predicate','checks','dimension_scores','evidence_grade','reason_codes'],
+  RiskAssessment:['risk_assessment_id','source_material_digest','finding_id','status','decision','severity','likelihood','exposure','reversibility','reason_codes'],
+  RecommendationAssessment:['recommendation_assessment_id','source_material_digest','status','action_id','authority_ceiling','evidence_ceiling','risk_ceiling','reversibility_ceiling','minimum_ceiling','strength','output_kind','recommendation','research_question','policy_version','reason_codes'],
+  ReleaseRecommendation:['release_recommendation_id','source_material_digest','status','next_action','condition_ids','conditions','reason_code']
+ };
+ const idFields={ClaimAssessment:'claim_assessment_id',RiskAssessment:'risk_assessment_id',RecommendationAssessment:'recommendation_assessment_id',ReleaseRecommendation:'release_recommendation_id'};
+ const idPatterns={ClaimAssessment:'^ca_[0-9a-f]{32}$',RiskAssessment:'^ra_[0-9a-f]{32}$',RecommendationAssessment:'^rma_[0-9a-f]{32}$',ReleaseRecommendation:'^rr_[0-9a-f]{32}$'};
+ for(const name of names){
+  const def=outputSchema.$defs[name];
+  assert.deepEqual(def.required,required[name],name+' required public material');
+  assert.equal(def.additionalProperties,false);
+  assert.equal(def.properties[idFields[name]].pattern,idPatterns[name]);
+  assert.equal(def.properties.source_material_digest.pattern,'^[0-9a-f]{64}$');
+ }
+ const claimDef=outputSchema.$defs.ClaimAssessment;
+ assert.equal(Object.hasOwn(claimDef.properties,'check_results'),false);
+ assert.equal(claimDef.properties.checks.items.$ref,'#/$defs/ClaimCheckResult');
+ assert.equal(claimDef.properties.dimension_scores.items.$ref,'#/$defs/EvidenceDimensionScore');
+ assert.equal(claimDef.properties.evidence_grade.$ref,'#/$defs/EvidenceGrade');
+ const ajv=new Ajv2020({strict:true,allErrors:true});
+ for(const name of names)assert.doesNotThrow(()=>ajv.compile({$schema:outputSchema.$schema,$defs:outputSchema.$defs,$ref:'#/$defs/'+name}));
+ const docs=design+plan;
+ for(const text of ['source_material_digest from exact validated normalized source objects','never trusts a caller-supplied source_material_digest','ux-skill:claim-assessment-public:v1','ux-skill:risk-assessment:v1','ux-skill:recommendation-assessment:v1','ux-skill:release-recommendation:v1','material integrity binding, not authenticity','re-derives the reducer core and byte-compares'])assert.ok(docs.includes(text),'missing Task10 source binding contract: '+text);
+ const materializers=await import('../../evaluator/projection.mjs');
+ for(const name of ['materializeClaimAssessment','materializeRiskAssessment','materializeRecommendationAssessment','materializeReleaseRecommendation','verifyPublicMaterialization'])assert.equal(typeof materializers[name],'function','missing '+name);
+ const claimIds=[['temporal','validity'],['comparator','directness'],['identification','validity'],['estimand','precision'],['transport','transportability']];
+ const claimSource={
+  claim:baseClaim({evidence_refs:['ev-1','ev-2']}),
+  evidence:evidence(claimIds.map(([id])=>[id,'verified','cluster-'+id]),{intervention_id:'do-x',counterfactual_id:'no-x',effect_estimand_id:'ate'}),
+  policy:policy('causal',claimIds)
+ };
+ const riskFinding={mandatory_fail:false,hard_unsat:false,hard_decision:'none',release_critical:false,outcome:'pass'};
+ const riskContext={severity:'moderate',likelihood:'known',exposure:'known',reversibility:'reversible',key_factor_status:'verified',purpose:'other',materially_relies_on:false,inference_kind:'other',prohibition_status:'not_applicable',mandatory_check_status:'pass',other_hard_checks_status:'pass',signal_policy_row:null};
+ const riskSource={finding:riskFinding,context:riskContext};
+ const recParts={action:action(),authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'none',required_action:null,outcome_equivalent_verified:false},evidence:{admissible_conclusion:'causal',overall:'high',assessed_action:action()},risk_decision:'clear',reversibility:'reversible',exact_mandatory_action:false,hard_decision:'clear',sensitive_decision:'continue'};
+ const recSource={parts:recParts,selected_policy_registry_row:{policy_id:'recommendation-policy',version:'registry-v1',status:'effective'}};
+ const releaseConditions=[
+  {predicate:'confirm-owner',owner:'ux-owner',deadline:'2026-09-01T00:00:00Z',verification_method:'test-owner',status:'verified_executable'},
+  {predicate:'confirm-copy',owner:'content-owner',deadline:'2026-09-02T00:00:00Z',verification_method:'test-copy',status:'verified_executable'}
+ ];
+ const releaseSource={derived_gates:['clear'],selection:{status:'decided'},authority:{complete:true},critical_tail_evidence:{critical_status:'pass',tail_unknown:false},conditions:releaseConditions};
+ const claimPublic=materializers.materializeClaimAssessment(claimSource);
+ const riskPublic=materializers.materializeRiskAssessment(riskSource);
+ const recPublic=materializers.materializeRecommendationAssessment(recSource);
+ const releasePublic=materializers.materializeReleaseRecommendation(releaseSource);
+ for(const [name,value] of Object.entries({ClaimAssessment:claimPublic,RiskAssessment:riskPublic,RecommendationAssessment:recPublic,ReleaseRecommendation:releasePublic})){
+  const validate=ajv.compile({$schema:outputSchema.$schema,$defs:outputSchema.$defs,$ref:'#/$defs/'+name});
+  assert.equal(validate(value),true,name+' invalid: '+JSON.stringify(validate.errors));
+  assert.match(value[idFields[name]],new RegExp(idPatterns[name]));
+  assert.match(value.source_material_digest,/^[0-9a-f]{64}$/);
+ }
+ assert.deepEqual(claimPublic.checks,materializers.materializeClaimAssessment(claimSource).checks);
+ assert.equal(claimPublic.checks.length,claimSource.policy.required_checks.length);
+ assert.deepEqual(claimPublic.dimension_scores.map((row)=>row.dimension),['directness','precision','transportability','validity']);
+ assert.equal(typeof claimPublic.evidence_grade,'object');
+ const changesBoth=(baseline,next,idField)=>{assert.notEqual(next.source_material_digest,baseline.source_material_digest);assert.notEqual(next[idField],baseline[idField]);};
+ const claimVariants=[
+  {...claimSource,policy:{...claimSource.policy,policy_id:'policy-causal-v2'}},
+  {...claimSource,evidence:{...claimSource.evidence,checks:claimSource.evidence.checks.map((row,index)=>index?row:{...row,status:'verified_with_limit'})}},
+  {...claimSource,evidence:{...claimSource.evidence,checks:claimSource.evidence.checks.map((row,index)=>index?row:{...row,evidence_refs:['ev-changed']})}},
+  {...claimSource,policy:{...claimSource.policy,required_checks:claimSource.policy.required_checks.map((row,index)=>index===0?{...row,dimension:'directness'}:index===1?{...row,dimension:'validity'}:row)}}
+ ];
+ for(const source of claimVariants)changesBoth(claimPublic,materializers.materializeClaimAssessment(source),'claim_assessment_id');
+ for(const context of [{...riskContext,purpose:'marketing'},{...riskContext,materially_relies_on:true}])changesBoth(riskPublic,materializers.materializeRiskAssessment({finding:riskFinding,context}),'risk_assessment_id');
+ const recVariants=[
+  {...recSource,parts:{...recParts,authority:{...recParts.authority,applicability:'unknown'}}},
+  {...recSource,parts:{...recParts,evidence:{...recParts.evidence,overall:'adequate'}}},
+  {...recSource,parts:{...recParts,risk_decision:'escalation'}}
+ ];
+ for(const source of recVariants)changesBoth(recPublic,materializers.materializeRecommendationAssessment(source),'recommendation_assessment_id');
+ const releaseVariants=[
+  {...releaseSource,derived_gates:['escalation']},
+  {...releaseSource,selection:{status:'undecided'}},
+  {...releaseSource,authority:{complete:false}},
+  {...releaseSource,critical_tail_evidence:{critical_status:'pass',tail_unknown:true}}
+ ];
+ for(const source of releaseVariants)changesBoth(releasePublic,materializers.materializeReleaseRecommendation(source),'release_recommendation_id');
+ const claimPermutation={claim:{...claimSource.claim,evidence_refs:[...claimSource.claim.evidence_refs].reverse()},evidence:{...claimSource.evidence,checks:[...claimSource.evidence.checks].reverse()},policy:{...claimSource.policy,required_checks:[...claimSource.policy.required_checks].reverse()}};
+ assert.deepEqual(materializers.materializeClaimAssessment(claimPermutation),claimPublic);
+ const releasePermutation={...releaseSource,derived_gates:[...releaseSource.derived_gates].reverse(),conditions:[...releaseSource.conditions].reverse()};
+ assert.deepEqual(materializers.materializeReleaseRecommendation(releasePermutation),releasePublic);
+ for(const [kind,source,value] of [['claim',claimSource,claimPublic],['risk',riskSource,riskPublic],['recommendation',recSource,recPublic],['release',releaseSource,releasePublic]]){
+  assert.equal(materializers.verifyPublicMaterialization(kind,source,value),true);
+  assert.equal(materializers.verifyPublicMaterialization(kind,source,{...value,source_material_digest:'0'.repeat(64)}),false);
+ }
+});

@@ -1,0 +1,1 @@
+TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to normalized source
