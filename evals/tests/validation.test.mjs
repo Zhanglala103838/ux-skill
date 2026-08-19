@@ -352,3 +352,33 @@ test('TASK5_PUBLIC_SHAPE_RED preserves full RuleEvaluation Finding and RunIssue 
   assert.equal(validateBySchema(schemaId,{...value,findings:[shortFinding]}).ok,false,schemaId+' accepts three-key Finding');
  }
 });
+
+test('TASK5_RUN_ISSUE_CODE_RED closes public RunIssue code domain',async()=>{
+ const [{default:Ajv2020},outputSchema,projectionSchema]=await Promise.all([
+  import('ajv/dist/2020.js'),
+  readFile(new URL('../../schemas/evaluator/output.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse)
+ ]);
+ assert.deepEqual(projectionSchema.$defs.RunIssue,outputSchema.$defs.RunIssue);
+ assert.equal(outputSchema.$defs.RunIssue.properties.code.const,'RULE_EVALUATION_ERROR');
+ const validIssue={code:'RULE_EVALUATION_ERROR',instance_pointer:'/check',dependency_id:null};
+ const unknownIssue={...validIssue,code:'UNKNOWN_RUN_ISSUE'};
+ const ajv=new Ajv2020({strict:true,allErrors:true});
+ for(const schema of [outputSchema,projectionSchema]){
+  const validate=ajv.compile({$schema:schema.$schema,$defs:schema.$defs,$ref:'#/$defs/RunIssue'});
+  assert.equal(validate(validIssue),true,JSON.stringify(validate.errors));
+  assert.equal(validate(unknownIssue),false,'unknown RunIssue code remains valid in isolation');
+ }
+ const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'7'.repeat(64),evaluator_digest:'8'.repeat(64),run_status:'completed_with_gaps',rule_evaluations:[],findings:[],run_issues:[validIssue],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+ const roots=[
+  ['EvaluationOutput',{...common,validation_errors:[]}],
+  ['SemanticProjection',{...common,semantic_digest:'9'.repeat(64)}]
+ ];
+ const nested={rule_id:'issue-owner',rule_version:'1.0.0',release_critical:false,finding_type:'usability',terminal:'invalid_input',outcome:'evaluation_error',reason_code:'INVALID_INPUT',trace:[],dependency_trace:[],run_issue:validIssue};
+ for(const [schemaId,root] of roots){
+  assert.equal(validateBySchema(schemaId,root).ok,true,schemaId+' rejects legal orphan RunIssue');
+  assert.equal(validateBySchema(schemaId,{...root,run_issues:[unknownIssue]}).ok,false,schemaId+' accepts unknown root RunIssue');
+  assert.equal(validateBySchema(schemaId,{...root,rule_evaluations:[nested]}).ok,true,schemaId+' rejects valid nested RunIssue');
+  assert.equal(validateBySchema(schemaId,{...root,rule_evaluations:[{...nested,run_issue:unknownIssue}]}).ok,false,schemaId+' accepts unknown nested RunIssue');
+ }
+});
