@@ -1,0 +1,8 @@
+{
+  "policy_files": [
+    {
+      "path": "knowledge/decision-policies.json",
+      "file_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e"
+    }
+  ]
+}

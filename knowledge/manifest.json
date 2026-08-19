@@ -1,0 +1,163 @@
+{
+  "manifest_version": "knowledge-manifest-v1",
+  "files": [
+    {
+      "path": "knowledge/assertions.json",
+      "file_digest": "5c721421e0caa2dc72874247332c056306fe3121c5281bebb3fa3cf25b783273"
+    },
+    {
+      "path": "knowledge/decision-policies.json",
+      "file_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e"
+    },
+    {
+      "path": "knowledge/policy-manifest.json",
+      "file_digest": "a7eecf820841119ba631304307b4b7ce96272f704990aabc83397edd1223ee91"
+    },
+    {
+      "path": "knowledge/registries.json",
+      "file_digest": "ae9bea2911c8a0cf82716fd3e8d5d67720cd1cb9b025b775f830d63b065bec9a"
+    },
+    {
+      "path": "knowledge/rules.json",
+      "file_digest": "f975c67ce228dfe564bb025c95b6a841efb060fec6bd1d1d1ebb99fb80f76cb0"
+    },
+    {
+      "path": "knowledge/sources.json",
+      "file_digest": "7a5f31a2a09d8d3357f416d47820b0787788c27c978c3157dbed81cee7fdf6f1"
+    },
+    {
+      "path": "references/claim-study.md",
+      "file_digest": "2629fb78594abe16ea3fa03bcfb5eb66ec4df60ed70ec6e3a5643f3ad7653b80"
+    },
+    {
+      "path": "references/context-model.md",
+      "file_digest": "a957bbdbe5879762586b8f128ceedd4fd52b3d5c37ea7d95461f6e47d21298f9"
+    },
+    {
+      "path": "references/ethics.md",
+      "file_digest": "9bd4429b04baa28bdd398c64504ae3fd78d41fa261a5e42e62bad2f30019d7f3"
+    },
+    {
+      "path": "references/implementation-mapping.md",
+      "file_digest": "c2ef582f2a36a6d559d8dcdb85c16df7475c13fe079b933fcc1f560e42e786c3"
+    },
+    {
+      "path": "references/inquiry-design.md",
+      "file_digest": "e56729e0defaa70d73c976dc69568da9ccd5970c8ea3c64437e2f7d59074a752"
+    },
+    {
+      "path": "references/journey-authority.md",
+      "file_digest": "f99172fc56577e6e4f3c4de3b5090c195abf5a62f54ee513eb0bae5e130b5c09"
+    },
+    {
+      "path": "references/risk-reporting.md",
+      "file_digest": "924e9a9a7d2481dbd8017e5685e504d0647f54a0844925efef976401986946aa"
+    },
+    {
+      "path": "references/rules-runtime.md",
+      "file_digest": "b4cb53c9694da1417c0a7357c9c43a64c9eda2dd1ce7891545c15aefff8e31b3"
+    }
+  ],
+  "dependency_graph": [
+    {
+      "path": "references/claim-study.md",
+      "requires": [
+        "references/context-model.md"
+      ]
+    },
+    {
+      "path": "references/context-model.md",
+      "requires": []
+    },
+    {
+      "path": "references/ethics.md",
+      "requires": [
+        "references/context-model.md"
+      ]
+    },
+    {
+      "path": "references/implementation-mapping.md",
+      "requires": [
+        "references/context-model.md",
+        "references/journey-authority.md",
+        "references/rules-runtime.md",
+        "references/claim-study.md",
+        "references/inquiry-design.md",
+        "references/risk-reporting.md",
+        "references/ethics.md"
+      ]
+    },
+    {
+      "path": "references/inquiry-design.md",
+      "requires": [
+        "references/context-model.md",
+        "references/claim-study.md"
+      ]
+    },
+    {
+      "path": "references/journey-authority.md",
+      "requires": [
+        "references/context-model.md"
+      ]
+    },
+    {
+      "path": "references/risk-reporting.md",
+      "requires": [
+        "references/context-model.md",
+        "references/journey-authority.md",
+        "references/rules-runtime.md",
+        "references/claim-study.md"
+      ]
+    },
+    {
+      "path": "references/rules-runtime.md",
+      "requires": [
+        "references/context-model.md",
+        "references/journey-authority.md"
+      ]
+    }
+  ],
+  "routes": {
+    "guide": {
+      "paths": [
+        "references/context-model.md",
+        "references/journey-authority.md",
+        "references/claim-study.md",
+        "references/inquiry-design.md",
+        "references/ethics.md"
+      ]
+    },
+    "scan": {
+      "paths": [
+        "references/context-model.md",
+        "references/journey-authority.md",
+        "references/rules-runtime.md",
+        "references/claim-study.md",
+        "references/risk-reporting.md",
+        "references/ethics.md"
+      ]
+    },
+    "refactor": {
+      "paths": [
+        "references/context-model.md",
+        "references/journey-authority.md",
+        "references/rules-runtime.md",
+        "references/claim-study.md",
+        "references/inquiry-design.md",
+        "references/risk-reporting.md",
+        "references/ethics.md",
+        "references/implementation-mapping.md"
+      ]
+    },
+    "verify": {
+      "paths": [
+        "references/context-model.md",
+        "references/journey-authority.md",
+        "references/rules-runtime.md",
+        "references/claim-study.md",
+        "references/risk-reporting.md",
+        "references/ethics.md"
+      ]
+    }
+  }
+}
