@@ -331,3 +331,46 @@ test('TASK10_PUBLIC_MATERIALIZATION_RED binds non-lossy public assessments to no
   assert.equal(materializers.verifyPublicMaterialization(kind,source,{...value,source_material_digest:'0'.repeat(64)}),false);
  }
 });
+
+test('TASK10_RISK_OWNER_REF_RED binds RiskAssessment to one coherent Task5 Finding owner',async()=>{
+ const [{createHash},{jcsBytes},materializers,{default:Ajv2020},outputSchema,projectionSchema]=await Promise.all([
+  import('node:crypto'),import('../../evaluator/canonical.mjs'),import('../../evaluator/projection.mjs'),import('ajv/dist/2020.js'),
+  readFile(new URL('../../schemas/evaluator/output.schema.json',import.meta.url),'utf8').then(JSON.parse),
+  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse)
+ ]);
+ const riskDef=outputSchema.$defs.RiskAssessment;
+ assert.deepEqual(projectionSchema.$defs.RiskAssessment,riskDef,'RiskAssessment public schemas differ');
+ assert.equal(riskDef.properties.finding_id.pattern,'^f_[0-9a-f]{32}$');
+ assert.equal(JSON.stringify(riskDef).includes('fnd_'),false,'synthetic fnd_ owner contract remains');
+ const validateRisk=new Ajv2020({strict:true,allErrors:true}).compile({$schema:outputSchema.$schema,$defs:outputSchema.$defs,$ref:'#/$defs/RiskAssessment'});
+ const makeFinding=(canonical_target_locator)=>{
+  const fingerprint={schema_version:'finding-v1',behavior_version:'0.1.0',rule_id:'risk-owner-rule',rule_version:'1.0.0',finding_type:'unknown',emission_reason_code:'RULE_UNKNOWN',canonical_target_locator,target_snapshot_digest:'1'.repeat(64),scenario_binding_ids:['admin-desktop'],claim_key:null};
+  const fingerprint_full_digest=createHash('sha256').update('ux-skill:finding:v1').update(jcsBytes(fingerprint)).digest('hex');
+  return{fingerprint,fingerprint_full_digest,finding_id:'f_'+fingerprint_full_digest.slice(0,32),finding_type:fingerprint.finding_type,emission_reason_code:fingerprint.emission_reason_code,rule_id:fingerprint.rule_id,rule_version:fingerprint.rule_version};
+ };
+ const context={severity:'moderate',likelihood:'known',exposure:'known',reversibility:'reversible',key_factor_status:'verified',purpose:'other',materially_relies_on:false,inference_kind:'other',prohibition_status:'not_applicable',mandatory_check_status:'pass',other_hard_checks_status:'pass',signal_policy_row:null};
+ const findingA=makeFinding('admin/users/save'),findingB=makeFinding('admin/users/publish');
+ const sourceA={finding_id:findingA.finding_id,finding:findingA,context},sourceB={finding_id:findingB.finding_id,finding:findingB,context};
+ assert.deepEqual(Object.keys(sourceA).sort(),['context','finding','finding_id']);
+ assert.match(sourceA.finding_id,/^f_[0-9a-f]{32}$/);
+ const publicA=materializers.materializeRiskAssessment(sourceA,{findings:[findingA]});
+ const publicB=materializers.materializeRiskAssessment(sourceB,{findings:[findingB]});
+ assert.equal(validateRisk(publicA),true,JSON.stringify(validateRisk.errors));
+ assert.equal(validateRisk(publicB),true,JSON.stringify(validateRisk.errors));
+ assert.equal(publicA.finding_id,findingA.finding_id);assert.equal(publicB.finding_id,findingB.finding_id);
+ const visible=({status,decision,severity,likelihood,exposure,reversibility,reason_codes})=>({status,decision,severity,likelihood,exposure,reversibility,reason_codes});
+ assert.deepEqual(visible(publicA),visible(publicB),'same five-field risk summary did not reduce identically');
+ assert.notEqual(publicA.source_material_digest,publicB.source_material_digest);
+ assert.notEqual(publicA.risk_assessment_id,publicB.risk_assessment_id);
+ assert.throws(()=>materializers.materializeRiskAssessment(sourceA,{findings:[]}),'missing owner must be invalid');
+ assert.throws(()=>materializers.materializeRiskAssessment(sourceA,{findings:[findingB]}),'dangling owner reference must be invalid');
+ assert.throws(()=>materializers.materializeRiskAssessment({...sourceA,finding_id:findingB.finding_id},{findings:[findingA,findingB]}),'finding_id/finding mismatch must be invalid');
+ assert.throws(()=>materializers.materializeRiskAssessment(sourceA,{findings:[findingA,structuredClone(findingA)]}),'duplicate owner must be invalid');
+ const badDigest=structuredClone(findingA);badDigest.fingerprint_full_digest='0'.repeat(64);
+ assert.throws(()=>materializers.materializeRiskAssessment({finding_id:badDigest.finding_id,finding:badDigest,context},{findings:[badDigest]}),'Task5 digest coherence must be recomputed');
+ const badId=structuredClone(findingA);badId.finding_id='f_'+'0'.repeat(32);
+ assert.throws(()=>materializers.materializeRiskAssessment({finding_id:badId.finding_id,finding:badId,context},{findings:[badId]}),'Task5 id coherence must be recomputed');
+ const badRule=structuredClone(findingA);badRule.rule_id='different-rule';
+ assert.throws(()=>materializers.materializeRiskAssessment({finding_id:badRule.finding_id,finding:badRule,context},{findings:[badRule]}),'Task5 fingerprint coherence must be recomputed');
+ assert.throws(()=>materializers.materializeRiskAssessment({...sourceA,risk_summary:{mandatory_fail:false,hard_unsat:false,hard_decision:'none',release_critical:false,outcome:'unknown'}},{findings:[findingA]}),'caller risk summary must not enter exact source preimage');
+});
