@@ -78,7 +78,8 @@ const normalizeAjvErrors=(schemaId,rawErrors)=>{
    pointer+=`/${pointerToken(raw.params.additionalProperty)}`;
    details={additionalProperty:raw.params.additionalProperty};
   }else if(raw.keyword==='type')details={expected:raw.params.type};
-  else if(raw.keyword==='enum'||raw.keyword==='const')details={allowed:raw.params.allowedValues};
+  else if(raw.keyword==='enum')details={allowed:raw.params.allowedValues};
+  else if(raw.keyword==='const')details={allowed:[raw.params.allowedValue]};
   else if(raw.keyword==='format')details={format:raw.params.format};
   else if(code==='FORMAT_INVALID')details={constraint:raw.keyword};
   else details={keyword:raw.keyword};
