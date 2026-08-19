@@ -150,3 +150,34 @@ test('TASK6_REVIEW_RED_MANDATE_DERIVATION ignores caller exact-mandatory claims 
  assert.equal(derived.ceilings.reversibility,'required');
  assert.equal(derived.strength,'strong_advice');
 });
+
+test('TASK6_AUTHORITY_UNION_RED requirement kinds form a closed authority material union',async()=>{
+ const {assessRecommendation}=await loadRuntime();
+ const a=action();
+ const base={action:a,evidence:{admissible_conclusion:'causal',overall:'high',assessed_action:a},risk_decision:'clear',reversibility:'reversible',exact_mandatory_action:false,hard_decision:'clear',sensitive_decision:'continue'};
+ const assess=(requirement_kind,required_action,outcome_equivalent_verified)=>assessRecommendation({...base,authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind,required_action,outcome_equivalent_verified}});
+ const expectInvalid=(result)=>{assert.equal(result.strength,'none');assert.equal(result.output_kind,'research_question');assert.deepEqual(result.reason_codes,['INVALID_INPUT']);};
+
+ const exactSame=assessRecommendation({...base,exact_mandatory_action:true,authority:{prohibition:'not_applicable',applicability:'known',conflict:'none',requirement_kind:'exact_requires',required_action:a,outcome_equivalent_verified:false}});
+ assert.equal(exactSame.ceilings.authority,'required');
+ assert.equal(exactSame.strength,'strong_advice');
+ const exactMismatch=assess('exact_requires',action('different'),false);
+ assert.equal(exactMismatch.ceilings.authority,'required');
+ assert.equal(exactMismatch.strength,'strong_advice');
+ expectInvalid(assess('exact_requires',null,false));
+ expectInvalid(assess('exact_requires',a,true));
+
+ const outcomeVerified=assess('outcome_only',null,true);
+ assert.equal(outcomeVerified.ceilings.authority,'conditional_advice');
+ assert.equal(outcomeVerified.strength,'conditional_advice');
+ const outcomeUnverified=assess('outcome_only',null,false);
+ assert.equal(outcomeUnverified.ceilings.authority,'explore');
+ assert.equal(outcomeUnverified.strength,'explore');
+ expectInvalid(assess('outcome_only',a,true));
+
+ const neutral=assess('none',null,false);
+ assert.equal(neutral.ceilings.authority,'required');
+ assert.equal(neutral.strength,'strong_advice');
+ expectInvalid(assess('none',a,false));
+ expectInvalid(assess('none',null,true));
+});
