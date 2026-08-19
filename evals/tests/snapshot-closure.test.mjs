@@ -385,10 +385,10 @@ if (importFailure) {
     const good = await runCapture(baseTask(), onePayload());
     const replayShared = structuredClone(good.manifest);
     replayShared.network_records.push({ ...structuredClone(replayShared.network_records[0]), replay_profile_id: one.replay_profile_id, sequence: 1 });
+    replayShared.manifest_digest = snapshotClosureDigest(replayShared);
     const sharedRedirects = [];
     replayShared.network_records[0].redirect_chain = sharedRedirects;
     replayShared.network_records[1].redirect_chain = sharedRedirects;
-    replayShared.manifest_digest = snapshotClosureDigest(replayShared);
     let replayGets = 0;
     await assert.rejects(() => replayClosure(replayShared, { async get(locator) { replayGets += 1; return good.cas.get(locator); } }), /TARGET_UNAVAILABLE/).catch(() => issues.push('replay-shared-dag-accepted'));
     expect(replayGets === 0, 'replay-preflight-ran-after-cas');
