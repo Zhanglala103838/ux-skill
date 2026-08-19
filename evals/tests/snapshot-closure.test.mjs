@@ -580,4 +580,139 @@ if (importFailure) {
     }
     assert.deepEqual(issues, [], `TASK9_TASK_RUNNER_RED:${issues.join(',')}`);
   });
+
+  test('TASK9_TRANSPORT_PROVENANCE_RED', async () => {
+    const issues = [];
+    const paths = [];
+    const server = createServer((request, response) => {
+      paths.push(request.url);
+      if (request.url === '/start') {
+        response.writeHead(302, { location: '/final', 'x-hop-marker': 'HOP_MARKER' });
+        response.end();
+        return;
+      }
+      if (request.url === '/final') {
+        response.writeHead(200, { 'content-type': 'text/html', 'x-final-marker': 'FINAL_MARKER' });
+        response.end('<main>UNIQUE_REDIRECT_MARKER</main>');
+        return;
+      }
+      response.writeHead(404).end();
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const root = await mkdtemp(join(tmpdir(), 'task9-provenance-red-'));
+    const publicDir = join(root, 'evals', 'public-cases'), fixtureDir = join(root, 'evals', 'fixtures');
+    const redirectProfile = profile('redirect-profile', { browser_engine_digest: d('7') });
+    const redirectTask = { task_script_id: 'redirect-v1', steps: [{ step_id: 'follow-redirect', instruction: 'Use the registered action for the redirect fixture.', required_replay_profile_ids: [redirectProfile.replay_profile_id] }] };
+    const seed = { closure_version: 'snapshot-closure-v1', entry_url: `${origin}/start`, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [redirectProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+    seed.manifest_digest = snapshotClosureDigest(seed);
+    const localCase = { case_id: 'RW-LOCAL-REDIRECT-001', canonical_locator: `${origin}/start`, snapshot_closure_digest: seed.manifest_digest, task_script: redirectTask };
+    const rawRequest = (url) => new Promise((resolve, reject) => {
+      const request = httpRequest(url, { method: 'GET' }, (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => resolve({
+          status: response.statusCode,
+          url,
+          location: response.headers.location ?? null,
+          headers: response.rawHeaders.reduce((rows, value, index, all) => index % 2 === 0 ? [...rows, { sequence: rows.length, name: value, value_bytes_base64: Buffer.from(all[index + 1], 'latin1').toString('base64') }] : rows, []),
+          body: Buffer.concat(chunks),
+        }));
+      });
+      request.once('error', reject);
+      request.end();
+    });
+    const follow = async () => {
+      const hop = await rawRequest(`${origin}/start`);
+      const finalUrl = new URL(hop.location, hop.url).href;
+      const final = await rawRequest(finalUrl);
+      return { hop, final, finalUrl };
+    };
+    const completeTransport = {
+      transport_digest: d('8'),
+      async request() {
+        const { hop, final, finalUrl } = await follow();
+        return {
+          status: final.status,
+          final_url: finalUrl,
+          headers: final.headers,
+          body: final.body,
+          redirect_chain: [{ sequence: 0, status: hop.status, url: hop.url, location: finalUrl, response_headers: hop.headers }],
+          observation_artifacts: [{ evidence_kind: 'dom_snapshot', artifact_bytes: final.body }],
+        };
+      },
+    };
+    const missingChainTransport = {
+      transport_digest: d('8'),
+      async request() { const { final, finalUrl } = await follow(); return { status: final.status, final_url: finalUrl, headers: final.headers, body: final.body }; },
+    };
+    const opaqueRunner = async ({ profiles, steps, executeStep }) => {
+      await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: steps[0].step_id }, async ({ request, observe }) => {
+        const response = await request({ method: 'GET', url: `${origin}/start` });
+        await observe({ evidence_kind: 'dom_snapshot', handle: response.observation_handles[0] });
+      });
+    };
+    const forgedRunner = async ({ profiles, steps, executeStep }) => {
+      await executeStep({ replay_profile_id: profiles[0].replay_profile_id, task_step_id: steps[0].step_id }, async ({ request, observe }) => {
+        await request({ method: 'GET', url: `${origin}/start` });
+        await observe({ evidence_kind: 'dom_snapshot', bytes: Buffer.from('FORGED_OBSERVATION_BYTES') });
+      });
+    };
+    try {
+      await mkdir(publicDir, { recursive: true });
+      await mkdir(fixtureDir, { recursive: true });
+      const casePath = join(publicDir, 'redirect.json');
+      await writeFile(casePath, `${JSON.stringify(localCase)}\n`);
+      await writeFile(join(fixtureDir, `${localCase.case_id}.snapshot-closure.json`), `${JSON.stringify(seed)}\n`);
+      const taskDigest = sha(Buffer.from(canonicalize(redirectTask)));
+      const invoke = async (name, runner, transport, registration = {}) => {
+        const casPath = join(root, `cas-${name}`), outputPath = join(root, `output-${name}.json`);
+        const exitCode = await runCaptureCli(['--case', casePath, '--cas', casPath, '--output', outputPath], {
+          taskRunners: new Map([[localCase.case_id, { task_script_digest: taskDigest, runner_digest: d('9'), run: runner, ...registration }]]),
+          transport,
+        });
+        let wrapper;
+        try { wrapper = JSON.parse(await readFile(outputPath, 'utf8')); } catch {}
+        return { casPath, exitCode, wrapper };
+      };
+
+      paths.length = 0;
+      const complete = await invoke('complete', opaqueRunner, completeTransport);
+      if (complete.exitCode !== 0 || complete.wrapper?.completeness_status !== 'complete') issues.push('complete-redirect-chain-not-supported');
+      const record = complete.wrapper?.closure?.network_records?.[0], hop = record?.redirect_chain?.[0];
+      if (record?.request_url !== `${origin}/start` || record?.final_url !== `${origin}/final` || hop?.sequence !== 0 || hop?.status !== 302 || hop?.url !== `${origin}/start` || hop?.location !== `${origin}/final`) issues.push('redirect-hop-provenance-missing');
+      if (paths.join(',') !== '/start,/final') issues.push(`redirect-paths:${paths.join(',')}`);
+      if (hop) {
+        let headerArtifact;
+        try { headerArtifact = JSON.parse(await readFile(join(complete.casPath, hop.content_addressed_header_artifact_locator.slice(4)), 'utf8')); } catch {}
+        const restored = headerArtifact?.headers?.map((row) => [row.name_lower_ascii, Buffer.from(row.value_bytes_base64, 'base64').toString('latin1')]);
+        if (!restored?.some(([name, value]) => name === 'location' && value === '/final') || !restored?.some(([name, value]) => name === 'x-hop-marker' && value === 'HOP_MARKER')) issues.push('redirect-hop-headers-not-byte-restored');
+        const cas = { async get(locator) { try { return await readFile(join(complete.casPath, locator.slice(4))); } catch { return null; } } };
+        try { await replayClosure(complete.wrapper.closure, cas); } catch { issues.push('redirect-chain-not-replayable'); }
+        const reordered = structuredClone(complete.wrapper.closure);
+        reordered.network_records[0].redirect_chain[0].sequence = 1;
+        reordered.manifest_digest = snapshotClosureDigest(reordered);
+        await assert.rejects(() => replayClosure(reordered, cas), /TARGET_UNAVAILABLE/).catch(() => issues.push('reordered-redirect-chain-accepted'));
+        const tamperedCas = { async get(locator) { const value = await cas.get(locator); return locator === hop.content_addressed_header_artifact_locator && value ? Buffer.concat([value, Buffer.from('x')]) : value; } };
+        await assert.rejects(() => replayClosure(complete.wrapper.closure, tamperedCas), /TARGET_UNAVAILABLE/).catch(() => issues.push('tampered-redirect-header-accepted'));
+      }
+
+      paths.length = 0;
+      const missing = await invoke('missing', forgedRunner, missingChainTransport);
+      if (missing.exitCode !== 2 || missing.wrapper?.run_status !== 'target_unavailable' || missing.wrapper?.release_gate !== 'no_release') issues.push('missing-redirect-chain-certified-complete');
+      if (paths.join(',') !== '/start,/final') issues.push(`missing-chain-paths:${paths.join(',')}`);
+
+      paths.length = 0;
+      const forged = await invoke('forged', forgedRunner, missingChainTransport);
+      if (forged.exitCode !== 2 || forged.wrapper?.run_status !== 'target_unavailable') issues.push('runner-forged-observation-certified-complete');
+
+      const reusedDigest = await invoke('digest-reuse', async (context) => forgedRunner(context), missingChainTransport, { runner_digest: d('9') });
+      if (reusedDigest.exitCode !== 2 || reusedDigest.wrapper?.run_status !== 'target_unavailable') issues.push('caller-reused-runner-digest-accepted');
+      if (typeof closureApi.createCaptureRegistry !== 'function') issues.push('immutable-capture-registry-absent');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    }
+    assert.deepEqual(issues, [], `TASK9_TRANSPORT_PROVENANCE_RED:${issues.join(',')}`);
+  });
 }
