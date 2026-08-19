@@ -362,6 +362,7 @@ git commit -m "feat: add deterministic UX rule runtime"
 
 **Interfaces:**
 - Produces: `assessClaim(claim,evidence,policy)`, `assessRisk(finding,context)`, `assessRecommendation(parts)`, `reduceRelease(parts)`.
+- Acceptance freezes the closed authority-material union: `exact_requires` requires a non-null valid `required_action` and `outcome_equivalent_verified=false`; its authority ceiling is `required`, while only `sameAction` derives exact-mandatory reversibility. `outcome_only` requires `required_action=null` and maps equivalent true/false to `conditional_advice`/`explore`. `none` requires null/false and maps to neutral `required`. Every other field combination is `INVALID_INPUT`, and caller `exact_mandatory_action` cannot strengthen a result.
 
 - [ ] **Step 1: Freeze weak-evidence and tie behavior**
 

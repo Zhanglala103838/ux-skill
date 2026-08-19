@@ -230,15 +230,18 @@ ResidualConditionSet 是 canonical-set<Condition>，Condition 必填 predicate�
 
 RecommendationAssessment 使用有序 strength：none < explore < conditional_advice < strong_advice < required。
 
+Authority material 是 closed tagged union。`exact_requires` 必须且只能携带非 null 的 valid Action `required_action`，并固定 `outcome_equivalent_verified=false`；`outcome_only` 必须 `required_action=null`，其等价验证位可为 true/false；`none` 必须 `required_action=null` 且 `outcome_equivalent_verified=false`。其他字段组合一律 INVALID_INPUT。`exact_mandatory_action` 只由 `exact_requires && sameAction(required_action, action)` 派生，调用方布尔值不具有权威性。
+
 四个独立 ceiling 都按各自表格自上而下首个命中，是互斥化后的总函数；后续行不得覆盖已命中值：
 
 | ceiling | 条件 | 值 |
 |---|---|---|
 | authority | applicable prohibition | none |
 | authority | authority applicability/conflict unknown | explore |
-| authority | exact requires proposition 精确蕴含 action | required |
-| authority | 只规定结果且存在 verified 等价实现 | conditional_advice |
-| authority | 无适用 action obligation/prohibition | required（中性上界，不声称权威要求） |
+| authority | exact_requires（无论 required_action 是否与候选 action 相同） | required；仅 sameAction=true 时派生 exact mandatory action |
+| authority | outcome_only 且 outcome_equivalent_verified=true | conditional_advice |
+| authority | outcome_only 且 outcome_equivalent_verified=false | explore |
+| authority | none | required（中性上界，不声称权威要求） |
 | evidence | admissible conclusion=unresolved 或 overall=insufficient | none |
 | evidence | overall=limited | explore |
 | evidence | overall=adequate | conditional_advice |

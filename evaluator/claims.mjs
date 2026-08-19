@@ -98,18 +98,23 @@ const AUTH_KEYS=Object.freeze(['prohibition','applicability','conflict','require
 const REC_EVIDENCE_KEYS=Object.freeze(['admissible_conclusion','overall','assessed_action']);
 const REC_KEYS=Object.freeze(['action','authority','evidence','risk_decision','reversibility','exact_mandatory_action','hard_decision','sensitive_decision']);
 const validAction=(v)=>exact(v,ACTION_KEYS)&&ACTION_KEYS.every((key)=>text(v[key]));
+const validAuthorityMaterial=(v)=>{
+ if(v.requirement_kind==='exact_requires')return validAction(v.required_action)&&v.outcome_equivalent_verified===false;
+ if(v.requirement_kind==='outcome_only')return v.required_action===null&&typeof v.outcome_equivalent_verified==='boolean';
+ return v.requirement_kind==='none'&&v.required_action===null&&v.outcome_equivalent_verified===false;
+};
 const sameAction=(a,b)=>validAction(a)&&validAction(b)&&jcsBytes(a).equals(jcsBytes(b));
 const invalidRecommendation=()=>({ceilings:{authority:'none',evidence:'none',risk:'none',reversibility:'none'},minimum_ceiling:'none',strength:'none',output_kind:'research_question',recommendation:null,research_question:{question_id:'rq_invalid',kind:'decision_gap',prompt_code:'INVALID_INPUT'},reason_codes:['INVALID_INPUT']});
 const order=['none','explore','conditional_advice','strong_advice','required'];
 export function assessRecommendation(parts){
  try{
-  const p=copy(parts);if(!exact(p,REC_KEYS)||!validAction(p.action)||!exact(p.authority,AUTH_KEYS)||!exact(p.evidence,REC_EVIDENCE_KEYS)||!['applicable','not_applicable'].includes(p.authority.prohibition)||!['known','unknown'].includes(p.authority.applicability)||!['none','unknown'].includes(p.authority.conflict)||!['none','exact_requires','outcome_only'].includes(p.authority.requirement_kind)||(p.authority.required_action!==null&&!validAction(p.authority.required_action))||typeof p.authority.outcome_equivalent_verified!=='boolean'||!CONCLUSIONS.includes(p.evidence.admissible_conclusion)||!GRADES.includes(p.evidence.overall)||(p.evidence.assessed_action!==null&&!validAction(p.evidence.assessed_action))||!['clear','block','escalation','investigate_immediately'].includes(p.risk_decision)||!['reversible','irreversible','unknown'].includes(p.reversibility)||typeof p.exact_mandatory_action!=='boolean'||!['clear','block','escalation'].includes(p.hard_decision)||!['continue','block','escalation'].includes(p.sensitive_decision))return invalidRecommendation();
+  const p=copy(parts);if(!exact(p,REC_KEYS)||!validAction(p.action)||!exact(p.authority,AUTH_KEYS)||!exact(p.evidence,REC_EVIDENCE_KEYS)||!['applicable','not_applicable'].includes(p.authority.prohibition)||!['known','unknown'].includes(p.authority.applicability)||!['none','unknown'].includes(p.authority.conflict)||!validAuthorityMaterial(p.authority)||!CONCLUSIONS.includes(p.evidence.admissible_conclusion)||!GRADES.includes(p.evidence.overall)||(p.evidence.assessed_action!==null&&!validAction(p.evidence.assessed_action))||!['clear','block','escalation','investigate_immediately'].includes(p.risk_decision)||!['reversible','irreversible','unknown'].includes(p.reversibility)||typeof p.exact_mandatory_action!=='boolean'||!['clear','block','escalation'].includes(p.hard_decision)||!['continue','block','escalation'].includes(p.sensitive_decision))return invalidRecommendation();
   const exactMandatoryAction=p.authority.requirement_kind==='exact_requires'&&sameAction(p.authority.required_action,p.action);
   let authority;
   if(p.authority.prohibition==='applicable')authority='none';
   else if(p.authority.applicability==='unknown'||p.authority.conflict==='unknown')authority='explore';
-  else if(p.authority.requirement_kind==='exact_requires'&&sameAction(p.authority.required_action,p.action))authority='required';
-  else if(p.authority.requirement_kind==='outcome_only'&&p.authority.outcome_equivalent_verified)authority='conditional_advice';
+  else if(p.authority.requirement_kind==='exact_requires')authority='required';
+  else if(p.authority.requirement_kind==='outcome_only')authority=p.authority.outcome_equivalent_verified?'conditional_advice':'explore';
   else authority='required';
   let evidenceCeiling;
   if(p.evidence.admissible_conclusion==='unresolved'||p.evidence.overall==='insufficient')evidenceCeiling='none';
