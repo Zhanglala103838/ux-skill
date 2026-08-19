@@ -119,7 +119,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 
 const TASK8_SCHEMA_ID='https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json';
-const TASK8_SCHEMA_DIGEST='86a4dc87401cbc8c5bb12ac181e3f9aa06fa02b87ffa662dc6093c1279ea46bb';
+const TASK8_SCHEMA_DIGEST='8f19b813eff476e7aafc1ea7cadc086e8c807bc6907545067adb22e65faaade1';
 const task8SchemaUrl=new URL('../../schemas/adapters/hulian-component-doc-v1.schema.json',import.meta.url);
 const canonicalRelativePath=(value)=>typeof value==='string'&&Buffer.byteLength(value,'utf8')>=1&&Buffer.byteLength(value,'utf8')<=100&&/^[\x20-\x7e]+$/u.test(value)&&!value.includes('\\')&&!/%2f|%5c/iu.test(value)&&!value.startsWith('/')&&!value.endsWith('/')&&!value.includes('//')&&value.split('/').every((part)=>part!=='.'&&part!=='..'&&Buffer.byteLength(part,'utf8')>=1&&Buffer.byteLength(part,'utf8')<=100);
 const sharedDag=(depth)=>{let node={leaf:'x'};for(let index=0;index<depth;index+=1)node={left:node,right:node};return node;};
@@ -199,10 +199,10 @@ test('TASK8_SCHEMA_TOTALITY_RED exact schema parity and bounded snapshots',async
    else doc.components[0].props[0].unexpected=true;
   });
  }
- for(const field of ['source_artifact','components','missing','versionSkew','stale','fallbacks'])addInvalid('required-root-'+field,(doc)=>{delete doc[field];});
+ for(const field of ['source_artifact','components','versionSkew','fallbacks'])addInvalid('required-root-'+field,(doc)=>{delete doc[field];});
  for(const field of ['path','sha256','version'])addInvalid('required-source-'+field,(doc)=>{delete doc.source_artifact[field];});
  for(const field of ['name','slug','category','import','exports','props','events','slots'])addInvalid('required-component-'+field,(doc)=>{delete doc.components[0][field];});
- for(const field of ['owner','name','kind','required','description'])addInvalid('required-member-'+field,(doc)=>{delete doc.components[0].props[0][field];});
+ for(const field of ['owner','name','kind','description'])addInvalid('required-member-'+field,(doc)=>{delete doc.components[0].props[0][field];});
  const typeCases=[
   ['type-root-source',(doc)=>{doc.source_artifact=[];}],['type-root-components',(doc)=>{doc.components={};}],
   ['type-root-missing',(doc)=>{doc.missing={};}],['type-root-versionSkew',(doc)=>{doc.versionSkew=1;}],
@@ -416,4 +416,3 @@ test('TASK8_OPTIONAL_UNKNOWN_RED preserves omitted unknowns without inventing de
  }
  assert.deepEqual(issues,[],'TASK8_OPTIONAL_UNKNOWN_RED\n'+issues.join('\n'));
 });
-

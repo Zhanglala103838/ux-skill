@@ -1,7 +1,7 @@
 [
   {
     "path": "schemas/adapters/hulian-component-doc-v1.schema.json",
-    "file_digest": "86a4dc87401cbc8c5bb12ac181e3f9aa06fa02b87ffa662dc6093c1279ea46bb"
+    "file_digest": "8f19b813eff476e7aafc1ea7cadc086e8c807bc6907545067adb22e65faaade1"
   },
   {
     "path": "schemas/adapters/hulian-evaluation-request-v1.schema.json",

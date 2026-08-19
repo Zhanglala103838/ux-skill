@@ -8,7 +8,7 @@ import {canonicalize} from 'json-canonicalize';
 const CONTRACT_DIGEST='f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c';
 const SCHEMA_PATH='schemas/adapters/hulian-component-doc-v1.schema.json';
 const SCHEMA_ID='https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json';
-const SCHEMA_RAW_DIGEST='86a4dc87401cbc8c5bb12ac181e3f9aa06fa02b87ffa662dc6093c1279ea46bb';
+const SCHEMA_RAW_DIGEST='8f19b813eff476e7aafc1ea7cadc086e8c807bc6907545067adb22e65faaade1';
 const MAX_SNAPSHOT_BYTES=1_048_576;
 const MAX_DEPTH=64;
 const MAX_NODES=8_192;
@@ -176,7 +176,7 @@ const resultSnapshot=(result)=>{
 const sameSource=(left,right)=>SOURCE_KEYS.every((key)=>left[key]===right[key]);
 const sourceMismatch=(document,contract)=>document!==null&&typeof document==='object'&&validateSource(document.source_artifact)===true&&!sameSource(document.source_artifact,contract.source_artifact);
 const identityMatches=(component,contract)=>['name','slug','category'].every((key)=>component[key]===contract.component_identity[key]);
-const partial=(document)=>document.missing.length>0||document.versionSkew!==null||document.stale===true||document.fallbacks.length>0;
+const partial=(document)=>document.missing?.length>0||document.versionSkew!==null||document.stale===true||document.fallbacks.length>0;
 const notFound=(result)=>result.isError===true&&result.structuredContent===null&&result.content.length>0&&result.content[0].text.startsWith('没有名为');
 const inspected=(status,contract_valid,details={})=>({status,contract_valid,...details});
 const inspect=(result,contract)=>{
@@ -205,7 +205,12 @@ const canonicalSet=(items,keyOf)=>{
  }
  return result;
 };
-const memberCopy=(item)=>({owner:item.owner,name:item.name,kind:item.kind,required:item.required,description:item.description});
+const memberCopy=(item)=>{
+ const copy={owner:item.owner,name:item.name,kind:item.kind};
+ if(Object.hasOwn(item,"required"))copy.required=item.required;
+ copy.description=item.description;
+ return copy;
+};
 const memberSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(memberCopy(items[index]));return canonicalSet(copies,(item)=>[item.owner,item.name,item.kind]);};
 const stringSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(items[index]);return canonicalSet(copies,(item)=>item);};
 
