@@ -502,15 +502,10 @@ if (importFailure) {
     };
     fixture.manifest_digest = snapshotClosureDigest(fixture);
     const localCase = { case_id: 'RW-LOCAL-TWO-ROUTE-001', canonical_locator: `${origin}/`, snapshot_closure_digest: fixture.manifest_digest, task_script: taskScript };
-    const transportSource = `import { request as httpRequest } from 'node:http';
-const rawRequest = (url, method) => new Promise((resolve, reject) => {
-  const request = httpRequest(url, { method }, (response) => {
-    const chunks = [];
-    response.on('data', (chunk) => chunks.push(chunk));
-    response.on('end', () => resolve({ status: response.statusCode, final_url: url, headers: response.rawHeaders.reduce((rows, value, index, all) => index % 2 === 0 ? [...rows, { sequence: rows.length, name: value, value_bytes_base64: Buffer.from(all[index + 1], 'latin1').toString('base64') }] : rows, []), body: Buffer.concat(chunks) }));
-  });
-  request.once('error', reject); request.end();
-});
+    const transportSource = `const rawRequest = async (url, method) => {
+  const response = await fetch(url, { method, redirect: 'manual' });
+  return { status: response.status, final_url: url, headers: [...response.headers.entries()].map(([name, value], sequence) => ({ sequence, name, value_bytes_base64: Buffer.from(value, 'latin1').toString('base64') })), body: Buffer.from(await response.arrayBuffer()) };
+};
 export async function request({ method, url }) { const response = await rawRequest(url, method); return { ...response, redirect_chain: [], observation_artifacts: [{ evidence_kind: 'dom_snapshot', artifact_bytes: response.body }] }; }
 `;
     const runner = async ({ profiles, steps, executeStep }) => {
@@ -650,8 +645,7 @@ export async function request({ method, url }) { const response = await rawReque
       const final = await rawRequest(finalUrl);
       return { hop, final, finalUrl };
     };
-    const transportPrelude = `import { request as httpRequest } from 'node:http';
-const rawRequest = (url) => new Promise((resolve, reject) => { const request = httpRequest(url, { method: 'GET' }, (response) => { const chunks=[]; response.on('data', chunk => chunks.push(chunk)); response.on('end', () => resolve({ status:response.statusCode, url, location:response.headers.location??null, headers:response.rawHeaders.reduce((rows,value,index,all)=>index%2===0?[...rows,{sequence:rows.length,name:value,value_bytes_base64:Buffer.from(all[index+1],'latin1').toString('base64')}]:rows,[]), body:Buffer.concat(chunks) })); }); request.once('error',reject); request.end(); });
+    const transportPrelude = `const rawRequest = async (url) => { const response=await fetch(url,{method:'GET',redirect:'manual'}); return {status:response.status,url,location:response.headers.get('location'),headers:[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')})),body:Buffer.from(await response.arrayBuffer())}; };
 const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new URL(hop.location,hop.url).href, final=await rawRequest(finalUrl); return {hop,final,finalUrl}; };
 `;
     const completeTransportSource = `${transportPrelude}export async function request({url}) { const {hop,final,finalUrl}=await follow(url); return {status:final.status,final_url:finalUrl,headers:final.headers,body:final.body,redirect_chain:[{sequence:0,status:hop.status,url:hop.url,location:finalUrl,response_headers:hop.headers}],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:final.body}]}; }\n`;

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { types as utilTypes } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -20,7 +21,6 @@ const B64=/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const HN=/^[a-z0-9!#$%&'*+.^_\x60|~-]+$/;
 const REGISTRY_DOMAIN='ux-skill:capture-registry:v1';
 const MODULE_ROW_KEYS=['relative_path','raw_sha256'];
-const TRANSPORT_EXTERNAL_IMPORTS=new Set(['node:http']);
 const registryState=new WeakMap();
 const E=(code,result)=>Object.assign(new TypeError(code),{code,...(result?{result}:{})});
 const bad=()=>{throw E('CAPTURE_INPUT_INVALID')};
@@ -219,7 +219,7 @@ const inspectModuleClosure=async(root,entryRelative,declaredInput,role)=>{
     const localTargets=[],localSeen=new Set();
     for(const item of imports){
       if(item.d===-2)throw E('CAPTURE_MODULE_IMPORT_INVALID');const specifier=item.n;if(typeof specifier!=='string'||specifier.length<1)throw E('CAPTURE_MODULE_DYNAMIC_IMPORT_INVALID');
-      if(!specifier.startsWith('./')&&!specifier.startsWith('../')){if(role==='transport'&&TRANSPORT_EXTERNAL_IMPORTS.has(specifier)&&item.d===-1)continue;throw E('CAPTURE_MODULE_EXTERNAL_IMPORT_INVALID')}
+      if(!specifier.startsWith('./')&&!specifier.startsWith('../'))throw E('CAPTURE_MODULE_EXTERNAL_IMPORT_INVALID');
       if(specifier.includes('\\')||specifier.includes('?')||specifier.includes('#')||specifier.includes('%'))throw E('CAPTURE_MODULE_IMPORT_INVALID');const candidate=resolve(dirname(absolutePath),specifier);if(candidate===root||!candidate.startsWith(root+sep))throw E('CAPTURE_MODULE_ROOT_ESCAPE');const target=relativeModulePath(root,candidate);if(localSeen.has(target))throw E('CAPTURE_MODULE_DUPLICATE_IMPORT');localSeen.add(target);localTargets.push(target);
     }
     edges.set(relativePath,localTargets);discovered.set(relativePath,Object.freeze({relative_path:relativePath,absolute_path:absolutePath,raw_sha256:declaredRow.raw_sha256,raw_bytes:Buffer.from(rawBytes)}));for(const target of localTargets)if(!discovered.has(target))queue.push(target);
@@ -231,16 +231,25 @@ const inspectModuleClosure=async(root,entryRelative,declaredInput,role)=>{
 const verifyModuleClosure=async(closure)=>{
   for(const file of closure.files){let absolutePath,rawBytes;try{absolutePath=await registryPath(closure.root,file.relative_path);rawBytes=await readFile(absolutePath)}catch{throw E('CAPTURE_MODULE_CHANGED')};if(absolutePath!==file.absolute_path||sha(rawBytes)!==file.raw_sha256||!rawBytes.equals(file.raw_bytes))throw E('CAPTURE_MODULE_CHANGED')}
 };
+const stageModuleClosure=async(closure)=>{
+  const stageRoot=await realpath(await mkdtemp(join(tmpdir(),`ux-skill-${closure.role}-${closure.digest}-`)));let loaded=false;
+  try{
+    for(const file of closure.files){const destination=join(stageRoot,...file.relative_path.split('/'));await mkdir(dirname(destination),{recursive:true,mode:0o700});let handle;try{handle=await open(destination,fsConstants.O_CREAT|fsConstants.O_EXCL|fsConstants.O_WRONLY|fsConstants.O_NOFOLLOW,0o400);await handle.writeFile(file.raw_bytes);await handle.sync();await handle.close();handle=null}catch(error){if(handle)await handle.close().catch(()=>{});throw error}}
+    const staged=Object.freeze({root:stageRoot,entry_path:closure.entry_path,files:Object.freeze(closure.files.map(file=>Object.freeze({relative_path:file.relative_path,raw_sha256:file.raw_sha256,raw_bytes:Buffer.from(file.raw_bytes)}))),digest:closure.digest});await verifyStagedClosure(staged);const namespace=await import(`${pathToFileURL(join(stageRoot,...closure.entry_path.split('/'))).href}?closure=${closure.digest}`);await verifyStagedClosure(staged);loaded=true;return Object.freeze({namespace,staged});
+  }finally{if(!loaded)await rm(stageRoot,{recursive:true,force:true}).catch(()=>{})}
+};
+const verifyStagedClosure=async(staged)=>{for(const file of staged.files){let absolutePath,rawBytes;try{absolutePath=await registryPath(staged.root,file.relative_path);rawBytes=await readFile(absolutePath)}catch{throw E('CAPTURE_MODULE_STAGE_CHANGED')};if(sha(rawBytes)!==file.raw_sha256||!rawBytes.equals(file.raw_bytes))throw E('CAPTURE_MODULE_STAGE_CHANGED')}};
+const disposeRegistration=async registration=>{if(!registration?.stageState||registration.stageState.disposed)return;registration.stageState.disposed=true;await Promise.all([registration.runnerStage.root,registration.transportStage.root].map(root=>rm(root,{recursive:true,force:true}).catch(()=>{})))};
+const verifyRegistrationModules=async registration=>{if(registration.stageState.disposed)throw E('CAPTURE_MODULE_STAGE_DISPOSED');await verifyModuleClosure(registration.runnerClosure);await verifyModuleClosure(registration.transportClosure);await verifyStagedClosure(registration.runnerStage);await verifyStagedClosure(registration.transportStage)};
 export async function createCaptureRegistry(manifestPath){
   const absolute=resolve(manifestPath),manifestStat=await lstat(absolute);if(!manifestStat.isFile()||manifestStat.isSymbolicLink()||manifestStat.size>L.maxArtifactBytes)throw E('CAPTURE_REGISTRY_INVALID');const root=await realpath(dirname(absolute)),manifest=snap(JSON.parse(await readFile(absolute,'utf8')));
   if(!exact(manifest,['registry_version','entries','registry_digest'])||manifest.registry_version!=='snapshot-capture-registry-v1'||!Array.isArray(manifest.entries)||manifest.entries.length<1||manifest.entries.length>L.maxProfiles||!dg(manifest.registry_digest)||captureRegistryDigest(manifest)!==manifest.registry_digest)throw E('CAPTURE_REGISTRY_INVALID');
-  const entries=new Map(),orderedEntries=[...manifest.entries].sort((a,b)=>cmp([a.case_id,a.task_script_digest],[b.case_id,b.task_script_digest]));if(!jb(manifest.entries).equals(jb(orderedEntries)))throw E('CAPTURE_REGISTRY_INVALID');
-  for(const entry of manifest.entries){
+  const entries=new Map(),loadedRegistrations=[],orderedEntries=[...manifest.entries].sort((a,b)=>cmp([a.case_id,a.task_script_digest],[b.case_id,b.task_script_digest]));if(!jb(manifest.entries).equals(jb(orderedEntries)))throw E('CAPTURE_REGISTRY_INVALID');
+  try{for(const entry of manifest.entries){
     if(!exact(entry,['case_id','task_script_digest','runner_path','runner_digest','runner_module_closure','transport_path','transport_digest','transport_module_closure'])||typeof entry.case_id!=='string'||!entry.case_id||!dg(entry.task_script_digest)||!dg(entry.runner_digest)||!dg(entry.transport_digest)||entries.has(entry.case_id))throw E('CAPTURE_REGISTRY_INVALID');
-    const runnerClosure=await inspectModuleClosure(root,entry.runner_path,entry.runner_module_closure,'runner'),transportClosure=await inspectModuleClosure(root,entry.transport_path,entry.transport_module_closure,'transport'),runnerPath=modulePath(root,entry.runner_path),transportPath=modulePath(root,entry.transport_path);if(runnerClosure.rows.find(row=>row.relative_path===entry.runner_path)?.raw_sha256!==entry.runner_digest||transportClosure.rows.find(row=>row.relative_path===entry.transport_path)?.raw_sha256!==entry.transport_digest)throw E('CAPTURE_REGISTRY_DIGEST_MISMATCH');
-    const runnerModule=await import(`${pathToFileURL(runnerPath).href}?registry=${manifest.registry_digest}`),transportModule=await import(`${pathToFileURL(transportPath).href}?registry=${manifest.registry_digest}`);await verifyModuleClosure(runnerClosure);await verifyModuleClosure(transportClosure);if(typeof runnerModule.run!=='function'||typeof transportModule.request!=='function')throw E('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID');
-    entries.set(entry.case_id,Object.freeze({...entry,registry_digest:manifest.registry_digest,runner_closure_digest:runnerClosure.digest,transport_closure_digest:transportClosure.digest,runnerClosure,transportClosure,run:runnerModule.run,request:transportModule.request}));
-  }
+    const runnerClosure=await inspectModuleClosure(root,entry.runner_path,entry.runner_module_closure,'runner'),transportClosure=await inspectModuleClosure(root,entry.transport_path,entry.transport_module_closure,'transport');if(runnerClosure.rows.find(row=>row.relative_path===entry.runner_path)?.raw_sha256!==entry.runner_digest||transportClosure.rows.find(row=>row.relative_path===entry.transport_path)?.raw_sha256!==entry.transport_digest)throw E('CAPTURE_REGISTRY_DIGEST_MISMATCH');
+    const runnerLoaded=await stageModuleClosure(runnerClosure);let transportLoaded;try{transportLoaded=await stageModuleClosure(transportClosure);await verifyModuleClosure(runnerClosure);await verifyModuleClosure(transportClosure);if(typeof runnerLoaded.namespace.run!=='function'||typeof transportLoaded.namespace.request!=='function')throw E('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID');const registration=Object.freeze({...entry,registry_digest:manifest.registry_digest,runner_closure_digest:runnerClosure.digest,transport_closure_digest:transportClosure.digest,runnerClosure,transportClosure,runnerStage:runnerLoaded.staged,transportStage:transportLoaded.staged,stageState:{disposed:false},run:runnerLoaded.namespace.run,request:transportLoaded.namespace.request});entries.set(entry.case_id,registration);loadedRegistrations.push(registration)}catch(error){await Promise.all([runnerLoaded.staged.root,transportLoaded?.staged.root].filter(Boolean).map(stageRoot=>rm(stageRoot,{recursive:true,force:true}).catch(()=>{})));throw error}
+  }}catch(error){await Promise.all(loadedRegistrations.map(disposeRegistration));throw error}
   const registry=Object.freeze({registry_version:manifest.registry_version,registry_digest:manifest.registry_digest});registryState.set(registry,Object.freeze({entries}));return registry;
 }
 const taskRunnerDriver=(cas,profiles,registration)=>{
@@ -274,8 +283,8 @@ const taskRunnerDriver=(cas,profiles,registration)=>{
   }};
 };
 export async function runCaptureCli(argv=process.argv.slice(2),dependencies={}){
-  let options;try{options=parseCli(argv)}catch{return 64}let wrapper=cliUnavailable();
-  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),state=registryState.get(dependencies?.registry),registration=state?.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');await verifyModuleClosure(registration.runnerClosure);await verifyModuleClosure(registration.transportClosure);const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,registration),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}
+  let options;try{options=parseCli(argv)}catch{return 64}let wrapper=cliUnavailable(),registration;
+  try{const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),state=registryState.get(dependencies?.registry);registration=state?.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');await verifyRegistrationModules(registration);const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,registration),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}finally{if(registration)await disposeRegistration(registration)}
   try{await writeJsonAtomic(options.outputPath,wrapper)}catch{return 74}return wrapper.run_status==='completed'?0:2;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)process.exitCode=await runCaptureCli();
