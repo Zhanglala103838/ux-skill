@@ -151,6 +151,34 @@ const assessedPredicateErrors=(schemaId,value,candidate)=>{
  });
  return out;
 };
+const ruleEvaluationSchemaIds=new Set(['EvaluationOutput','SemanticProjection']);
+const ruleEvaluationValidators=new Map();
+for(const schemaId of ruleEvaluationSchemaIds){
+ const owner=schemas.find((schema)=>schema.$id===schemaIds[schemaId]),branches=owner.$defs.RuleEvaluation.oneOf;
+ ruleEvaluationValidators.set(schemaId,new Map(branches.map((branch,index)=>[
+  branch.properties.terminal.const+'|'+branch.properties.outcome.const,
+  ajv.compile({$ref:`${owner.$id}#/$defs/RuleEvaluation/oneOf/${index}`})
+ ])));
+}
+const placeholderRuleEvaluation={rule_id:'validation-placeholder',rule_version:'1.0.0',release_critical:false,finding_type:'usability',terminal:'completed',outcome:'pass',reason_code:'CHECK_PASS',trace:[],dependency_trace:[],run_issue:null};
+const ruleEvaluationErrors=(schemaId,value,candidate)=>{
+ const out=[],validators=ruleEvaluationValidators.get(schemaId);
+ if(!validators||!isPlainObject(value)||!Array.isArray(value.rule_evaluations))return out;
+ value.rule_evaluations.forEach((evaluation,index)=>{
+  const pointer=`/rule_evaluations/${index}`;
+  if(!isPlainObject(evaluation)){out.push(normalizedError('schema','TYPE_MISMATCH',pointer,schemaId,{expected:'object'}));candidate.rule_evaluations[index]=placeholderRuleEvaluation;return;}
+  for(const field of ['terminal','outcome'])if(!Object.hasOwn(evaluation,field))out.push(normalizedError('schema','REQUIRED_MISSING',`${pointer}/${field}`,schemaId,{missingProperty:field}));
+  const selected=validators.get(evaluation.terminal+'|'+evaluation.outcome);
+  if(selected){selected(defensiveCopy(evaluation));out.push(...normalizeAjvErrors(schemaId,(selected.errors||[]).map((raw)=>({...raw,instancePath:`${pointer}${raw.instancePath||''}`}))));}
+  else if(Object.hasOwn(evaluation,'terminal')&&Object.hasOwn(evaluation,'outcome')){
+   const allowed=[...validators.keys()].filter((key)=>key.startsWith(evaluation.terminal+'|')).map((key)=>key.split('|')[1]);
+   out.push(normalizedError('schema','ENUM_MISMATCH',`${pointer}/outcome`,schemaId,{allowed}));
+  }
+  candidate.rule_evaluations[index]=placeholderRuleEvaluation;
+ });
+ return out;
+};
+
 const ruleSchema=schemas.find((schema)=>schema.$id==='https://ux-skill.invalid/schemas/evaluator/rule.schema.json');
 const astBranchValidators=new Map(ruleSchema.$defs.AstNode.oneOf.map((branch,index)=>[
  branch.properties.op.const,
@@ -183,10 +211,9 @@ const schemaErrors=(schemaId,value)=>{
  const validate=ajv.getSchema(schemaIds[schemaId]);
  if(!validate)return[normalizedError('schema','INVARIANT_SCHEMA_ID_UNKNOWN','','SchemaRegistry-v1',{schema_id:schemaId})];
  let candidate=value,tagged=[];
- if(Object.hasOwn(assessedPredicateConfig,schemaId)&&isPlainObject(value)){
-  candidate=defensiveCopy(value);
-  tagged.push(...assessedPredicateErrors(schemaId,value,candidate));
- }
+ if((Object.hasOwn(assessedPredicateConfig,schemaId)||ruleEvaluationSchemaIds.has(schemaId))&&isPlainObject(value))candidate=defensiveCopy(value);
+ if(Object.hasOwn(assessedPredicateConfig,schemaId)&&isPlainObject(value))tagged.push(...assessedPredicateErrors(schemaId,value,candidate));
+ if(ruleEvaluationSchemaIds.has(schemaId)&&isPlainObject(value))tagged.push(...ruleEvaluationErrors(schemaId,value,candidate));
  if(schemaId==='Rule'&&isPlainObject(value)){
   candidate=defensiveCopy(value);
   for(const field of ruleAstFields)if(Object.hasOwn(value,field)){
