@@ -244,10 +244,10 @@ const verifyStagedClosure=async(staged)=>{for(const file of staged.files){let ab
 const INVOCATION_WORKER_SOURCE=`
 const {parentPort,workerData}=require('node:worker_threads');
 const {AsyncLocalStorage}=require('node:async_hooks');
-const authority=new AsyncLocalStorage(),transportToken=Object.freeze({}),nativeFetch=globalThis.fetch.bind(globalThis),pending=new Map();let callSequence=0,runner,transport;
+const authority=new AsyncLocalStorage(),nativeFetch=globalThis.fetch.bind(globalThis),pending=new Map();let callSequence=0,runner,transport;
 const fault=value=>({name:value?.name??'Error',message:value?.message??String(value),code:value?.code??null});
 const denied=()=>Object.assign(new Error('CAPTURE_NETWORK_AUTHORITY_DENIED'),{code:'CAPTURE_NETWORK_AUTHORITY_DENIED'});
-Object.defineProperty(globalThis,'fetch',{value:(...args)=>authority.getStore()===transportToken?nativeFetch(...args):Promise.reject(denied()),writable:false,configurable:false});
+Object.defineProperty(globalThis,'fetch',{value:(...args)=>authority.getStore()?.active===true?nativeFetch(...args):Promise.reject(denied()),writable:false,configurable:false});
 for(const name of ['WebSocket','EventSource','XMLHttpRequest'])if(name in globalThis)Object.defineProperty(globalThis,name,{value:function(){throw denied()},writable:false,configurable:false});
 const callMain=(kind,payload={})=>new Promise((resolve,reject)=>{const id=++callSequence;pending.set(id,{resolve,reject});parentPort.postMessage({type:'bridge',kind,id,...payload})});
 const executeStep=async(identity,work)=>{
@@ -260,7 +260,7 @@ const executeStep=async(identity,work)=>{
 const respond=(id,ok,value)=>parentPort.postMessage(ok?{type:'result',id,ok:true,value}:{type:'result',id,ok:false,error:fault(value)});
 parentPort.on('message',message=>{
   if(message.type==='bridge-result'){const waiter=pending.get(message.id);if(!waiter)return;pending.delete(message.id);message.ok?waiter.resolve(message.value):waiter.reject(Object.assign(new Error(message.error?.message??'CAPTURE_WORKER_BRIDGE_FAILED'),{code:message.error?.code??'CAPTURE_WORKER_BRIDGE_FAILED'}));return}
-  if(message.type==='transport-request'){authority.run(transportToken,()=>transport.request(message.input)).then(value=>respond(message.id,true,value),error=>respond(message.id,false,error));return}
+  if(message.type==='transport-request'){const lease={active:true};void(async()=>{let ok=false,value;try{value=await authority.run(lease,()=>transport.request(message.input));ok=true}catch(error){value=error}finally{lease.active=false}respond(message.id,ok,value)})();return}
   if(message.type==='runner-run'){Promise.resolve(runner.run(Object.freeze({profiles:message.profiles,steps:message.steps,executeStep}))).then(()=>respond(message.id,true,null),error=>respond(message.id,false,error))}
 });
 (async()=>{runner=await import(workerData.runnerUrl);transport=await import(workerData.transportUrl);if(typeof runner.run!=='function'||typeof transport.request!=='function')throw Object.assign(new Error('CAPTURE_REGISTRY_IMPLEMENTATION_INVALID'),{code:'CAPTURE_REGISTRY_IMPLEMENTATION_INVALID'});parentPort.postMessage({type:'ready'})})().catch(error=>{parentPort.postMessage({type:'load-error',error:fault(error)})});
