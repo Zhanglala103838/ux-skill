@@ -743,7 +743,8 @@
                     ]
                   }
                 }
-              }
+              },
+              "maxItems": 0
             },
             "dependency_trace": {
               "type": "array",
@@ -778,10 +779,28 @@
                     "type": "boolean"
                   }
                 }
-              }
+              },
+              "maxItems": 0
             },
             "run_issue": {
-              "$ref": "#/$defs/RunIssue"
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "instance_pointer",
+                "dependency_id"
+              ],
+              "properties": {
+                "code": {
+                  "const": "RULE_EVALUATION_ERROR"
+                },
+                "instance_pointer": {
+                  "const": ""
+                },
+                "dependency_id": {
+                  "const": null
+                }
+              }
             }
           }
         },
@@ -863,7 +882,8 @@
                     ]
                   }
                 }
-              }
+              },
+              "maxItems": 0
             },
             "dependency_trace": {
               "type": "array",
@@ -898,10 +918,28 @@
                     "type": "boolean"
                   }
                 }
-              }
+              },
+              "maxItems": 0
             },
             "run_issue": {
-              "$ref": "#/$defs/RunIssue"
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "instance_pointer",
+                "dependency_id"
+              ],
+              "properties": {
+                "code": {
+                  "const": "RULE_EVALUATION_ERROR"
+                },
+                "instance_pointer": {
+                  "const": ""
+                },
+                "dependency_id": {
+                  "const": null
+                }
+              }
             }
           }
         },
