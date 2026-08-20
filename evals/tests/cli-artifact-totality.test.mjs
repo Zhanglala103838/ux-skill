@@ -158,6 +158,8 @@ const makeSparseArtifact=async(root,path,size)=>{
 };
 const rawSha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
 const schemaManifestDigest=(manifest)=>createHash('sha256').update('ux-skill:manifest:v1','utf8').update(canonicalize(manifest),'utf8').digest('hex');
+const evaluatorManifestDigest=(manifest)=>createHash('sha256').update('ux-skill:evaluator-manifest:v1','utf8').update(canonicalize(manifest),'utf8').digest('hex');
+const replaceDigestPin=(source,name,digest)=>{const pattern=new RegExp("const "+name+"='[0-9a-f]{64}';",'gu'),matches=[...source.matchAll(pattern)];assert.equal(matches.length,1,name+':pin');return source.replace(pattern,"const "+name+"='"+digest+"';");};
 const replaceUnique=async(path,needle,replacement)=>{const source=await readFile(path,'utf8');assert.equal(source.split(needle).length,2,path+':mutation anchor');await writeFile(path,source.replace(needle,replacement));};
 const semanticRowIndex=(manifest)=>{const indexes=[];for(let index=0;index<manifest.length;index+=1){if(manifest[index]?.path===SEMANTIC_PATH)indexes.push(index);}assert.deepEqual(indexes.length,1,'semantic manifest row precondition');return indexes[0];};
 const rewriteBoundSchemaManifest=async(root,mutate)=>{
@@ -238,7 +240,15 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   ['unreadable rules','ARTIFACT_VERIFICATION_FAILED',async(root)=>chmod(join(root,'knowledge/rules.json'),0o000)],
   ['missing knowledge manifest','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'knowledge/manifest.json'))],
   ['authorized artifact verification code','ARTIFACT_VERIFICATION_FAILED',async(root)=>{const path=join(root,'knowledge/rules.json');await writeFile(path,(await readFile(path,'utf8'))+' ');}],
-  ['unauthorized evaluator code','EVALUATION_FAILED',async(root)=>{const path=join(root,'evaluator/index.mjs'),source=await readFile(path,'utf8');const needle=" const input=validateInput(bundle);if(!input.ok)inputFailure(input.errors);\n const artifacts=";assert.equal(source.split(needle).length,2,'evaluator injection anchor');const injected=" const input=validateInput(bundle);if(!input.ok)inputFailure(input.errors);\n const unexpected=new TypeError('task11 unexpected evaluator failure');unexpected.code='ERR_TASK11_UNAUTHORIZED';throw unexpected;\n const artifacts=";await writeFile(path,source.replace(needle,injected));}]
+  ['authorized unexpected evaluator code','EVALUATION_FAILED',async(root)=>{
+   const evaluatorPath=join(root,'evaluator/index.mjs'),source=await readFile(evaluatorPath,'utf8');
+   const needle=" const input=validateInput(bundle);if(!input.ok)inputFailure(input.errors);\n const artifacts=";assert.equal(source.split(needle).length,2,'evaluator injection anchor');
+   const injected=source.replace(needle," const input=validateInput(bundle);if(!input.ok)inputFailure(input.errors);\n const unexpected=new TypeError('task11 unexpected evaluator failure');unexpected.code='ERR_TASK11_UNAUTHORIZED';throw unexpected;\n const artifacts=");
+   await writeFile(evaluatorPath,injected);
+   const manifestPath=join(root,EVALUATOR_MANIFEST_PATH),manifest=JSON.parse(await readFile(manifestPath,'utf8')),row=manifest.evaluator_files.find((entry)=>entry.path==='evaluator/index.mjs');assert.ok(row,'evaluator row');row.file_digest=rawSha(Buffer.from(injected));
+   const manifestBytes=Buffer.from(JSON.stringify(manifest,null,2)+'\n');await writeFile(manifestPath,manifestBytes);
+   const cliPath=join(root,'scripts/ux-evaluate.mjs');let cli=await readFile(cliPath,'utf8');cli=replaceDigestPin(cli,'EVALUATOR_MANIFEST_RAW_DIGEST',rawSha(manifestBytes));cli=replaceDigestPin(cli,'EVALUATOR_MANIFEST_SEMANTIC_DIGEST',evaluatorManifestDigest(manifest));await writeFile(cliPath,cli);
+  }]
  ];
  for(const [label,code,mutate,options] of cases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectFailed(row,code,label));}
  const artifactResourcePaths=[
