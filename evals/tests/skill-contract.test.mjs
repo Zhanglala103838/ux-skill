@@ -8,6 +8,7 @@ import {TextDecoder} from 'node:util';
 import {spawn} from 'node:child_process';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import {fromMarkdown} from 'mdast-util-from-markdown';
 import YAML from 'yaml';
 
 const PRODUCTION_PATHS=['SKILL.md','agents/openai.yaml','scripts/validate-skill.mjs'];
@@ -24,7 +25,8 @@ if(entryFailure){
   assert.fail('TASK12_SKILL_ROUTER_RED:'+(entryFailure?.code??entryFailure?.name??'MISSING'));
  });
 }else{
- const EXPECTED_COMMAND='pnpm ux:evaluate -- --mode <mode> --input - --output json';
+ const EXPECTED_COMMAND='pnpm --silent ux:evaluate --mode <mode> --input - --output json';
+ const EXPECTED_COMMAND_SOURCE='pnpm --silent ux:evaluate --mode &lt;mode&gt; --input - --output json';
  const EXPECTED_METADATA={
   interface:{
    display_name:'Evidence-aware Product UX',
@@ -36,6 +38,17 @@ if(entryFailure){
  const FIXTURE_UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
  const decodeFixture=(bytes)=>FIXTURE_UTF8_DECODER.decode(bytes);
  const read=async(path,root=process.cwd())=>decodeFixture(await readFile(join(root,path)));
+ const renderActiveMarkdown=(source)=>{
+  const block=new Set(['root','blockquote','list','listItem','table','tableRow']);
+  const render=(node)=>{
+   if(node.type==='text')return node.value;
+   if(node.type==='break'||node.type==='thematicBreak')return'\n';
+   if(node.type==='code'||node.type==='inlineCode'||node.type==='html'||node.type==='image'||node.type==='imageReference'||node.type==='definition')return'';
+   if(!Array.isArray(node.children))return'';
+   return node.children.map(render).join(block.has(node.type)?'\n':'');
+  };
+  return render(fromMarkdown(source));
+ };
  const run=(file,args=[])=>new Promise((resolve)=>{
   const child=spawn(process.execPath,[file,...args],{cwd:process.cwd(),stdio:['ignore','pipe','pipe']});
   let stdout='';let stderr='';
@@ -80,17 +93,17 @@ if(entryFailure){
   assert.equal(typeof frontmatter.description,'string');
   assert.ok(frontmatter.description.length>0&&frontmatter.description.length<=1024);
   assert.ok(skill.split('\n').length<500);
-  assert.equal(skill.split(EXPECTED_COMMAND).length-1,1);
-  assert.match(skill,/knowledge\/manifest\.json/);
-  assert.match(skill,/routes\[request_mode\]\.paths/);
-  assert.doesNotMatch(skill,/references\/[a-z0-9-]+\.md/u,'the router must not duplicate manifest paths');
-  for(const mode of ['guide','scan','refactor','verify'])assert.match(skill,new RegExp('\\b'+mode+'\\b'));
-  assert.match(skill,/Assurance/);
-  assert.match(skill,/Inquiry/);
-  assert.match(skill,/authoriz/iu);
-  assert.match(skill,/external effect/iu);
-  assert.match(skill,/missing|gap/iu);
-  assert.match(skill,/fail closed|stop before/iu);
+  const activeText=renderActiveMarkdown(skill.slice(match[0].length));
+  assert.equal(activeText.split(EXPECTED_COMMAND).length-1,1);
+  assert.match(activeText,/routes\[request_mode\]\.paths/);
+  assert.doesNotMatch(activeText,/references\/[a-z0-9-]+\.md/u,'the router must not duplicate manifest paths');
+  for(const mode of ['guide','scan','refactor','verify'])assert.match(activeText,new RegExp('\\b'+mode+'\\b'));
+  assert.match(activeText,/Assurance/);
+  assert.match(activeText,/Inquiry/);
+  assert.match(activeText,/authoriz/iu);
+  assert.match(activeText,/external effect/iu);
+  assert.match(activeText,/missing|gap/iu);
+  assert.match(activeText,/fail closed|stop before/iu);
  });
 
  test('OpenAI metadata is exact, minimal, quoted, and explicitly invokes the Skill',async()=>{
@@ -554,7 +567,7 @@ if(entryFailure){
   };
   const joinSkill=({frontmatter,body})=>'---\n'+frontmatter+'\n---\n'+body;
   const semanticEvidence=[
-   ['CLI command','SKILL_CLI_CONTRACT_INVALID',[EXPECTED_COMMAND],EXPECTED_COMMAND],
+   ['CLI command','SKILL_CLI_CONTRACT_INVALID',[EXPECTED_COMMAND_SOURCE],EXPECTED_COMMAND],
    ['manifest route','SKILL_ROUTE_INSTRUCTION_INVALID',['routes[request_mode].paths'],'routes[request_mode].paths'],
    ['guide mode','SKILL_MODE_INVALID',[/\bguide\b/giu],'guide'],
    ['scan mode','SKILL_MODE_INVALID',[/\bscan\b/giu],'scan'],
@@ -719,7 +732,7 @@ if(entryFailure){
    const validateResponse=ajv.compile(responseSchema);
    for(const mode of ['guide','scan','refactor','verify']){
     const input=await read('evals/parity/'+mode+'.json');
-    const result=await runPnpm(['--silent','ux:evaluate','--','--mode',mode,'--input','-','--output','json'],input);
+    const result=await runPnpm(['--silent','ux:evaluate','--mode',mode,'--input','-','--output','json'],input);
     let output;
     try{output=JSON.parse(result.stdout);}catch{}
     const exactJson=output!==undefined&&result.stdout===JSON.stringify(output)+'\n';

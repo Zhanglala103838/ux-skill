@@ -28,7 +28,7 @@ description: Evidence-aware guidance for digital product design, UX review, migr
 
 1. Invoke the existing [CLI](scripts/ux-evaluate.mjs) once with the bundle on standard input:
 
-   Run pnpm ux:evaluate -- --mode <mode> --input - --output json.
+   Run pnpm --silent ux:evaluate --mode &lt;mode&gt; --input - --output json.
 
 2. Preserve the CLI exit code, error codes, semantic projection, audit sidecar, recommendation, and release decision exactly. Never convert no_release, incomplete evidence, or a failed run into approval.
 

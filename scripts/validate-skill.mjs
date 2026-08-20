@@ -4,6 +4,7 @@ import {lstat,open,realpath} from 'node:fs/promises';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {TextDecoder,types as utilTypes} from 'node:util';
+import {fromMarkdown} from 'mdast-util-from-markdown';
 import YAML from 'yaml';
 import {loadKnowledgeManifest,parseKnowledgeJson} from './check-knowledge.mjs';
 
@@ -15,7 +16,7 @@ const UTF8_BOM=Buffer.from([0xef,0xbb,0xbf]);
 const UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
 const OPEN_FLAGS=fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW;
 const SKILL_NAME='improving-product-ux';
-const COMMAND='pnpm ux:evaluate -- --mode <mode> --input - --output json';
+const COMMAND='pnpm --silent ux:evaluate --mode <mode> --input - --output json';
 const MODES=Object.freeze(['guide','scan','refactor','verify']);
 const LINKS=Object.freeze(['knowledge/manifest.json','scripts/ux-evaluate.mjs']);
 const LINK_SYNTAX=Object.freeze([
@@ -164,190 +165,7 @@ function parseYaml(source,code,schema){
  return value;
 }
 
-const isEscaped=(source,index)=>{
- let count=0;
- for(let cursor=index-1;cursor>=0&&source[cursor]==='\\';cursor--)count++;
- return count%2===1;
-};
-
-function maskRange(characters,start,end){
- for(let index=start;index<end;index++)if(characters[index]!=='\n')characters[index]=' ';
-}
-
-function indentationColumns(line){
- let columns=0;
- for(const character of line){
-  if(character===' '){columns++;continue;}
-  if(character==='\t'){columns+=4-(columns%4);continue;}
-  break;
- }
- return columns;
-}
-
-function consumeIndent(line,start,requiredColumns){
- let cursor=start;let columns=0;
- while(cursor<line.length&&columns<requiredColumns){
-  if(line[cursor]===' '){columns++;cursor++;continue;}
-  if(line[cursor]==='\t'){columns+=4-(columns%4);cursor++;continue;}
-  break;
- }
- return columns>=requiredColumns?cursor:undefined;
-}
-
-function consumeBlockquotes(line){
- let cursor=0;let depth=0;
- while(cursor<line.length){
-  const start=cursor;
-  let spaces=0;
-  while(spaces<3&&line[cursor]===' '){cursor++;spaces++;}
-  if(line[cursor]!=='>'||isEscaped(line,cursor)){cursor=start;break;}
-  cursor++;depth++;
-  if(line[cursor]===' ')cursor++;
-  else if(line[cursor]==='\t')cursor++;
- }
- return Object.freeze({cursor,depth});
-}
-
-function consumeListContainers(line,start){
- let cursor=start;let continuationIndent=0;
- while(cursor<line.length){
-  const remaining=line.slice(cursor);
-  const marker=/^( {0,3})([*+-]|\d{1,9}[.)])([ \t]+)(?=\S)/u.exec(remaining);
-  if(marker===null)break;
-  const whitespaceColumns=indentationColumns(marker[3]);
-  const separatorLength=whitespaceColumns<=4?marker[3].length:1;
-  const consumed=marker[1].length+marker[2].length+separatorLength;
-  continuationIndent+=indentationColumns(marker[1])+marker[2].length+indentationColumns(marker[3].slice(0,separatorLength));
-  cursor+=consumed;
- }
- return Object.freeze({cursor,continuationIndent});
-}
-
-function activeLineView(line){
- const quote=consumeBlockquotes(line);
- const list=consumeListContainers(line,quote.cursor);
- return Object.freeze({
-  content:line.slice(list.cursor),
-  quoteDepth:quote.depth,
-  continuationIndent:list.continuationIndent
- });
-}
-
-function maskFencedCode(source){
- const characters=source.split('');
- let offset=0;let fence;
- while(offset<source.length){
-  const newline=source.indexOf('\n',offset);
-  const end=newline===-1?source.length:newline;
-  const line=source.slice(offset,end);
-  if(fence!==undefined){
-   maskRange(characters,offset,end);
-   const quote=consumeBlockquotes(line);
-   const continuationStart=quote.depth===fence.quoteDepth?consumeIndent(line,quote.cursor,fence.continuationIndent):undefined;
-   if(continuationStart!==undefined){
-    const close=/^ {0,3}(`+|~+)[ \t]*$/u.exec(line.slice(continuationStart));
-    if(close!==null&&close[1][0]===fence.character&&close[1].length>=fence.length)fence=undefined;
-   }
-  }else{
-   const view=activeLineView(line);
-   const open=/^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(view.content);
-   if(open!==null&&(open[1][0]==='~'||!open[2].includes('`'))){
-    fence=Object.freeze({character:open[1][0],length:open[1].length,quoteDepth:view.quoteDepth,continuationIndent:view.continuationIndent});
-    maskRange(characters,offset,end);
-   }
-  }
-  if(newline===-1)break;
-  offset=newline+1;
- }
- return characters.join('');
-}
-
-function maskInlineCode(source){
- const characters=source.split('');
- const runs=[];
- for(let start=0;start<source.length;start++){
-  if(source[start]!=='`'||isEscaped(source,start))continue;
-  let end=start+1;
-  while(source[end]==='`')end++;
-  runs.push(Object.freeze({start,end,width:end-start}));
-  start=end-1;
- }
- const nextSameWidth=new Array(runs.length);const nextByWidth=new Map();
- for(let index=runs.length-1;index>=0;index--){
-  nextSameWidth[index]=nextByWidth.get(runs[index].width);
-  nextByWidth.set(runs[index].width,index);
- }
- for(let index=0;index<runs.length;){
-  const closingIndex=nextSameWidth[index];
-  if(closingIndex===undefined){index++;continue;}
-  maskRange(characters,runs[index].start,runs[closingIndex].end);
-  index=closingIndex+1;
- }
- return characters.join('');
-}
-
-function maskIndentedCode(source){
- const characters=source.split('');
- let offset=0;
- while(offset<source.length){
-  const newline=source.indexOf('\n',offset);
-  const end=newline===-1?source.length:newline;
-  const line=source.slice(offset,end);
-  const quote=consumeBlockquotes(line);
-  const list=consumeListContainers(line,quote.cursor);
-  if(indentationColumns(line.slice(list.cursor))>=4)maskRange(characters,offset,end);
-  if(newline===-1)break;
-  offset=newline+1;
- }
- return characters.join('');
-}
-
-function maskHtmlComments(source){
- const characters=source.split('');
- let cursor=0;
- while(cursor<source.length){
-  const start=source.indexOf('<!--',cursor);
-  if(start===-1)break;
-  if(isEscaped(source,start)){cursor=start+4;continue;}
-  const end=source.indexOf('-->',start+4);
-  if(end===-1)fail('SKILL_LINK_INVALID');
-  if(source.indexOf('<!--',start+4)!==-1&&source.indexOf('<!--',start+4)<end)fail('SKILL_LINK_INVALID');
-  maskRange(characters,start,end+3);
-  cursor=end+3;
- }
- return characters.join('');
-}
-
-function maskInactiveMarkdown(source){
- let surface=maskFencedCode(source);
- surface=maskInlineCode(surface);
- surface=maskIndentedCode(surface);
- return maskHtmlComments(surface);
-}
-
-function maskExactProgressiveLinks(source){
- const characters=source.split('');
- const destinations=[];
- for(const expected of LINK_SYNTAX){
-  let count=0;let cursor=0;
-  while(cursor<source.length){
-   const start=source.indexOf(expected.source,cursor);
-   if(start===-1)break;
-   const image=start>0&&source[start-1]==='!'&&!isEscaped(source,start-1);
-   if(!isEscaped(source,start)&&!image){
-    count++;
-    destinations.push(expected.destination);
-    maskRange(characters,start,start+expected.source.length);
-   }
-   cursor=start+expected.source.length;
-  }
-  if(count!==1)fail('SKILL_LINK_INVALID');
- }
- if(!sameData(destinations,LINKS))fail('SKILL_LINK_INVALID');
- return Object.freeze({surface:characters.join(''),destinations:Object.freeze(destinations)});
-}
-
-function validateSkillLinkRemainder(surface){
+function validateVisibleTextSurface(surface){
  let precedingBackslashes=0;
  for(const character of surface){
   if(character==='\\'){precedingBackslashes++;continue;}
@@ -365,18 +183,62 @@ function validateSkillLinkRemainder(surface){
  if(rawScheme.test(surface)||protocolRelative.test(surface)||htmlResource.test(surface)||encodedAlias.test(surface)||backslashPath.test(surface)||resourceExtension.test(surface)||localPath.test(surface)||webHost.test(surface))fail('SKILL_LINK_INVALID');
 }
 
-function maskValidatedSemanticSyntax(source){
- const characters=source.split('');
- for(const literal of [COMMAND,'routes[request_mode].paths']){
-  let cursor=0;
-  while(cursor<source.length){
-   const start=source.indexOf(literal,cursor);
-   if(start===-1)break;
-   maskRange(characters,start,start+literal.length);
-   cursor=start+literal.length;
+function isClosedHtmlComment(value){
+ if(!value.startsWith('<!--')||!value.endsWith('-->'))return false;
+ const inner=value.slice(4,-3);
+ return !inner.includes('<!--')&&!inner.includes('-->')&&!inner.startsWith('>')&&!inner.startsWith('->')&&!inner.endsWith('<!-');
+}
+
+function nodePositionIsValid(node,source){
+ const start=node?.position?.start?.offset;
+ const end=node?.position?.end?.offset;
+ return Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&start>=0&&end>=start&&end<=source.length;
+}
+
+function parseActiveMarkdown(source){
+ let tree;
+ try{tree=fromMarkdown(source);}catch{fail('SKILL_MARKDOWN_INVALID');}
+ if(tree?.type!=='root'||!nodePositionIsValid(tree,source)||tree.position.start.offset!==0||tree.position.end.offset!==source.length)fail('SKILL_MARKDOWN_INVALID');
+ const links=[];
+ const blockContainers=new Set(['root','blockquote','list','listItem','table','tableRow']);
+ const inlineContainers=new Set(['paragraph','heading','emphasis','strong','delete','tableCell']);
+
+ const render=(node)=>{
+  if(!isRecord(node)||typeof node.type!=='string'||!nodePositionIsValid(node,source))fail('SKILL_MARKDOWN_INVALID');
+  if(node.type==='text'){
+   if(typeof node.value!=='string')fail('SKILL_MARKDOWN_INVALID');
+   return node.value;
   }
+  if(node.type==='break'||node.type==='thematicBreak')return'\n';
+  if(node.type==='code'||node.type==='inlineCode')return'';
+  if(node.type==='html'){
+   if(typeof node.value!=='string'||!isClosedHtmlComment(node.value))fail('SKILL_LINK_INVALID');
+   return'';
+  }
+  if(node.type==='link'){
+   if(typeof node.url!=='string'||node.title!==null||!Array.isArray(node.children))fail('SKILL_LINK_INVALID');
+   const exact=LINK_SYNTAX.find((row)=>row.destination===node.url&&row.source===source.slice(node.position.start.offset,node.position.end.offset));
+   if(exact===undefined)fail('SKILL_LINK_INVALID');
+   links.push(exact.destination);
+   return node.children.map(render).join('');
+  }
+  if(node.type==='image'||node.type==='imageReference'||node.type==='linkReference'||node.type==='definition')fail('SKILL_LINK_INVALID');
+  if(!Array.isArray(node.children))fail('SKILL_MARKDOWN_INVALID');
+  if(blockContainers.has(node.type))return node.children.map(render).filter(Boolean).join('\n');
+  if(inlineContainers.has(node.type))return node.children.map(render).join('');
+  fail('SKILL_MARKDOWN_INVALID');
+ };
+
+ const text=render(tree);
+ return Object.freeze({text,links:Object.freeze(links)});
+}
+
+function removeValidatedSemanticSyntax(source){
+ let surface=source;
+ for(const literal of [COMMAND,'routes[request_mode].paths']){
+  surface=surface.split(literal).join('');
  }
- return characters.join('');
+ return surface;
 }
 
 function validateMetadataPrompt(prompt){
@@ -397,17 +259,18 @@ function validateSkillSource(source){
  const triggers=[/digital product/iu,/design/iu,/UX review/iu,/migrat/iu,/refactor/iu,/verif/iu,/website/iu,/Admin/iu,/cross-platform/iu,/HulianUI/iu,/brand art/iu,/physical-space/iu,/legal/iu,/medical/iu];
  if(triggers.some((pattern)=>!pattern.test(value.description)))fail('SKILL_DESCRIPTION_INVALID');
  if(source.split('\n').length>=500)fail('SKILL_TOO_LONG');
- const activeBody=maskInactiveMarkdown(body);
+ const markdown=parseActiveMarkdown(body);
+ const activeBody=markdown.text;
  if((activeBody.split(COMMAND).length-1)!==1)fail('SKILL_CLI_CONTRACT_INVALID');
- const matchedLinks=maskExactProgressiveLinks(activeBody);
- if(!activeBody.includes('routes[request_mode].paths')||!activeBody.includes('knowledge/manifest.json'))fail('SKILL_ROUTE_INSTRUCTION_INVALID');
+ if(!sameData(markdown.links,LINKS))fail('SKILL_LINK_INVALID');
+ if(!activeBody.includes('routes[request_mode].paths')||!markdown.links.includes('knowledge/manifest.json'))fail('SKILL_ROUTE_INSTRUCTION_INVALID');
  if(/references\/[a-z0-9-]+\.md/u.test(activeBody))fail('SKILL_REFERENCE_PATH_FORBIDDEN');
  for(const mode of MODES)if(!new RegExp('\\b'+mode+'\\b','u').test(activeBody))fail('SKILL_MODE_INVALID');
  const requirements=[/Assurance/u,/Inquiry/u,/authoriz/iu,/external effect/iu,/missing|gap/iu,/fail closed|stop before/iu,/compare/iu,/audit/iu,/release/iu,/no_release/u];
  if(requirements.some((pattern)=>!pattern.test(activeBody)))fail('SKILL_WORKFLOW_INVALID');
- validateSkillLinkRemainder(maskValidatedSemanticSyntax(matchedLinks.surface));
+ validateVisibleTextSurface(removeValidatedSemanticSyntax(activeBody));
  if(activeBody.includes('\n|---'))fail('SKILL_SEMANTIC_TABLE_FORBIDDEN');
- return Object.freeze({name:value.name,links:matchedLinks.destinations});
+ return Object.freeze({name:value.name,links:markdown.links});
 }
 
 function validateMetadataSource(source){
