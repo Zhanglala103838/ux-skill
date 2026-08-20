@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {chmod,cp,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {chmod,cp,mkdtemp,readFile,rm,stat,truncate,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname,join,relative,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -18,6 +18,8 @@ const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
 const SEMANTIC_PATH='schemas/evaluator/semantic-projection.schema.json';
 const SCHEMA_MANIFEST_PATH='schemas/manifest.json';
 const EVALUATOR_MANIFEST_PATH='evaluator/manifest.json';
+const ARTIFACT_RESOURCE_LIMIT=1_048_576;
+const LARGE_SPARSE_ARTIFACT_BYTES=3_221_225_472;
 const RESPONSE_SCHEMA_CLOSURE=Object.freeze([
  Object.freeze({path:RESPONSE_PATH,id:'https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json'}),
  Object.freeze({path:SEMANTIC_PATH,id:'https://ux-skill.invalid/schemas/evaluator/semantic-projection.schema.json'})
@@ -36,8 +38,10 @@ const spawnCli=(isolated,options={})=>new Promise((resolve,reject)=>{
  const inputKind=options.inputKind??'stdin',inputPath=join(isolated,'runtime-input.json');
  const cli=join(isolated,'scripts/ux-evaluate.mjs'),args=options.args??['--mode','scan','--input',inputKind==='path'?inputPath:'-','--output','json'];
  const child=spawn(process.execPath,[cli,...args],{cwd:isolated,env:{LANG:'C',LC_ALL:'C',TZ:'UTC',UX_REQUEST_ID:'task11-artifact-totality'},stdio:['pipe','pipe','pipe']});
- const stdout=[];const stderr=[];child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));child.on('error',reject);
- child.on('close',(status,signal)=>{const stdoutText=Buffer.concat(stdout).toString('utf8'),stderrText=Buffer.concat(stderr).toString('utf8');let json=null;try{if(stdoutText.length>0)json=JSON.parse(stdoutText);}catch(error){reject(Object.assign(error,{stdout:stdoutText,stderr:stderrText,status,signal}));return;}resolve({status,signal,stdout:stdoutText,stderr:stderrText,json});});
+ const stdout=[];const stderr=[];let timedOut=false;let forceTimer=null;
+ child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));child.on('error',reject);
+ const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');forceTimer=setTimeout(()=>child.kill('SIGKILL'),250);},options.timeoutMs??15_000);
+ child.on('close',(status,signal)=>{clearTimeout(timer);if(forceTimer!==null)clearTimeout(forceTimer);const stdoutText=Buffer.concat(stdout).toString('utf8'),stderrText=Buffer.concat(stderr).toString('utf8');let json=null;try{if(stdoutText.length>0)json=JSON.parse(stdoutText);}catch(error){reject(Object.assign(error,{stdout:stdoutText,stderr:stderrText,status,signal,timedOut}));return;}resolve({status,signal,stdout:stdoutText,stderr:stderrText,json,timedOut});});
  child.stdin.end(options.stdinBytes??JSON.stringify(bundle));
 });
 const spawnDirectEvaluator=(isolated)=>new Promise((resolveRow,reject)=>{
@@ -80,10 +84,11 @@ const isolatedEvaluatorRuns=async(mutate)=>{
 };
 const expectFailed=(row,code,label)=>{
  assert.equal(row.status,1,label+':exit');assert.equal(row.signal,null,label+':signal');
+ assert.equal(row.timedOut,false,label+':timeout');
  assert.deepEqual(row.json,{run_status:'failed',error_codes:[code]},label+':json');
  assert.equal(row.stdout,JSON.stringify(row.json)+'\n',label+':stdout');assert.equal(row.stderr,code+'\n',label+':stderr');
  assert.equal(validateResponse(row.json),true,label+':schema:'+JSON.stringify(validateResponse.errors));
- for(const leaked of ['ENOENT','EACCES','SyntaxError','ERR_TASK11_UNAUTHORIZED','RESPONSE_SCHEMA_VALIDATION_FAILED',ROOT]){assert.equal(row.stdout.includes(leaked),false,label+':stdout:'+leaked);assert.equal(row.stderr.includes(leaked),false,label+':stderr:'+leaked);}
+ for(const leaked of ['ENOENT','EACCES','SyntaxError','ERR_FS_FILE_TOO_LARGE','ERR_TASK11_UNAUTHORIZED','RESPONSE_SCHEMA_VALIDATION_FAILED',ROOT]){assert.equal(row.stdout.includes(leaked),false,label+':stdout:'+leaked);assert.equal(row.stderr.includes(leaked),false,label+':stderr:'+leaked);}
 };
 const expectInvalid=(row,code,label)=>{
  assert.equal(row.status,2,label+':exit');assert.equal(row.signal,null,label+':signal');
@@ -101,6 +106,11 @@ const expectDirect=(row,expected,label)=>{
  assert.equal(row.status,0,label+':exit');assert.equal(row.signal,null,label+':signal');assert.equal(row.stderr,'',label+':stderr');assert.deepEqual(row.json,expected,label+':json');assert.equal(row.stdout,JSON.stringify(expected)+'\n',label+':stdout');
 };
 const capture=async(failures,label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+error.message);}};
+const makeSparseArtifact=async(root,path,size)=>{
+ const target=join(root,path);await truncate(target,size);
+ const snapshot=await stat(target,{bigint:true});assert.equal(snapshot.size,BigInt(size),path+':sparse size');
+ if(size===LARGE_SPARSE_ARTIFACT_BYTES&&typeof snapshot.blocks==='bigint')assert.ok(snapshot.blocks*512n<snapshot.size,path+':sparse allocation');
+};
 const rawSha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
 const schemaManifestDigest=(manifest)=>createHash('sha256').update('ux-skill:manifest:v1','utf8').update(canonicalize(manifest),'utf8').digest('hex');
 const replaceUnique=async(path,needle,replacement)=>{const source=await readFile(path,'utf8');assert.equal(source.split(needle).length,2,path+':mutation anchor');await writeFile(path,source.replace(needle,replacement));};
@@ -186,6 +196,23 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   ['unauthorized evaluator code','EVALUATION_FAILED',async(root)=>{const path=join(root,'evaluator/index.mjs'),source=await readFile(path,'utf8');const needle=" const input=validateInput(bundle);if(!input.ok)inputFailure(input.errors);\n const artifacts=";assert.equal(source.split(needle).length,2,'evaluator injection anchor');const injected=" const input=validateInput(bundle);if(!input.ok)inputFailure(input.errors);\n const unexpected=new TypeError('task11 unexpected evaluator failure');unexpected.code='ERR_TASK11_UNAUTHORIZED';throw unexpected;\n const artifacts=";await writeFile(path,source.replace(needle,injected));}]
  ];
  for(const [label,code,mutate,options] of cases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectFailed(row,code,label));}
+ const artifactResourcePaths=[
+  ['rules artifact','knowledge/rules.json'],
+  ['evaluation schema artifact','schemas/core/evaluation-input.schema.json'],
+  ['authority registry artifact','knowledge/registries.json'],
+  ['authority policy artifact','knowledge/decision-policies.json'],
+  ['evaluator manifest artifact','evaluator/manifest.json'],
+  ['snapshot source registry artifact','evaluator/snapshot-source-registry.json']
+ ];
+ for(const [sizeLabel,size] of [['limit plus one',ARTIFACT_RESOURCE_LIMIT+1],['three GiB sparse',LARGE_SPARSE_ARTIFACT_BYTES]]){
+  for(const [artifactLabel,path] of artifactResourcePaths){
+   const label=artifactLabel+' '+sizeLabel;
+   await capture(failures,label,async()=>{
+    const row=await isolatedRun((root)=>makeSparseArtifact(root,path,size),{timeoutMs:15_000});
+    expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);
+   });
+  }
+ }
  const precedenceCases=[
   ['argument precedence','MODE_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{args:['--mode','audit','--input','-','--output','json']}],
   ['input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{stdinBytes:'{'}],
@@ -248,5 +275,5 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   assert.equal(row.timedOut,false,'timeout');expectInvalid(row,'INPUT_UNREADABLE','torn snapshot');
   for(const forbidden of ['audit_sidecar','assurance','inquiry','semantic_projection','semantic_digest'])assert.equal(Object.hasOwn(row.json,forbidden),false,'torn snapshot:'+forbidden);
  });
- if(failures.length>0)assert.fail('TASK11_MANIFEST_DUPLICATE_MEMBER_RED\n'+failures.join('\n'));
+ if(failures.length>0)assert.fail('TASK11_ARTIFACT_RESOURCE_BOUNDARY_RED\n'+failures.join('\n'));
 });
