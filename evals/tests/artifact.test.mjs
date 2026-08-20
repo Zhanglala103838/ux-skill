@@ -4,7 +4,7 @@ import {constants as fsConstants} from 'node:fs';
 import {mkdtemp,mkdir,writeFile,readFile,open,symlink,link,stat,rm} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
-import {dirname,join,resolve} from 'node:path';
+import {dirname,join,relative as pathRelative,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {init as initModuleLexer,parse as parseModule} from 'es-module-lexer';
 import {digest} from '../../evaluator/digests.mjs';
@@ -126,7 +126,7 @@ if(packer===null){
  });
 
  test('canonical ustar sorts by unsigned UTF-8 bytes and is input-order independent',()=>{
-  const forward=[{path:'z',content:Buffer.from('last')},{path:'Ã©',content:Buffer.from('unicode')},{path:'a',content:Buffer.from('first')}];
+  const forward=[{path:'z',content:Buffer.from('last')},{path:'é',content:Buffer.from('unicode')},{path:'a',content:Buffer.from('first')}];
   const left=packCanonicalUstar(forward),right=packCanonicalUstar([...forward].reverse());
   assert.deepEqual(left,right);
   assert.deepEqual(archiveEntries(left).map((row)=>row.path),utf8Sort(forward.map((row)=>row.path)));
@@ -230,7 +230,7 @@ if(packer===null){
   for(const name of releaseScripts){const match=/^node ([^ ]+\.mjs)(?: |$)/u.exec(pkg.scripts[name]);assert.ok(match,name);assert.equal(included.has(match[1]),true,match[1]);}
   const skill=await readFile(join(ROOT,'SKILL.md'),'utf8');for(const path of ['knowledge/manifest.json','scripts/ux-evaluate.mjs'])assert.equal(skill.includes(`](${path})`),true,path);
   await initModuleLexer;const roots=['scripts/ux-evaluate.mjs','scripts/capture-snapshot-closure.mjs','scripts/check-knowledge.mjs','scripts/validate-skill.mjs','scripts/pack-ustar.mjs','adapters/hulianui/bridge.mjs'];const visited=new Set();
-  const visit=async(path)=>{if(visited.has(path))return;visited.add(path);const source=await readFile(join(ROOT,...path.split('/')),'utf8');for(const row of parseModule(source)[0]){if(row.n===undefined||row.n===null||!row.n.startsWith('.'))continue;const resolvedPath=fileURLToPath(new URL(row.n,pathToFileURL(join(ROOT,...path.split('/')))));const relative=resolvedPath.slice(ROOT.length+1).split('\\').join('/');assert.equal(relative.startsWith('../'),false,row.n);await visit(relative);}};
+  const visit=async(path)=>{if(visited.has(path))return;visited.add(path);const source=await readFile(join(ROOT,...path.split('/')),'utf8');for(const row of parseModule(source)[0]){if(row.n===undefined||row.n===null||!row.n.startsWith('.'))continue;const resolvedPath=fileURLToPath(new URL(row.n,pathToFileURL(join(ROOT,...path.split('/')))));const relative=pathRelative(ROOT,resolvedPath).split('\\').join('/');assert.equal(relative.startsWith('../'),false,row.n);await visit(relative);}};
   for(const path of roots)await visit(path);for(const path of visited)assert.equal(included.has(path),true,path);
   assert.equal(artifact.paths.some((path)=>/capture-(?:registry|runner|transport)/u.test(path)),false);
  });
