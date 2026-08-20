@@ -29,19 +29,21 @@ if(schemaFailure){
   assert.equal(row.status,wantStatus);assert.equal(row.signal,null);assert.deepEqual(row.json,{run_status:wantStatus===1?'failed':'invalid_input',error_codes:[wantCode]});
   assert.equal(row.stdout,JSON.stringify(row.json)+'\n');assert.equal(row.stderr,wantCode+'\n');expectValid(row.json,wantCode);
  };
- const spawnCli=(script,args,stdin,cwd)=>new Promise((resolve,reject)=>{
+ const spawnCli=(script,args,stdin,cwd,parseJson=true)=>new Promise((resolve,reject)=>{
   const child=spawn(process.execPath,[script,...args],{cwd,env:{LANG:'C',LC_ALL:'C',TZ:'UTC',UX_REQUEST_ID:'task11-response-schema'},stdio:['pipe','pipe','pipe']});const out=[];const err=[];
-  child.stdout.on('data',(chunk)=>out.push(chunk));child.stderr.on('data',(chunk)=>err.push(chunk));child.on('error',reject);child.on('close',(status,signal)=>{const stdout=Buffer.concat(out).toString('utf8'),stderr=Buffer.concat(err).toString('utf8');let json;try{json=JSON.parse(stdout);}catch(error){reject(Object.assign(error,{stdout,stderr,status,signal}));return;}resolve({status,signal,stdout,stderr,json});});child.stdin.end(stdin);
+  child.stdout.on('data',(chunk)=>out.push(chunk));child.stderr.on('data',(chunk)=>err.push(chunk));child.on('error',reject);child.on('close',(status,signal)=>{const stdout=Buffer.concat(out).toString('utf8'),stderr=Buffer.concat(err).toString('utf8');let json=null;if(parseJson){try{json=JSON.parse(stdout);}catch(error){reject(Object.assign(error,{stdout,stderr,status,signal}));return;}}resolve({status,signal,stdout,stderr,json});});child.stdin.end(stdin);
  });
- const failedArtifactRun=async(bundle)=>{
+ const isolatedRun=async(bundle,tamper,parseJson=true)=>{
   const isolated=await mkdtemp(join(ROOT,'.task11-response-'));
   try{
    for(const path of ['scripts','evaluator','schemas','knowledge'])await cp(join(ROOT,path),join(isolated,path),{recursive:true});
    await cp(join(ROOT,'package.json'),join(isolated,'package.json'));
-   const rules=join(isolated,'knowledge/rules.json');await writeFile(rules,(await readFile(rules,'utf8'))+' ');
-   return await spawnCli(join(isolated,'scripts/ux-evaluate.mjs'),['--mode','scan','--input','-','--output','json'],JSON.stringify(bundle),isolated);
+   await tamper(isolated);
+   return await spawnCli(join(isolated,'scripts/ux-evaluate.mjs'),['--mode','scan','--input','-','--output','json'],JSON.stringify(bundle),isolated,parseJson);
   }finally{await rm(isolated,{recursive:true,force:true});}
  };
+ const failedArtifactRun=(bundle)=>isolatedRun(bundle,async(isolated)=>{const rules=join(isolated,'knowledge/rules.json');await writeFile(rules,(await readFile(rules,'utf8'))+' ');});
+ const invalidResponseSchemaRun=(bundle)=>isolatedRun(bundle,async(isolated)=>{const schema=join(isolated,RESPONSE_PATH);await writeFile(schema,(await readFile(schema,'utf8'))+' ');},false);
 
  test('Task11 response schema is closed, three-branch, and raw-manifest authenticated',async()=>{
   assert.equal(responseSchema.$id,'https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json');assert.equal(responseSchema.oneOf.length,3);
@@ -80,10 +82,15 @@ if(schemaFailure){
   ];
   for(const [row,code] of rows)exactEmission(row,code,2);
   const extra={...rows[0][0].json,extra:true};expectInvalid(extra,'closed invalid_input');
+  expectInvalid({run_status:'invalid_input',error_codes:['EVALUATION_FAILED']},'wrong invalid-input code');
+  expectInvalid({run_status:'invalid_input',error_codes:['ARGUMENT_UNKNOWN','ARGUMENT_UNKNOWN']},'duplicate error code');
+  expectInvalid({run_status:'invalid_input',error_codes:['OUTPUT_VALUE_REQUIRED','ARGUMENT_UNKNOWN']},'noncanonical error-code order');
  });
 
  test('real evaluator artifact failure emits one exact schema-valid failed JSON response, one stderr code, and exit one',async()=>{
   const bundle=JSON.parse(await readFile(new URL('../parity/scan.json',import.meta.url),'utf8'));const row=await failedArtifactRun(bundle);exactEmission(row,'ARTIFACT_VERIFICATION_FAILED',1);
   expectInvalid({...row.json,extra:true},'closed failed');
+  expectInvalid({run_status:'failed',error_codes:['MODE_INVALID']},'wrong failed code');
+  const schemaFailureRow=await invalidResponseSchemaRun(bundle);assert.equal(schemaFailureRow.status,1);assert.equal(schemaFailureRow.signal,null);assert.equal(schemaFailureRow.stdout,'');assert.equal(schemaFailureRow.stderr,'RESPONSE_SCHEMA_INVALID\n');assert.equal(schemaFailureRow.json,null);
  });
 }

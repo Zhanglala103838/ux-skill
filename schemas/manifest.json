@@ -8,6 +8,10 @@
     "file_digest": "a16bf36fcbad935c7875c5583b0e7530b78a1083329ee00d719fe183dcb4d871"
   },
   {
+    "path": "schemas/adapters/ux-evaluate-response-v1.schema.json",
+    "file_digest": "2319bfe7e0f1f9e320ff0550315f5b6e5d3109a7e5099dabe68b45c3fba1cc7c"
+  },
+  {
     "path": "schemas/core/authority.schema.json",
     "file_digest": "a2b9791a907df1ce076b425a23ecf1508b2ff4a152ea3ca124e2f6b2347da399"
   },

@@ -593,17 +593,20 @@ git commit -m "feat: compose deterministic UX evaluator"
 
 **Files:**
 - Create: `scripts/ux-evaluate.mjs`, `adapters/hulianui/bridge.mjs`
-- Consume: `schemas/adapters/hulian-evaluation-request-v1.schema.json`, `adapters/hulianui/adapter.mjs`
-- Create: `evals/tests/cli.test.mjs`, `evals/helpers/process.mjs`
+- Modify: `package.json`, `schemas/adapters/hulian-evaluation-request-v1.schema.json`, `schemas/manifest.json`, `evaluator/manifest.json`
+- Create: `schemas/adapters/ux-evaluate-response-v1.schema.json`
+- Consume: `adapters/hulianui/adapter.mjs`
+- Create: `evals/tests/cli.test.mjs`, `evals/tests/cli-response-schema.test.mjs`, `evals/helpers/process.mjs`
 - Create: `evals/parity/guide.json`, `scan.json`, `refactor.json`, `verify.json`
 
 **Interfaces:**
 - CLI: `ux-evaluate --mode <guide|scan|refactor|verify> --input <path|-> --output json`.
+- Package: `package.json` binds the `ux-evaluate` bin to the checked-in executable CLI.
 - Bridge: `evaluateHulianMcpResult(bundleBase,toolResult): EvaluationResult`; `bundleBase` is validated by `hulian-evaluation-request-v1` and forbids `adapter_evidence`. The bridge maps the tool result, constructs the sole complete bundle with one canonical adapter evidence set, then calls `evaluate(bundle)`.
 - `evals/helpers/process.mjs` produces `runCli(args)` and `runCliWithDifferentRequestId(args)` by spawning the checked-in CLI with fixed environment and parsing stdout JSON.
-- Produces stdout JSON only; diagnostics go to stderr.
+- Produces stdout JSON only; diagnostics go to stderr. Every emitted response is validated before stdout against the raw-manifest-authenticated, closed, three-branch `ux-evaluate-response-v1` transport schema; schema or validator failure emits no stdout and exits nonzero.
 
-- [ ] **Step 1: Write CLI contract tests**
+- [x] **Step 1: Write CLI contract tests**
 
 ```js
 test('unknown and multiple modes are invalid_input', async () => {
@@ -621,16 +624,16 @@ test('transport metadata does not change semantic digest', async () => {
 });
 ```
 
-- [ ] **Step 2: Confirm RED, implement thin transport, verify**
+- [x] **Step 2: Confirm RED, implement thin transport, verify**
 
 Run: `node --test evals/tests/cli.test.mjs`
 
 Expected before: FAIL; after: PASS. The CLI and bridge must call `evaluate(bundle)` and contain no UX rule or recommendation table. For parity fixtures, the CLI/Skill complete bundle contains captured evidence E, while the bridge base omits the field and maps its tool result to byte-identical E.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
-git add scripts/ux-evaluate.mjs adapters/hulianui/bridge.mjs evals/tests/cli.test.mjs evals/parity
+git add package.json scripts/ux-evaluate.mjs adapters/hulianui/bridge.mjs schemas/adapters/hulian-evaluation-request-v1.schema.json schemas/adapters/ux-evaluate-response-v1.schema.json schemas/manifest.json evaluator/manifest.json evals/tests/cli.test.mjs evals/tests/cli-response-schema.test.mjs evals/tests/validation.test.mjs evals/helpers/process.mjs evals/parity docs/superpowers/plans/2026-08-18-evidence-aware-product-ux-skill-v0.1-vertical-slice.md
 git commit -m "feat: expose UX evaluator transports"
 ```
 

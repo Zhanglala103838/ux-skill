@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json",
+  "title": "UxEvaluateTransportResponse-v1",
+  "oneOf": [
+    { "$ref": "#/$defs/Success" },
+    { "$ref": "#/$defs/InvalidInput" },
+    { "$ref": "#/$defs/Failed" }
+  ],
+  "$defs": {
+    "Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "StringSet": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "DigestSet": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Digest" },
+      "uniqueItems": true
+    },
+    "Success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assurance", "inquiry", "semantic_projection", "semantic_digest", "audit_sidecar"],
+      "properties": {
+        "assurance": { "$ref": "#/$defs/Assurance" },
+        "inquiry": { "$ref": "#/$defs/Inquiry" },
+        "semantic_projection": { "$ref": "https://ux-skill.invalid/schemas/evaluator/semantic-projection.schema.json" },
+        "semantic_digest": { "$ref": "#/$defs/Digest" },
+        "audit_sidecar": { "$ref": "#/$defs/AuditSidecar" }
+      }
+    },
+    "Assurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["warning", "run_status", "release_status"],
+      "properties": {
+        "warning": { "type": "string", "minLength": 1 },
+        "run_status": { "type": "string", "minLength": 1 },
+        "release_status": { "type": "string", "minLength": 1 }
+      }
+    },
+    "Inquiry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authoritative", "status", "gap_ids", "scaffold"],
+      "properties": {
+        "authoritative": { "const": false },
+        "status": { "type": "string", "minLength": 1 },
+        "gap_ids": { "$ref": "#/$defs/StringSet" },
+        "scaffold": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "AuditSidecar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_normalization",
+        "policy_manifest_digest",
+        "knowledge_manifest_digest",
+        "schema_manifest_digest",
+        "rule_sources",
+        "claim_source_digests",
+        "risk_source_digests",
+        "recommendation_source_digests",
+        "release_source_digest",
+        "snapshot_source_digest",
+        "snapshot_source_authority_digest",
+        "replay_verification",
+        "materialization_verification",
+        "manifest_verification",
+        "snapshot_source_registry",
+        "localized_messages",
+        "mcp_text",
+        "transport"
+      ],
+      "properties": {
+        "input_normalization": { "type": "string", "minLength": 1 },
+        "policy_manifest_digest": { "$ref": "#/$defs/Digest" },
+        "knowledge_manifest_digest": { "$ref": "#/$defs/Digest" },
+        "schema_manifest_digest": { "$ref": "#/$defs/Digest" },
+        "rule_sources": { "$ref": "#/$defs/StringSet" },
+        "claim_source_digests": { "$ref": "#/$defs/DigestSet" },
+        "risk_source_digests": { "$ref": "#/$defs/DigestSet" },
+        "recommendation_source_digests": { "$ref": "#/$defs/DigestSet" },
+        "release_source_digest": { "$ref": "#/$defs/Digest" },
+        "snapshot_source_digest": {
+          "oneOf": [{ "$ref": "#/$defs/Digest" }, { "type": "null" }]
+        },
+        "snapshot_source_authority_digest": {
+          "oneOf": [{ "$ref": "#/$defs/Digest" }, { "type": "null" }]
+        },
+        "replay_verification": { "type": "string", "minLength": 1 },
+        "materialization_verification": { "type": "string", "minLength": 1 },
+        "manifest_verification": { "type": "string", "minLength": 1 },
+        "snapshot_source_registry": { "type": "string", "minLength": 1 },
+        "localized_messages": { "type": "array", "maxItems": 0 },
+        "mcp_text": { "type": "null" },
+        "transport": { "$ref": "#/$defs/Transport" }
+      }
+    },
+    "Transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "request_mode", "request_id", "input_kind", "output_format"],
+      "properties": {
+        "kind": { "const": "cli" },
+        "request_mode": { "enum": ["guide", "scan", "refactor", "verify"] },
+        "request_id": { "type": ["string", "null"] },
+        "input_kind": { "enum": ["stdin", "path"] },
+        "output_format": { "const": "json" }
+      }
+    },
+    "InvalidInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_status", "error_codes"],
+      "properties": {
+        "run_status": { "const": "invalid_input" },
+        "error_codes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ARGUMENT_UNKNOWN",
+              "INPUT_JSON_INVALID",
+              "INPUT_MULTIPLE",
+              "INPUT_REQUIRED",
+              "INPUT_UNREADABLE",
+              "INPUT_VALUE_REQUIRED",
+              "INVALID_EVALUATION_INPUT",
+              "MODE_BUNDLE_MISMATCH",
+              "MODE_INVALID",
+              "MODE_MULTIPLE",
+              "MODE_REQUIRED",
+              "MODE_VALUE_REQUIRED",
+              "OUTPUT_INVALID",
+              "OUTPUT_MULTIPLE",
+              "OUTPUT_REQUIRED",
+              "OUTPUT_VALUE_REQUIRED"
+            ]
+          }
+        }
+      }
+    },
+    "Failed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_status", "error_codes"],
+      "properties": {
+        "run_status": { "const": "failed" },
+        "error_codes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["ARTIFACT_VERIFICATION_FAILED", "EVALUATION_FAILED"] }
+        }
+      }
+    }
+  }
+}
