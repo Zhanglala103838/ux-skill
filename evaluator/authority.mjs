@@ -1,10 +1,12 @@
 import {readFileSync} from 'node:fs';
 import {createHash,createPublicKey,verify as verifySignature} from 'node:crypto';
-import {canonicalSet,jcsBytes} from './canonical.mjs';
+import {canonicalSet,jcsBytes,parseArtifactJson} from './canonical.mjs';
 import {validateBySchema} from './validation.mjs';
 
-const registries=JSON.parse(readFileSync(new URL('../knowledge/registries.json',import.meta.url),'utf8'));
-const policies=JSON.parse(readFileSync(new URL('../knowledge/decision-policies.json',import.meta.url),'utf8'));
+const authorityArtifactFailure=()=>{const error=new TypeError('ARTIFACT_VERIFICATION_FAILED');error.code='ARTIFACT_VERIFICATION_FAILED';throw error;};
+const loadAuthorityJson=(path)=>{try{return parseArtifactJson(readFileSync(new URL(path,import.meta.url)),path);}catch(error){if(error?.code==='ARTIFACT_VERIFICATION_FAILED')throw error;authorityArtifactFailure();}};
+const registries=loadAuthorityJson('../knowledge/registries.json');
+const policies=loadAuthorityJson('../knowledge/decision-policies.json');
 const invalidAuthority=()=>({status:'invalid_input',reason_code:'AUTHORITY_INPUT_INVALID'});
 const invalidCandidates=()=>({selection_status:'invalid_input',selected_solution_id:null,feasible_solution_ids:[],next_action:'fix_input',release_recommendation:'escalation',reason_code:'CANDIDATE_INPUT_INVALID'});
 const isRecord=(value)=>value!==null&&typeof value==='object'&&!Array.isArray(value);

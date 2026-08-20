@@ -96,18 +96,23 @@ const verifyResponseSchemaClosure=(loaded,manifest)=>{
  if(visited.size!==RESPONSE_SCHEMA_CLOSURE.length||RESPONSE_SCHEMA_CLOSURE.some((entry)=>!visited.has(entry.id)))throw new TypeError('RESPONSE_SCHEMA_CLOSURE_INVALID');
 };
 let parseKnowledgeJson=null;
+let evaluatorManifestBootstrapFailure=false;
 const loadResponseValidator=async()=>{
- const [{default:Ajv2020},{default:addFormats},strictJson,responseRaw,semanticRaw,manifestRaw,evaluatorManifestRaw]=await Promise.all([
+ const [{default:Ajv2020},{default:addFormats},strictJson,responseRaw,semanticRaw,manifestRaw]=await Promise.all([
   import('ajv/dist/2020.js'),import('ajv-formats'),import('./strict-json.mjs'),
-  readFile(new URL(RESPONSE_PATH,ROOT)),readFile(new URL(SEMANTIC_PATH,ROOT)),readFile(new URL('schemas/manifest.json',ROOT)),readFile(new URL('evaluator/manifest.json',ROOT))
+  readFile(new URL(RESPONSE_PATH,ROOT)),readFile(new URL(SEMANTIC_PATH,ROOT)),readFile(new URL('schemas/manifest.json',ROOT))
  ]);
  parseKnowledgeJson=strictJson.parseKnowledgeJson;const responseSchemaManifestDigest=strictJson.responseSchemaManifestDigest;
- const responseSchema=JSON.parse(responseRaw),semanticSchema=JSON.parse(semanticRaw),manifest=JSON.parse(manifestRaw),evaluatorManifest=JSON.parse(evaluatorManifestRaw);
+ const responseSchema=parseKnowledgeJson(responseRaw,RESPONSE_PATH,'RESPONSE_SCHEMA_INVALID'),semanticSchema=parseKnowledgeJson(semanticRaw,SEMANTIC_PATH,'RESPONSE_SCHEMA_INVALID'),manifest=parseKnowledgeJson(manifestRaw,'schemas/manifest.json','RESPONSE_SCHEMA_INVALID');
+ let evaluatorManifest=null;
+ try{evaluatorManifest=parseKnowledgeJson(await readFile(new URL('evaluator/manifest.json',ROOT)),'evaluator/manifest.json','ARTIFACT_JSON_INVALID');}catch{evaluatorManifestBootstrapFailure=true;}
  verifyResponseSchemaClosure([
   {...RESPONSE_SCHEMA_CLOSURE[0],raw:responseRaw,schema:responseSchema},
   {...RESPONSE_SCHEMA_CLOSURE[1],raw:semanticRaw,schema:semanticSchema}
  ],manifest);
- if(evaluatorManifest.schema_manifest_digest!==responseSchemaManifestDigest(manifest))throw new TypeError('RESPONSE_SCHEMA_DOMAIN_DIGEST_INVALID');
+ const schemaManifestDigest=responseSchemaManifestDigest(manifest);
+ if(schemaManifestDigest!==strictJson.RESPONSE_SCHEMA_MANIFEST_DIGEST)throw new TypeError('RESPONSE_SCHEMA_DOMAIN_DIGEST_INVALID');
+ if(evaluatorManifest!==null&&evaluatorManifest.schema_manifest_digest!==schemaManifestDigest)evaluatorManifestBootstrapFailure=true;
  const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});addFormats(ajv);ajv.addSchema(semanticSchema);
  return ajv.compile(responseSchema);
 };
@@ -142,6 +147,7 @@ const main=async()=>{
  catch(error){return invalid(error?.code==='KNOWLEDGE_JSON_DUPLICATE_KEY'?'INPUT_JSON_DUPLICATE_MEMBER':'INPUT_JSON_INVALID');}
  if(bundle===null||typeof bundle!=='object'||Array.isArray(bundle))return invalid('INPUT_JSON_INVALID');
  if(bundle.request_mode!==parsed.mode)return invalid('MODE_BUNDLE_MISMATCH');
+ if(evaluatorManifestBootstrapFailure)return failed('ARTIFACT_VERIFICATION_FAILED');
  let evaluate;
  try{({evaluate}=await import('../evaluator/index.mjs'));}catch(error){return failed(normalizeEvaluatorInitializationFailure(error));}
  let result;

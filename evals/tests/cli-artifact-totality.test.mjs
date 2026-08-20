@@ -175,8 +175,6 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
  const cases=[
   ['missing evaluator digests stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'evaluator/digests.mjs')),{inputKind:'stdin'}],
   ['malformed evaluator digests path','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'evaluator/digests.mjs'),'export const =\n'),{inputKind:'path'}],
-  ['missing evaluator canonical path','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'evaluator/canonical.mjs')),{inputKind:'path'}],
-  ['malformed evaluator canonical stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'evaluator/canonical.mjs'),'export const =\n'),{inputKind:'stdin'}],
   ['missing evaluation schema stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{inputKind:'stdin'}],
   ['missing authority registry path','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'knowledge/registries.json')),{inputKind:'path'}],
   ['malformed evaluation schema path','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'schemas/core/evaluation-input.schema.json'),'{'),{inputKind:'path'}],
@@ -192,13 +190,16 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   ['argument precedence','MODE_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{args:['--mode','audit','--input','-','--output','json']}],
   ['input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{stdinBytes:'{'}],
   ['evaluator bootstrap argument precedence','MODE_INVALID',async(root)=>rm(join(root,'evaluator/digests.mjs')),{args:['--mode','audit','--input','-','--output','json']}],
-  ['evaluator bootstrap input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'evaluator/canonical.mjs')),{stdinBytes:'{'}]
+  ['evaluator bootstrap input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'evaluator/digests.mjs')),{stdinBytes:'{'}]
  ];
  for(const [label,code,mutate,options] of precedenceCases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectInvalid(row,code,label));}
  const responseSchemaCases=[
   ['strict JSON bootstrap missing',async(root)=>rm(join(root,'scripts/strict-json.mjs'))],
   ['strict JSON bootstrap malformed',async(root)=>writeFile(join(root,'scripts/strict-json.mjs'),'export const =\n')],
   ['strict JSON bootstrap precedes invalid mode',async(root)=>rm(join(root,'scripts/strict-json.mjs')),{args:['--mode','audit','--input','-','--output','json']}],
+  ['shared strict parser missing',async(root)=>rm(join(root,'evaluator/canonical.mjs'))],
+  ['shared strict parser malformed',async(root)=>writeFile(join(root,'evaluator/canonical.mjs'),'export const =\n')],
+  ['shared strict parser precedes invalid input',async(root)=>rm(join(root,'evaluator/canonical.mjs')),{stdinBytes:'{'}],
   ['response schema digest trust root',async(root)=>{const path=join(root,RESPONSE_PATH);await writeFile(path,(await readFile(path,'utf8'))+' ');}],
   ['response schema missing trust root',async(root)=>rm(join(root,RESPONSE_PATH))],
   ['response schema malformed trust root',async(root)=>writeFile(join(root,RESPONSE_PATH),'{')]

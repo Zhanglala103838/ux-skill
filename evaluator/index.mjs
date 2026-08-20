@@ -1,7 +1,7 @@
 import{createHash}from'node:crypto';
 import{readFile}from'node:fs/promises';
 import'./authority.mjs';
-import{canonicalSet,assertCanonicalRelativePath,assertIJson,jcsBytes}from'./canonical.mjs';
+import{canonicalSet,assertCanonicalRelativePath,assertIJson,jcsBytes,parseArtifactJson}from'./canonical.mjs';
 import{digestJcs}from'./digests.mjs';
 import{validateInput,validateBySchema}from'./validation.mjs';
 import{evaluateRule,deriveFindingContext,emitFinding,reduceRunStatus}from'./rules-runtime.mjs';
@@ -16,7 +16,7 @@ const sha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
 const nfc=(value)=>{if(typeof value==='string')return value.normalize('NFC')===value;if(Array.isArray(value))return value.every(nfc);if(value&&typeof value==='object')return Object.entries(value).every(([key,child])=>key.normalize('NFC')===key&&nfc(child));return true;};
 const artifactFailure=(reason,details=[])=>{const error=new TypeError(reason);error.code='ARTIFACT_VERIFICATION_FAILED';error.details=details;throw error;};
 const inputFailure=(errors)=>{const error=new TypeError('INVALID_EVALUATION_INPUT');error.code='INVALID_EVALUATION_INPUT';error.errors=errors;throw error;};
-const loadRaw=async(path)=>{const bytes=await readFile(new URL(path,ROOT));let value;try{value=JSON.parse(bytes.toString('utf8'));assertIJson(value);}catch{artifactFailure('ARTIFACT_JSON_INVALID:'+path);}if(!nfc(value))artifactFailure('ARTIFACT_NFC_INVALID:'+path);return{bytes,value};};
+const loadRaw=async(path)=>{const bytes=await readFile(new URL(path,ROOT));const value=parseArtifactJson(bytes,path);try{assertIJson(value);}catch{artifactFailure('ARTIFACT_JSON_INVALID:'+path);}if(!nfc(value))artifactFailure('ARTIFACT_NFC_INVALID:'+path);return{bytes,value};};
 const verifyRows=async(rows,label)=>{if(!Array.isArray(rows))artifactFailure(label+'_ROWS_INVALID');const sorted=canonicalSet(rows,(row)=>row.path);if(!jcsBytes(sorted).equals(jcsBytes(rows)))artifactFailure(label+'_ORDER_INVALID');for(const row of rows){if(!exact(row,['path','file_digest'])||!/^[-a-z0-9_./]+$/.test(row.path)||!/^[0-9a-f]{64}$/.test(row.file_digest))artifactFailure(label+'_ROW_INVALID');const bytes=await readFile(new URL(row.path,ROOT));if(sha(bytes)!==row.file_digest)artifactFailure(label+'_DIGEST_MISMATCH:'+row.path);}};
 const SOURCE_REGISTRY_PATH='evaluator/snapshot-source-registry.json';
 const VERIFIED_EVALUATOR_DIGEST='51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba';
@@ -61,7 +61,7 @@ const canonicalCopy=(value)=>JSON.parse(jcsBytes(value).toString('utf8'));
 const base64Bytes=(value)=>{snapshotRequire(typeof value==='string'&&/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value));const bytes=Buffer.from(value,'base64');snapshotRequire(bytes.toString('base64')===value);return bytes;};
 const canonicalRows=(rows,keyOf)=>{const normalized=canonicalSet(rows,keyOf);snapshotRequire(jcsBytes(normalized).equals(jcsBytes(rows)));return normalized;};
 const snapshotUrl=(value)=>{if(typeof value!=='string'||Buffer.byteLength(value)>SNAPSHOT_LIMITS.maxUrlBytes)return false;try{return['http:','https:'].includes(new URL(value).protocol);}catch{return false;}};
-const verifiedHeaders=(bytes)=>{let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{snapshotRequire(false);}snapshotRequire(bytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&jcsBytes(value).equals(bytes)&&exact(value,['headers'])&&Array.isArray(value.headers)&&value.headers.length<=SNAPSHOT_LIMITS.maxHeaders);value.headers.forEach((row,index)=>snapshotRequire(exact(row,['sequence','name_lower_ascii','value_bytes_base64'])&&row.sequence===index&&/^[a-z0-9!#$%&'*+.^_`|~-]+$/.test(row.name_lower_ascii)&&base64Bytes(row.value_bytes_base64)));return value;};
+const verifiedHeaders=(bytes)=>{let value;try{value=parseArtifactJson(bytes,'<snapshot-headers>');}catch{snapshotRequire(false);}snapshotRequire(bytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&jcsBytes(value).equals(bytes)&&exact(value,['headers'])&&Array.isArray(value.headers)&&value.headers.length<=SNAPSHOT_LIMITS.maxHeaders);value.headers.forEach((row,index)=>snapshotRequire(exact(row,['sequence','name_lower_ascii','value_bytes_base64'])&&row.sequence===index&&/^[a-z0-9!#$%&'*+.^_`|~-]+$/.test(row.name_lower_ascii)&&base64Bytes(row.value_bytes_base64)));return value;};
 const verifySnapshotClosureResult=(normalized,snapshotSources,snapshotRegistryAvailable)=>{
  if(normalized.target_snapshot.target_kind!=='black_box_site')return{incomplete:false,source:null,authority:null};
  if(!snapshotRegistryAvailable)return snapshotUnavailable();
@@ -78,7 +78,7 @@ const verifySnapshotClosureResult=(normalized,snapshotSources,snapshotRegistryAv
   const artifacts=canonicalRows(result.cas_artifacts,(row)=>row.locator),cas=new Map();let artifactBytes=0;
   for(const row of artifacts){const bytes=base64Bytes(row.bytes_base64);artifactBytes+=bytes.length;snapshotRequire(bytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&artifactBytes<=SNAPSHOT_LIMITS.maxTotalArtifactBytes&&row.digest===sha(bytes)&&row.locator==='cas/'+row.digest&&!cas.has(row.locator));cas.set(row.locator,bytes);}
   const get=(locator,digest)=>{const bytes=cas.get(locator);snapshotRequire(bytes!==undefined&&locator==='cas/'+digest&&sha(bytes)===digest);return bytes;};
-  const taskBytes=get('cas/'+closure.task_script_digest,closure.task_script_digest);let task;try{task=JSON.parse(taskBytes.toString('utf8'));}catch{snapshotRequire(false);}snapshotRequire(taskBytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&jcsBytes(task).equals(taskBytes)&&exact(task,['task_script_id','steps'])&&typeof task.task_script_id==='string'&&task.task_script_id.length>0&&Array.isArray(task.steps)&&task.steps.length>0&&task.steps.length<=SNAPSHOT_LIMITS.maxTaskSteps);
+  const taskBytes=get('cas/'+closure.task_script_digest,closure.task_script_digest);let task;try{task=parseArtifactJson(taskBytes,'<snapshot-task>');}catch{snapshotRequire(false);}snapshotRequire(taskBytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&jcsBytes(task).equals(taskBytes)&&exact(task,['task_script_id','steps'])&&typeof task.task_script_id==='string'&&task.task_script_id.length>0&&Array.isArray(task.steps)&&task.steps.length>0&&task.steps.length<=SNAPSHOT_LIMITS.maxTaskSteps);
   const profiles=canonicalRows(closure.replay_profiles,(row)=>row.replay_profile_id),profileIds=new Set(profiles.map((row)=>row.replay_profile_id)),steps=new Map();
   for(const step of task.steps){snapshotRequire(exact(step,['step_id','required_replay_profile_ids','instruction'])&&typeof step.step_id==='string'&&step.step_id.length>0&&!steps.has(step.step_id)&&typeof step.instruction==='string');const ids=canonicalRows(step.required_replay_profile_ids,(id)=>id);snapshotRequire(ids.length>0&&ids.every((id)=>profileIds.has(id)));steps.set(step.step_id,new Set(ids));}
   const networks=canonicalRows(closure.network_records,(row)=>[row.replay_profile_id,row.sequence]),responses=[];
