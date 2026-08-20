@@ -20,6 +20,7 @@ const SCHEMA_MANIFEST_PATH='schemas/manifest.json';
 const EVALUATOR_MANIFEST_PATH='evaluator/manifest.json';
 const ARTIFACT_RESOURCE_LIMIT=1_048_576;
 const LARGE_SPARSE_ARTIFACT_BYTES=3_221_225_472;
+const SNAPSHOT_REGISTRY_UNAVAILABLE_EVALUATOR_DIGEST='2736eb367eed0496a1aca8d7702f5cc1abd73344a2789c91d2c7ef8aca65b267';
 const RESPONSE_SCHEMA_CLOSURE=Object.freeze([
  Object.freeze({path:RESPONSE_PATH,id:'https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json'}),
  Object.freeze({path:SEMANTIC_PATH,id:'https://ux-skill.invalid/schemas/evaluator/semantic-projection.schema.json'})
@@ -101,6 +102,17 @@ const expectResponseSchemaBoundary=(row,label)=>{
 };
 const expectSuccess=(row,label)=>{
  assert.equal(row.status,0,label+':exit');assert.equal(row.signal,null,label+':signal');assert.equal(row.stderr,'',label+':stderr');assert.equal(validateResponse(row.json),true,label+':schema:'+JSON.stringify(validateResponse.errors));assert.equal(row.stdout,JSON.stringify(row.json)+'\n',label+':stdout');
+};
+const expectSnapshotRegistryFallback=(row,label)=>{
+ expectSuccess(row,label);assert.equal(row.timedOut,false,label+':timeout');
+ assert.equal(row.json.assurance?.release_status,'no_release',label+':assurance release');
+ assert.equal(row.json.semantic_projection?.release_recommendation?.status,'no_release',label+':semantic release');
+ assert.equal(row.json.semantic_projection?.evaluator_digest,SNAPSHOT_REGISTRY_UNAVAILABLE_EVALUATOR_DIGEST,label+':fixed sentinel');
+ assert.equal(row.json.audit_sidecar?.manifest_verification,'partial_failure',label+':manifest verification');
+ assert.equal(row.json.audit_sidecar?.snapshot_source_registry,'unavailable',label+':registry status');
+ assert.equal(row.json.audit_sidecar?.snapshot_source_digest,null,label+':snapshot digest sentinel');
+ assert.equal(row.json.audit_sidecar?.snapshot_source_authority_digest,null,label+':authority digest sentinel');
+ for(const leaked of ['ERR_FS_FILE_TOO_LARGE','ENOMEM','RangeError',ROOT]){assert.equal(row.stdout.includes(leaked),false,label+':stdout:'+leaked);assert.equal(row.stderr.includes(leaked),false,label+':stderr:'+leaked);}
 };
 const expectDirect=(row,expected,label)=>{
  assert.equal(row.status,0,label+':exit');assert.equal(row.signal,null,label+':signal');assert.equal(row.stderr,'',label+':stderr');assert.deepEqual(row.json,expected,label+':json');assert.equal(row.stdout,JSON.stringify(expected)+'\n',label+':stdout');
@@ -197,19 +209,20 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
  ];
  for(const [label,code,mutate,options] of cases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectFailed(row,code,label));}
  const artifactResourcePaths=[
-  ['rules artifact','knowledge/rules.json'],
-  ['evaluation schema artifact','schemas/core/evaluation-input.schema.json'],
-  ['authority registry artifact','knowledge/registries.json'],
-  ['authority policy artifact','knowledge/decision-policies.json'],
-  ['evaluator manifest artifact','evaluator/manifest.json'],
-  ['snapshot source registry artifact','evaluator/snapshot-source-registry.json']
+  ['rules artifact','knowledge/rules.json','failed'],
+  ['evaluation schema artifact','schemas/core/evaluation-input.schema.json','failed'],
+  ['authority registry artifact','knowledge/registries.json','failed'],
+  ['authority policy artifact','knowledge/decision-policies.json','failed'],
+  ['evaluator manifest artifact','evaluator/manifest.json','failed'],
+  ['snapshot source registry artifact','evaluator/snapshot-source-registry.json','fallback']
  ];
  for(const [sizeLabel,size] of [['limit plus one',ARTIFACT_RESOURCE_LIMIT+1],['three GiB sparse',LARGE_SPARSE_ARTIFACT_BYTES]]){
-  for(const [artifactLabel,path] of artifactResourcePaths){
+  for(const [artifactLabel,path,expectation] of artifactResourcePaths){
    const label=artifactLabel+' '+sizeLabel;
    await capture(failures,label,async()=>{
     const row=await isolatedRun((root)=>makeSparseArtifact(root,path,size),{timeoutMs:15_000});
-    expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);
+    if(expectation==='fallback')expectSnapshotRegistryFallback(row,label);
+    else expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);
    });
   }
  }
