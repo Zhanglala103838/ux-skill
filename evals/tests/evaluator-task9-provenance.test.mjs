@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { canonicalize } from 'json-canonicalize';
 import { evaluate } from '../../evaluator/index.mjs';
+import { validateInput } from '../../evaluator/validation.mjs';
 import { replayClosure, snapshotClosureDigest } from '../../scripts/capture-snapshot-closure.mjs';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -519,6 +522,245 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
       'INVARIANT',
     ]) {
       if (validateNormalizedError(row(code))) issues.push('errors:off-domain-code-accepted:' + code);
+    }
+  }
+
+  assert.deepEqual(issues, []);
+});
+
+test('TASK10_PUBLIC_AUTHORITY_TAMPER_RED reaches every real source and isolates registry tamper', async () => {
+  const issues = [];
+  const [golden, registry] = await Promise.all([
+    readFile(new URL('../golden/high-risk-delete.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../../evaluator/snapshot-source-registry.json', import.meta.url), 'utf8').then(JSON.parse),
+  ]);
+  const expectedPublicSources = [
+  {
+    "case_path": "../public-cases/stripe.json",
+    "closure_path": "../fixtures/RW-DOCS-STRIPE-001.snapshot-closure.json",
+    "authority": {
+      "source_authority_id": "RW-DOCS-STRIPE-001",
+      "target_snapshot_id": "RW-DOCS-STRIPE-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "public-sites/rw-docs-stripe-001",
+      "entry_url": "https://docs.stripe.com/",
+      "task_script_digest": "ad3245cef7c2f2d322c9f4a8a865266cf04685da7fd799d0804fd611e748636b",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "a8e80babac6648b6a92ce01648cb64e4936d903ed47358b622aeadf576844052"
+      ]
+    },
+    "authority_digest": "f010838a6b1d4ce9f864b9a4bc586712757b2cdda5f6530b967cb3d9252c3fe1"
+  },
+  {
+    "case_path": "../public-cases/apple.json",
+    "closure_path": "../fixtures/RW-WEBSITE-APPLE-001.snapshot-closure.json",
+    "authority": {
+      "source_authority_id": "RW-WEBSITE-APPLE-001",
+      "target_snapshot_id": "RW-WEBSITE-APPLE-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "public-sites/rw-website-apple-001",
+      "entry_url": "https://www.apple.com.cn/",
+      "task_script_digest": "5b484bd7469fe2d5d0ca290e89277c58a15b987eead241c7dca65f1beff6d97b",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0"
+      ]
+    },
+    "authority_digest": "54b3e54c36f36235f901249a5c68aca1bb4136e02f93c9e1cf3ede7a72009671"
+  },
+  {
+    "case_path": "../public-cases/govuk.json",
+    "closure_path": "../fixtures/RW-WEBSITE-GOVUK-001.snapshot-closure.json",
+    "authority": {
+      "source_authority_id": "RW-WEBSITE-GOVUK-001",
+      "target_snapshot_id": "RW-WEBSITE-GOVUK-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "public-sites/rw-website-govuk-001",
+      "entry_url": "https://www.gov.uk/register-to-vote",
+      "task_script_digest": "7282e1cd8559cd36eef58577d7bbe7f7a4647537b19e9b27c78bdf66ca6ee974",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "fadf34d60ba3888b7038b18f0bc1da5011d507b1cbf8b9f166f1b54a047e006c"
+      ]
+    },
+    "authority_digest": "ad3b710748ae5e7c0713ce1439dc55eaf760685cc28ea64e3e18eee812bf94db"
+  },
+  {
+    "case_path": "../public-cases/ikea.json",
+    "closure_path": "../fixtures/RW-WEBSITE-IKEA-001.snapshot-closure.json",
+    "authority": {
+      "source_authority_id": "RW-WEBSITE-IKEA-001",
+      "target_snapshot_id": "RW-WEBSITE-IKEA-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "public-sites/rw-website-ikea-001",
+      "entry_url": "https://www.ikea.cn/cn/zh/",
+      "task_script_digest": "8cc5bef0f51f13e7c6d85c3d6cef8e96da049295470726e111ea472dc2ff3e0e",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "52f514488d50c2865fa1a82cf312446c910df8223cfe0eea5fcdcf0e88bab5ed"
+      ]
+    },
+    "authority_digest": "efc0c6ece87616cd4733adc12f655b6ea0a0a2ec5380d820f6ca7f458310e27e"
+  }
+];
+
+  for (const expected of expectedPublicSources) {
+    const [publicCase, closure] = await Promise.all([
+      readFile(new URL(expected.case_path, import.meta.url), 'utf8').then(JSON.parse),
+      readFile(new URL(expected.closure_path, import.meta.url), 'utf8').then(JSON.parse),
+    ]);
+    const label = expected.authority.source_authority_id;
+    const registered = registry.sources?.find((row) => row.source_authority_id === label);
+    if (!registered || !jcs(registered).equals(jcs(expected.authority))) {
+      issues.push(label + ':registry-migration');
+    }
+    if (publicCase.case_id !== label || publicCase.canonical_locator !== expected.authority.canonical_locator) {
+      issues.push(label + ':case-migration');
+    }
+    if (expected.authority.canonical_locator === expected.authority.entry_url) {
+      issues.push(label + ':locator-not-independent');
+    }
+    if (
+      publicCase.target_kind !== expected.authority.target_kind
+      || publicCase.snapshot_closure_digest !== closure.manifest_digest
+      || publicCase.environment_digest !== closure.capture_environment_digest
+      || sha(jcs(publicCase.task_script)) !== closure.task_script_digest
+      || closure.entry_url !== expected.authority.entry_url
+      || closure.task_script_digest !== expected.authority.task_script_digest
+      || closure.capture_environment_digest !== expected.authority.capture_environment_digest
+      || !expected.authority.allowed_snapshot_digests.includes(closure.manifest_digest)
+      || snapshotClosureDigest(closure) !== closure.manifest_digest
+      || closure.completeness_status !== 'incomplete'
+    ) {
+      issues.push(label + ':task9-source-drift');
+    }
+
+    const bundle = clone(golden.bundle);
+    bundle.scenario_profile_id = publicCase.scenario_profile_id;
+    bundle.scenario_profiles = [{
+      scenario_profile_id: publicCase.scenario_profile_id,
+      scenario_family_id: publicCase.scenario_profile_id,
+    }];
+    bundle.target_snapshot = {
+      target_snapshot_id: expected.authority.target_snapshot_id,
+      target_kind: expected.authority.target_kind,
+      canonical_locator: expected.authority.canonical_locator,
+      snapshot_digest: closure.manifest_digest,
+    };
+    bundle.research_state = {
+      research_state_id: label + '-research',
+      status: 'authorized',
+      authorization_ref: label + '-read-only',
+    };
+    bundle.adapter_evidence = [];
+    bundle.snapshot_closure_result = {
+      closure: clone(closure),
+      closure_bytes_base64: jcs(closure).toString('base64'),
+      cas_artifacts: [],
+      source_identity: {
+        target_snapshot_id: expected.authority.target_snapshot_id,
+        target_kind: expected.authority.target_kind,
+        canonical_locator: expected.authority.canonical_locator,
+        entry_url: expected.authority.entry_url,
+        snapshot_digest: closure.manifest_digest,
+      },
+      completeness_status: 'incomplete',
+      run_status: 'target_unavailable',
+      release_gate: 'no_release',
+      run_issues: [clone(closureIssue)],
+      replay_evidence: null,
+    };
+
+    const validated = validateInput(clone(bundle));
+    if (!validated.ok) {
+      issues.push(label + ':bundle-invalid:' + JSON.stringify(validated.errors));
+      continue;
+    }
+    try {
+      const evaluated = await evaluate(clone(bundle));
+      assertNoRelease(evaluated.semantic_projection, label, issues);
+      if (evaluated.audit_sidecar.snapshot_source_authority_digest !== expected.authority_digest) {
+        issues.push(label + ':authority-not-matched');
+      }
+      if (evaluated.semantic_projection.snapshot_closure_verification !== null) {
+        issues.push(label + ':incomplete-materialized');
+      }
+    } catch (error) {
+      issues.push(label + ':evaluate-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
+    }
+  }
+
+  const tamperBundle = clone(golden.bundle);
+  tamperBundle.target_snapshot = {
+    target_snapshot_id: 'task10-black-box-snapshot',
+    target_kind: 'black_box_site',
+    canonical_locator: 'public-sites/task10-example',
+    snapshot_digest: '5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b',
+  };
+  tamperBundle.research_state = {
+    research_state_id: 'task10-tamper-research',
+    status: 'authorized',
+    authorization_ref: 'task10-read-only',
+  };
+  tamperBundle.adapter_evidence = [];
+  tamperBundle.snapshot_closure_result = null;
+
+  const evaluateIsolated = async (label, mutate, bundle) => {
+    const root = await mkdtemp(new URL('.task10-tamper-', import.meta.url));
+    try {
+      await Promise.all(['evaluator', 'schemas', 'knowledge'].map((directory) =>
+        cp(
+          new URL('../../' + directory + '/', import.meta.url),
+          join(root, directory),
+          { recursive: true },
+        )
+      ));
+      await mutate(root);
+      const moduleUrl = pathToFileURL(join(root, 'evaluator/index.mjs'));
+      moduleUrl.searchParams.set('tamper', label);
+      const isolated = await import(moduleUrl.href);
+      return await isolated.evaluate(clone(bundle));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+  const appendBytes = async (path, suffix) => {
+    const bytes = await readFile(path);
+    await writeFile(path, Buffer.concat([bytes, Buffer.from(suffix, 'utf8')]));
+  };
+  const snapshotTamperCases = [
+    ['registry-raw', async (root) => appendBytes(join(root, 'evaluator/snapshot-source-registry.json'), ' ')],
+    ['registry-manifest-binding', async (root) => {
+      const path = join(root, 'evaluator/manifest.json');
+      const manifest = JSON.parse(await readFile(path, 'utf8'));
+      manifest.snapshot_source_registry.file_digest = '0'.repeat(64);
+      await writeFile(path, JSON.stringify(manifest, null, 2) + '\n');
+    }],
+  ];
+  for (const [label, mutate] of snapshotTamperCases) {
+    try {
+      const evaluated = await evaluateIsolated(label, mutate, tamperBundle);
+      assertNoRelease(evaluated.semantic_projection, label, issues);
+    } catch (error) {
+      issues.push(label + ':no-result:' + (error?.code ?? error?.name ?? 'unknown'));
+    }
+  }
+
+  const globalTamperCases = [
+    ['schema-raw', async (root) => appendBytes(join(root, 'schemas/evaluator/rule.schema.json'), ' ')],
+    ['knowledge-raw', async (root) => appendBytes(join(root, 'knowledge/rules.json'), ' ')],
+    ['policy-manifest-raw', async (root) => appendBytes(join(root, 'knowledge/policy-manifest.json'), ' ')],
+    ['evaluator-module-raw', async (root) => appendBytes(join(root, 'evaluator/projection.mjs'), '\n// tampered\n')],
+  ];
+  for (const [label, mutate] of globalTamperCases) {
+    try {
+      await evaluateIsolated(label, mutate, golden.bundle);
+      issues.push(label + ':accepted');
+    } catch (error) {
+      if (error?.code !== 'ARTIFACT_VERIFICATION_FAILED') {
+        issues.push(label + ':wrong-error:' + (error?.code ?? error?.name ?? 'unknown'));
+      }
     }
   }
 
