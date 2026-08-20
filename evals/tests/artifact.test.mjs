@@ -126,7 +126,7 @@ if(packer===null){
  });
 
  test('canonical ustar sorts by unsigned UTF-8 bytes and is input-order independent',()=>{
-  const forward=[{path:'z',content:Buffer.from('last')},{path:'é',content:Buffer.from('unicode')},{path:'a',content:Buffer.from('first')}];
+  const forward=[{path:'z',content:Buffer.from('last')},{path:'Ã©',content:Buffer.from('unicode')},{path:'a',content:Buffer.from('first')}];
   const left=packCanonicalUstar(forward),right=packCanonicalUstar([...forward].reverse());
   assert.deepEqual(left,right);
   assert.deepEqual(archiveEntries(left).map((row)=>row.path),utf8Sort(forward.map((row)=>row.path)));
