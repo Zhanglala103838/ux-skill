@@ -9,7 +9,7 @@
   },
   {
     "path": "schemas/adapters/ux-evaluate-response-v1.schema.json",
-    "file_digest": "4869e8c3f0df1eed65d905146dfd6e720295278d7df4b83688ccc12c399f9feb"
+    "file_digest": "9a45345d35e83f1bcca7ade86012db72625dc5fdec893ce4b782b6720412c530"
   },
   {
     "path": "schemas/core/authority.schema.json",

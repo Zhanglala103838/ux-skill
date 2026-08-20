@@ -130,6 +130,7 @@
             "enum": [
               "ARGUMENT_UNKNOWN",
               "INPUT_BOM_FORBIDDEN",
+              "INPUT_JSON_DUPLICATE_MEMBER",
               "INPUT_JSON_INVALID",
               "INPUT_MULTIPLE",
               "INPUT_REQUIRED",

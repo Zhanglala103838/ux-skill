@@ -6,6 +6,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {digestJcs} from '../evaluator/digests.mjs';
 import {evaluate} from '../evaluator/index.mjs';
+import {parseKnowledgeJson} from './check-knowledge.mjs';
 
 const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
@@ -68,7 +69,8 @@ const main=async()=>{
  let source;
  try{source=UTF8_DECODER.decode(raw);}catch{return invalid('INPUT_UTF8_INVALID');}
  let bundle;
- try{bundle=JSON.parse(source);}catch{return invalid('INPUT_JSON_INVALID');}
+ try{bundle=parseKnowledgeJson(Buffer.from(source,'utf8'),'<cli-input>','INPUT_JSON_INVALID',{allowDangerousKeys:true});}
+ catch(error){return invalid(error?.code==='KNOWLEDGE_JSON_DUPLICATE_KEY'?'INPUT_JSON_DUPLICATE_MEMBER':'INPUT_JSON_INVALID');}
  if(bundle===null||typeof bundle!=='object'||Array.isArray(bundle))return invalid('INPUT_JSON_INVALID');
  if(bundle.request_mode!==parsed.mode)return invalid('MODE_BUNDLE_MISMATCH');
  let result;

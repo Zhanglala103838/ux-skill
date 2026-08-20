@@ -173,7 +173,8 @@ function assertUniquePaths(paths, code) {
 
 const DANGEROUS_JSON_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-export function parseKnowledgeJson(bytes, path, syntaxCode) {
+export function parseKnowledgeJson(bytes, path, syntaxCode, options = {}) {
+  const allowDangerousKeys = options?.allowDangerousKeys === true;
   const input = Buffer.from(bytes);
   if (input.length > KNOWLEDGE_JSON_LIMITS.MAX_BYTES) {
     fail('KNOWLEDGE_JSON_RESOURCE_LIMIT', path);
@@ -396,7 +397,9 @@ export function parseKnowledgeJson(bytes, path, syntaxCode) {
       takeNodeUnit();
       const keyPointer = pointerFor(pointer, key);
       if (seen.has(key)) fail('KNOWLEDGE_JSON_DUPLICATE_KEY', path + keyPointer);
-      if (DANGEROUS_JSON_KEYS.has(key)) fail('KNOWLEDGE_JSON_DANGEROUS_KEY', path + keyPointer);
+      if (!allowDangerousKeys && DANGEROUS_JSON_KEYS.has(key)) {
+        fail('KNOWLEDGE_JSON_DANGEROUS_KEY', path + keyPointer);
+      }
       seen.add(key);
       skipWhitespace();
       if (text[index] !== ':') syntaxFail();
