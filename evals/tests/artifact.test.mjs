@@ -18,20 +18,13 @@ const TELEMETRY_HELPER=join(ROOT,'evals','helpers','task11-artifact-io-telemetry
 const MARKER='TASK13_USTAR_RED_PACKER_MISSING';
 const EXPECTED_DISTRIBUTION=Object.freeze([
  '.nvmrc',
+ 'LICENSE',
  'SKILL.md',
  'adapters/hulianui/adapter.mjs',
  'adapters/hulianui/bridge.mjs',
  'adapters/hulianui/contract.json',
  'adapters/hulianui/fixture.json',
  'agents/openai.yaml',
- 'evals/fixtures/RW-DOCS-STRIPE-001.snapshot-closure.json',
- 'evals/fixtures/RW-WEBSITE-APPLE-001.snapshot-closure.json',
- 'evals/fixtures/RW-WEBSITE-GOVUK-001.snapshot-closure.json',
- 'evals/fixtures/RW-WEBSITE-IKEA-001.snapshot-closure.json',
- 'evals/public-cases/apple.json',
- 'evals/public-cases/govuk.json',
- 'evals/public-cases/ikea.json',
- 'evals/public-cases/stripe.json',
  'evaluator/authority.mjs',
  'evaluator/canonical.mjs',
  'evaluator/claims.mjs',
@@ -221,7 +214,7 @@ if(packer===null){
   const raw=await readFile(join(ROOT,'knowledge','artifact-manifest.json'));const manifest=parseKnowledgeJson(raw,'knowledge/artifact-manifest.json','ARTIFACT_MANIFEST_INVALID');
   assert.deepEqual(Object.keys(manifest),['manifest_version','paths']);assert.equal(manifest.manifest_version,'artifact-manifest-v1');assert.deepEqual(manifest.paths,EXPECTED_DISTRIBUTION);assert.deepEqual(manifest.paths,utf8Sort(manifest.paths));
   for(const path of manifest.paths){const info=await stat(join(ROOT,...path.split('/')));assert.equal(info.isFile(),true,path);assert.equal(info.isSymbolicLink(),false,path);}
-  for(const forbidden of ['LICENSE','docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md','evals/tests/artifact.test.mjs','.github/workflows/implementation-ci.yml'])assert.equal(manifest.paths.includes(forbidden),false,forbidden);
+  for(const forbidden of ['docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md','evals/tests/artifact.test.mjs','.github/workflows/implementation-ci.yml'])assert.equal(manifest.paths.includes(forbidden),false,forbidden);
  });
 
  test('artifact evaluator subset equals both the exact manifest and real recursive import closure',async()=>{
@@ -232,6 +225,7 @@ if(packer===null){
 
  test('artifact covers package release scripts, Skill links, and every local module import closure without inventing a capture registry',async()=>{
   const artifact=JSON.parse(await readFile(join(ROOT,'knowledge','artifact-manifest.json'),'utf8'));const included=new Set(artifact.paths);const pkg=JSON.parse(await readFile(join(ROOT,'package.json'),'utf8'));
+  assert.equal(pkg.dependencies['es-module-lexer'],'2.3.2');assert.equal(pkg.devDependencies?.['es-module-lexer'],undefined);
   const releaseScripts=['artifact:pack','capture:closure','knowledge:check','skill:check','ux:evaluate'];
   for(const name of releaseScripts){const match=/^node ([^ ]+\.mjs)(?: |$)/u.exec(pkg.scripts[name]);assert.ok(match,name);assert.equal(included.has(match[1]),true,match[1]);}
   const skill=await readFile(join(ROOT,'SKILL.md'),'utf8');for(const path of ['knowledge/manifest.json','scripts/ux-evaluate.mjs'])assert.equal(skill.includes(`](${path})`),true,path);
@@ -239,6 +233,5 @@ if(packer===null){
   const visit=async(path)=>{if(visited.has(path))return;visited.add(path);const source=await readFile(join(ROOT,...path.split('/')),'utf8');for(const row of parseModule(source)[0]){if(row.n===undefined||row.n===null||!row.n.startsWith('.'))continue;const resolvedPath=fileURLToPath(new URL(row.n,pathToFileURL(join(ROOT,...path.split('/')))));const relative=resolvedPath.slice(ROOT.length+1).split('\\').join('/');assert.equal(relative.startsWith('../'),false,row.n);await visit(relative);}};
   for(const path of roots)await visit(path);for(const path of visited)assert.equal(included.has(path),true,path);
   assert.equal(artifact.paths.some((path)=>/capture-(?:registry|runner|transport)/u.test(path)),false);
-  for(const path of ['evals/public-cases/apple.json','evals/public-cases/govuk.json','evals/public-cases/ikea.json','evals/public-cases/stripe.json','evals/fixtures/RW-DOCS-STRIPE-001.snapshot-closure.json','evals/fixtures/RW-WEBSITE-APPLE-001.snapshot-closure.json','evals/fixtures/RW-WEBSITE-GOVUK-001.snapshot-closure.json','evals/fixtures/RW-WEBSITE-IKEA-001.snapshot-closure.json'])assert.equal(included.has(path),true,path);
  });
 }
