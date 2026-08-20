@@ -1,0 +1,6 @@
+interface:
+  display_name: "Evidence-aware Product UX"
+  short_description: "Evidence-bounded guidance for digital product UX"
+  default_prompt: "Use $improving-product-ux to guide, scan, refactor, or verify this product experience."
+policy:
+  allow_implicit_invocation: true
