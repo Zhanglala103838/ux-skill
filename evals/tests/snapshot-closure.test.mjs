@@ -904,19 +904,20 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
   test('TASK9_MODULE_LOADER_RED', async () => {
     const issues = [];
     const root = await mkdtemp(join(tmpdir(), 'task9-module-loader-red-'));
+    const loaderServer=createServer((request,response)=>{const bodies={'/runner-a':'TRANSPORT_A','/runner-b':'TRANSPORT_B','/benign-entry':'BENIGN_DECLARED_BYTES','/malicious-prepoisoned-entry':'MALICIOUS_PREPOISONED_NAMESPACE'},body=bodies[request.url]??'UNKNOWN';response.writeHead(body==='UNKNOWN'?404:200,{'content-type':'text/plain'});response.end(body)});await new Promise((resolve,reject)=>{loaderServer.once('error',reject);loaderServer.listen(0,'127.0.0.1',resolve)});const loaderOrigin=`http://127.0.0.1:${loaderServer.address().port}`;
     const taskScript = { task_script_id: 'module-loader-task-v1', steps: [{ step_id: 'visit', instruction: 'Use the registered deterministic action.', required_replay_profile_ids: ['module-loader-profile'] }] };
     const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
     const activeProfile = profile('module-loader-profile', { browser_engine_digest: d('e') });
     const runnerEntryDynamic = "export async function run(context){return (await import('./runner-helper.mjs')).run(context);}\n";
     const transportEntryDynamic = "export async function request(input){return (await import('./transport-helper.mjs')).request(input);}\n";
-    const runnerHelper = (marker) => `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:'http://127.0.0.1:9/${marker}'});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
-    const transportHelper = (marker) => `export async function request({url}){const bytes=Buffer.from(${JSON.stringify(marker)});return{status:200,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n`;
+    const runnerHelper = (marker) => `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:${JSON.stringify(loaderOrigin)}+'/${marker}'});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
+    const transportHelper = (marker) => `const expected=${JSON.stringify(marker)};export async function request({url}){const response=await fetch(url,{redirect:'manual'}),bytes=Buffer.from(await response.arrayBuffer());if(bytes.toString()!==expected)throw new Error('TRANSPORT_BYTES_INVALID');return{status:response.status,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n`;
     const rows = (sources) => Object.entries(sources).map(([relative_path, source]) => ({ relative_path, raw_sha256: sha(Buffer.from(source)) })).sort((left, right) => Buffer.compare(Buffer.from(left.relative_path), Buffer.from(right.relative_path)));
     const writeFixture = async (directory, caseId) => {
       const publicDir = join(directory, 'evals', 'public-cases'), fixtureDir = join(directory, 'evals', 'fixtures');
       await mkdir(publicDir, { recursive: true });
       await mkdir(fixtureDir, { recursive: true });
-      const seed = { closure_version: 'snapshot-closure-v1', entry_url: 'http://127.0.0.1:9/', task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [activeProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
+      const seed = { closure_version: 'snapshot-closure-v1', entry_url: `${loaderOrigin}/`, task_script_digest: d('1'), capture_environment_digest: d('2'), captured_at: '2026-08-20T00:00:00Z', authenticated: false, replay_profiles: [activeProfile], network_records: [], observation_records: [], outbound_effect_ledger_digest: d('3'), completeness_status: 'incomplete', manifest_digest: '' };
       seed.manifest_digest = snapshotClosureDigest(seed);
       const caseManifest = { case_id: caseId, canonical_locator: seed.entry_url, snapshot_closure_digest: seed.manifest_digest, task_script: taskScript };
       const casePath = join(publicDir, 'case.json');
@@ -952,7 +953,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       const registryAPath = await writeRegistry(registryDir, caseId, runnerA, transportA);
       const registryA = await createCaptureRegistry(registryAPath.manifestPath);
       const runA = await invoke(cacheRoot, casePath, registryA, 'a');
-      if (runA.exitCode !== 0 || runA.wrapper?.closure?.network_records?.[0]?.request_url !== 'http://127.0.0.1:9/runner-a' || runA.observation !== 'TRANSPORT_A') issues.push('registry-a-control-failed');
+      if (runA.exitCode !== 0 || runA.wrapper?.closure?.network_records?.[0]?.request_url !== `${loaderOrigin}/runner-a` || runA.observation !== 'TRANSPORT_A') issues.push('registry-a-control-failed');
 
       const runnerB = { 'runner.mjs': runnerEntryDynamic, 'runner-helper.mjs': runnerHelper('runner-b') };
       const transportB = { 'transport.mjs': transportEntryDynamic, 'transport-helper.mjs': transportHelper('TRANSPORT_B') };
@@ -963,15 +964,15 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       if (registryB) {
         const runB = await invoke(cacheRoot, casePath, registryB, 'b');
         if (runB.exitCode !== 0) issues.push(`registry-b-not-executable:${runB.exitCode}`);
-        if (runB.wrapper?.closure?.network_records?.[0]?.request_url !== 'http://127.0.0.1:9/runner-b') issues.push('runner-helper-cache-reused-a');
+        if (runB.wrapper?.closure?.network_records?.[0]?.request_url !== `${loaderOrigin}/runner-b`) issues.push('runner-helper-cache-reused-a');
         if (runB.observation !== 'TRANSPORT_B') issues.push('transport-helper-cache-reused-a');
       }
 
       const poisonRoot = join(root, 'prepoisoned-entry'), poisonRegistryDir = join(poisonRoot, 'registry'), poisonCaseId = 'RW-MODULE-POISON-001';
       const poisonCasePath = await writeFixture(poisonRoot, poisonCaseId);
-      const directRunner = "export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:'http://127.0.0.1:9/benign-entry'});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n";
+      const directRunner = `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:${JSON.stringify(`${loaderOrigin}/benign-entry`)}});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
       const maliciousRunner = directRunner.replace('/benign-entry', '/malicious-prepoisoned-entry');
-      const directTransport = (marker) => `export async function request({url}){const bytes=Buffer.from(${JSON.stringify(marker)});return{status:200,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n`;
+      const directTransport = (marker) => `const expected=${JSON.stringify(marker)};export async function request({url}){const response=await fetch(url,{redirect:'manual'}),bytes=Buffer.from(await response.arrayBuffer());if(bytes.toString()!==expected)throw new Error('TRANSPORT_BYTES_INVALID');return{status:response.status,final_url:url,headers:[],body:bytes,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:bytes}]};}\n`;
       const benignTransport = directTransport('BENIGN_DECLARED_BYTES'), maliciousTransport = directTransport('MALICIOUS_PREPOISONED_NAMESPACE');
       const poisonManifest = await writeRegistry(poisonRegistryDir, poisonCaseId, { 'runner.mjs': directRunner }, { 'transport.mjs': benignTransport });
       const poisonRunnerPath = join(poisonRegistryDir, 'runner.mjs'), poisonTransportPath = join(poisonRegistryDir, 'transport.mjs');
@@ -994,7 +995,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
         if (casTouched) issues.push('prepoison-rejection-touched-cas');
       }
     } finally {
-      await rm(root, { recursive: true, force: true });
+      const closing=new Promise(resolve=>loaderServer.close(resolve));loaderServer.closeAllConnections();await closing;await rm(root, { recursive: true, force: true });
     }
     assert.deepEqual(issues, [], `TASK9_MODULE_LOADER_RED:${issues.join(',')}`);
   });
@@ -1002,6 +1003,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
   test('TASK9_STAGE_LIFECYCLE_RED', async () => {
     const issues = [];
     const root = await mkdtemp(join(tmpdir(), 'task9-stage-lifecycle-red-'));
+    const staticServer=createServer((request,response)=>{response.writeHead(200,{'content-type':'text/plain'});response.end(request.url)});await new Promise((resolve,reject)=>{staticServer.once('error',reject);staticServer.listen(0,'127.0.0.1',resolve)});const staticOrigin=`http://127.0.0.1:${staticServer.address().port}`;
     const activeProfile = profile('stage-lifecycle-profile', { browser_engine_digest: d('f') });
     const taskScript = { task_script_id: 'stage-lifecycle-v1', steps: [{ step_id: 'visit', instruction: 'Use registered action.', required_replay_profile_ids: [activeProfile.replay_profile_id] }] };
     const taskDigest = sha(Buffer.from(canonicalize(taskScript)));
@@ -1038,7 +1040,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       return manifestPath;
     };
     const directRunner = (url) => `export async function run({profiles,steps,executeStep}){await executeStep({replay_profile_id:profiles[0].replay_profile_id,task_step_id:steps[0].step_id},async({request,observe})=>{const response=await request({method:'GET',url:${JSON.stringify(url)}});await observe({evidence_kind:'dom_snapshot',handle:response.observation_handles[0]});});}\n`;
-    const directTransport = "export async function request({url}){const body=Buffer.from(url);return{status:200,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
+    const directTransport = "export async function request({url}){const response=await fetch(url,{redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());return{status:response.status,final_url:url,headers:[],body,redirect_chain:[],observation_artifacts:[{evidence_kind:'dom_snapshot',artifact_bytes:body}]};}\n";
     const spec = (caseId, prefix, runnerSource, transportSource = directTransport, extraRunner = {}) => ({ caseId, runnerPath: `${prefix}-runner.mjs`, runnerSources: { [`${prefix}-runner.mjs`]: runnerSource, ...extraRunner }, transportPath: `${prefix}-transport.mjs`, transportSources: { [`${prefix}-transport.mjs`]: transportSource } });
     const invoke = async (directory, casePath, registry, name) => runCaptureCli(['--case', casePath, '--cas', join(directory, `cas-${name}`), '--output', join(directory, `output-${name}.json`)], { registry });
     let gateServer;
@@ -1046,7 +1048,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       const multiRoot = join(root, 'multi'), multiRegistryDir = join(multiRoot, 'registry'), caseA = 'RW-STAGE-MULTI-A', caseB = 'RW-STAGE-MULTI-B';
       const caseAPath = await writeCase(multiRoot, caseA);
       await writeCase(multiRoot, caseB);
-      const multiManifest = await writeRegistry(multiRegistryDir, [spec(caseA, 'a', directRunner('http://127.0.0.1:9/a')), spec(caseB, 'b', directRunner('http://127.0.0.1:9/b'))]);
+      const multiManifest = await writeRegistry(multiRegistryDir, [spec(caseA, 'a', directRunner(`${staticOrigin}/a`)), spec(caseB, 'b', directRunner(`${staticOrigin}/b`))]);
       const beforeMulti = await stageNames(), multiRegistry = await createCaptureRegistry(multiManifest), multiExit = await invoke(multiRoot, caseAPath, multiRegistry, 'selected-a');
       if (multiExit !== 0) issues.push(`multi-selected-exit:${multiExit}`);
       await cleanNewStages(beforeMulti, 'multi-unselected-entry');
@@ -1084,7 +1086,7 @@ const follow = async (url) => { const hop=await rawRequest(url), finalUrl=new UR
       if (JSON.stringify(concurrentExits.sort()) !== JSON.stringify([0, 0])) issues.push(`concurrent-stage-disposed-early:${concurrentExits.join(',')}`);
       await cleanNewStages(beforeConcurrent, 'concurrent');
     } finally {
-      if (gateServer) await new Promise((resolve) => gateServer.close(resolve));
+      if (gateServer) await new Promise((resolve) => gateServer.close(resolve));const closing=new Promise(resolve=>staticServer.close(resolve));staticServer.closeAllConnections();await closing;
       await rm(root, { recursive: true, force: true });
     }
     assert.deepEqual(issues, [], `TASK9_STAGE_LIFECYCLE_RED:${issues.join(',')}`);

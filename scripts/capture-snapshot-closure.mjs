@@ -168,15 +168,15 @@ const parseCli=(argv)=>{
 };
 const safeCasName=locator=>{const match=/^cas\/([0-9a-f]{64})$/.exec(locator);if(!match)throw E('CAS_LOCATOR_INVALID');return match[1]};
 const fileCas=async(rootInput)=>{
-  await mkdir(rootInput,{recursive:true,mode:0o700});const root=await realpath(rootInput);
-  const target=locator=>join(root,safeCasName(locator));
+  let root;const ensureRoot=async()=>{if(root)return root;await mkdir(rootInput,{recursive:true,mode:0o700});root=await realpath(rootInput);return root};
+  const target=async locator=>join(await ensureRoot(),safeCasName(locator));
   return{
     async put(locator,bytes){
-      const destination=target(locator),temporary=join(root,`.${safeCasName(locator)}.${process.pid}.${createHash('sha256').update(String(Date.now())+Math.random()).digest('hex')}.tmp`);let handle;
+      const destination=await target(locator),temporary=join(await ensureRoot(),`.${safeCasName(locator)}.${process.pid}.${createHash('sha256').update(String(Date.now())+Math.random()).digest('hex')}.tmp`);let handle;
       try{handle=await open(temporary,fsConstants.O_CREAT|fsConstants.O_EXCL|fsConstants.O_WRONLY|fsConstants.O_NOFOLLOW,0o600);await handle.writeFile(Buffer.from(bytes));await handle.sync();await handle.close();handle=null;await rename(temporary,destination)}finally{if(handle)await handle.close().catch(()=>{});await rm(temporary,{force:true}).catch(()=>{})}
     },
     async get(locator){
-      let handle;try{handle=await open(target(locator),fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW);const stat=await handle.stat();if(!stat.isFile()||stat.size>L.maxArtifactBytes)return null;return await handle.readFile()}catch{return null}finally{if(handle)await handle.close().catch(()=>{})}
+      let handle;try{handle=await open(await target(locator),fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW);const stat=await handle.stat();if(!stat.isFile()||stat.size>L.maxArtifactBytes)return null;return await handle.readFile()}catch{return null}finally{if(handle)await handle.close().catch(()=>{})}
     },
   };
 };
@@ -293,16 +293,27 @@ const invocationWorkerMain=async()=>{
 };
 const INVOCATION_WORKER_SOURCE=`(${invocationWorkerMain.toString()})().catch(error=>{const fault=value=>({name:value?.name??'Error',message:value?.message??String(value),code:value?.code??null});require('node:worker_threads').parentPort.postMessage({type:'load-error',error:fault(error)})})`;
 const COMPARTMENT_EXEC_ARGV=Object.freeze(['--experimental-vm-modules']);
+const brokerHeaders=response=>[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')}));
+const brokerAdmit=(lease,input)=>{
+  const controller=new AbortController(),record={input:snap(input),controller,state:'pending',response:null,error:null,done:null};lease.admitted.push(record);
+  record.done=new Promise(resolveDone=>{setTimeout(()=>{void(async()=>{try{if(!lease.active)throw E('CAPTURE_NETWORK_AUTHORITY_DENIED');const response=await mediatedGet(record.input.url,{method:record.input.method,redirect:'manual',signal:controller.signal}),body=Buffer.from(await response.arrayBuffer());if(body.length>L.maxArtifactBytes)throw E('CAPTURE_ARTIFACT_TOO_LARGE');record.response={status:response.status,final_url:response.url||record.input.url,header_rows:brokerHeaders(response),body,bridge:{status:response.status,url:response.url||record.input.url,headers:[...response.headers.entries()],body_base64:body.toString('base64')}};record.state='fulfilled'}catch(error){record.error=error;record.state='rejected'}finally{resolveDone()}})()},20)});return record;
+};
+const brokerAccounted=(lease,returned)=>{
+  if(!plain(returned)||!Array.isArray(returned.redirect_chain)||!Array.isArray(returned.headers)||!(returned.body instanceof Uint8Array))return false;const admitted=lease.admitted;if(admitted.length!==returned.redirect_chain.length+1||admitted.some(record=>record.state!=='fulfilled'))return false;
+  for(let index=0;index<returned.redirect_chain.length;index+=1){const record=admitted[index],hop=returned.redirect_chain[index];if(!plain(hop)||record.input.url!==hop.url||record.response.status!==hop.status||record.response.body.length!==0)return false;const locations=record.response.header_rows.filter(row=>row.name.toLowerCase()==='location').map(row=>Buffer.from(row.value_bytes_base64,'base64').toString('latin1'));if(!locations.some(location=>{try{return new URL(location,hop.url).href===hop.location}catch{return false}}))return false}
+  const final=admitted.at(-1);return final.input.url===returned.final_url&&final.response.status===returned.status&&Buffer.from(final.response.body).equals(Buffer.from(returned.body));
+};
+const brokerRevoke=async lease=>{lease.active=false;const outstanding=lease.admitted.some(record=>record.state==='pending');for(const record of lease.admitted)if(record.state==='pending')record.controller.abort();await Promise.allSettled(lease.admitted.map(record=>record.done));return outstanding};
 const startInvocationWorker=async(runnerStage,transportStage)=>{
   const workerClosure=staged=>({role:staged.role,entry_path:staged.entry_path,digest:staged.digest,files:staged.files.map(file=>({relative_path:file.relative_path,raw_sha256:file.raw_sha256,source_base64:file.raw_bytes.toString('base64')}))});
   const worker=new Worker(INVOCATION_WORKER_SOURCE,{eval:true,execArgv:COMPARTMENT_EXEC_ARGV,workerData:{runner:workerClosure(runnerStage),transport:workerClosure(transportStage)}}),pending=new Map(),sessions=new Map(),leases=new Map();let sequence=0,leaseSequence=0,activeRun=null,closed=false;
-  const fail=error=>{if(closed)return;closed=true;for(const waiter of pending.values())waiter.reject(error);pending.clear();for(const session of sessions.values())session.finishReject(error);sessions.clear()};
+  const fail=error=>{if(closed)return;closed=true;for(const lease of leases.values()){lease.active=false;for(const record of lease.admitted)if(record.state==='pending')record.controller.abort()}for(const waiter of pending.values())waiter.reject(error);pending.clear();for(const session of sessions.values())session.finishReject(error);sessions.clear()};
   const reply=(id,ok,value)=>worker.postMessage(ok?{type:'bridge-result',id,ok:true,value}:{type:'bridge-result',id,ok:false,error:{message:value?.message??String(value),code:value?.code??null}});
   const bridge=async message=>{
     try{
       if(message.kind==='transport-fetch'){
         const lease=leases.get(message.lease_id),input=message.input;if(!lease?.active||!plain(input)||!exact(input,['url','method','redirect'])||!['GET','HEAD'].includes(input.method)||!url(input.url)||input.redirect!=='manual')throw E('CAPTURE_NETWORK_AUTHORITY_DENIED');
-        const response=await mediatedGet(input.url,{method:input.method,redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());if(body.length>L.maxArtifactBytes)throw E('CAPTURE_ARTIFACT_TOO_LARGE');reply(message.id,true,{status:response.status,url:response.url||input.url,headers:[...response.headers.entries()],body_base64:body.toString('base64')});return;
+        const record=brokerAdmit(lease,input);await record.done;if(record.state!=='fulfilled')throw record.error;reply(message.id,true,record.response.bridge);return;
       }
       if(!activeRun)throw E('TASK_RUNNER_INACTIVE_STEP');
       if(message.kind==='step-open'){
@@ -320,7 +331,7 @@ const startInvocationWorker=async(runnerStage,transportStage)=>{
   worker.on('error',fail);worker.on('exit',code=>{if(code!==0)fail(E('CAPTURE_INVOCATION_WORKER_EXIT'))});
   try{await new Promise((resolve,reject)=>{const ready=message=>{if(message.type==='ready'){worker.off('message',ready);resolve()}else if(message.type==='load-error'){worker.off('message',ready);reject(Object.assign(E(message.error?.code??'CAPTURE_INVOCATION_LOAD_FAILED'),{cause:message.error}))}};worker.on('message',ready);worker.once('error',reject)})}catch(error){await worker.terminate().catch(()=>{});throw error}
   const rpc=(type,payload)=>new Promise((resolve,reject)=>{if(closed){reject(E('CAPTURE_INVOCATION_CLOSED'));return}const id=++sequence;pending.set(id,{resolve,reject});worker.postMessage({type,id,...payload})});
-  return Object.freeze({worker,async request(input){const lease={id:`lease-${++leaseSequence}`,active:true};leases.set(lease.id,lease);try{return await rpc('transport-request',{input,lease_id:lease.id})}finally{lease.active=false;leases.delete(lease.id)}},async run({profiles,steps,executeStep}){if(activeRun)throw E('TASK_RUNNER_CONCURRENT_RUN');activeRun={executeStep,stepSequence:0};try{await rpc('runner-run',{profiles,steps})}finally{activeRun=null}}});
+  return Object.freeze({worker,async request(input){const lease={id:`lease-${++leaseSequence}`,active:true,request:snap(input),admitted:[]};leases.set(lease.id,lease);let returned,failure;try{returned=await rpc('transport-request',{input,lease_id:lease.id})}catch(error){failure=error}const outstanding=await brokerRevoke(lease);leases.delete(lease.id);if(failure)throw failure;if(outstanding||!brokerAccounted(lease,returned))throw E('CAPTURE_NETWORK_ACCOUNTING_MISMATCH');return returned},async run({profiles,steps,executeStep}){if(activeRun)throw E('TASK_RUNNER_CONCURRENT_RUN');activeRun={executeStep,stepSequence:0};try{await rpc('runner-run',{profiles,steps})}finally{activeRun=null}}});
 };
 const disposeInvocation=async invocation=>{if(!invocation)return;if(invocation.invocationWorker)await invocation.invocationWorker.terminate().catch(()=>{});await Promise.all([invocation.runnerStage?.root,invocation.transportStage?.root].filter(Boolean).map(root=>rm(root,{recursive:true,force:true}).catch(()=>{})))};
 const loadInvocation=async registration=>{
