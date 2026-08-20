@@ -207,6 +207,81 @@ if(entryFailure){
   if(failures.length>0)assert.fail('TASK12_SKILL_LINK_SURFACE_RED:'+failures.join('|'));
  });
 
+ test('TASK12_YAML_CLOSED_AST_RED rejects every non-simple YAML construct on both metadata surfaces',async()=>{
+  const failures=[];
+  const expectCode=async(label,expectedCode,operation)=>{
+   try{await operation();failures.push(label+':accepted');}
+   catch(error){if(error?.code!==expectedCode)failures.push(label+':expected '+expectedCode+' got '+(error?.code??error?.name));}
+  };
+  const expectPass=async(label,operation)=>{
+   try{await operation();}catch(error){failures.push(label+':unexpected '+(error?.code??error?.name));}
+  };
+  const mutateFrontmatter=async(root,transform)=>{
+   const path=join(root,'SKILL.md');const source=await read('SKILL.md',root);
+   const match=/^---\n([\s\S]*?)\n---\n/u.exec(source);
+   assert.ok(match,'Skill frontmatter fixture');
+   await writeFile(path,'---\n'+transform(match[1])+'\n---\n'+source.slice(match[0].length),'utf8');
+  };
+  const mutateMetadata=async(root,transform)=>{
+   const path=join(root,'agents/openai.yaml');
+   await writeFile(path,transform(await read('agents/openai.yaml',root)),'utf8');
+  };
+  const frontmatterCases=[
+   ['unknown tag on scalar',(source)=>source.replace('description: ','description: !untrusted ')],
+   ['unknown tag on mapping',(source)=>'!untrusted\n'+source],
+   ['unknown tag on sequence',()=>"!untrusted\n- name\n- description"],
+   ['explicit core tag',(source)=>source.replace('name: improving-product-ux','name: !!str improving-product-ux')],
+   ['YAML directive',(source)=>'%TAG !e! tag:example.com,2026:\n'+source],
+   ['scalar anchor',(source)=>source.replace('name: improving-product-ux','name: &skill_name improving-product-ux')],
+   ['mapping anchor',(source)=>'&skill_frontmatter\n'+source],
+   ['alias',(source)=>source.replace('name: improving-product-ux','name: &skill_name improving-product-ux').replace(/^description:.*$/mu,'description: *skill_name')],
+   ['merge key',(source)=>{
+    const [nameLine,descriptionLine]=source.split('\n');
+    return 'defaults: &defaults\n  '+nameLine+'\n<<: *defaults\n'+descriptionLine;
+   }],
+   ['duplicate decoded key',(source)=>source.replace('name: improving-product-ux','name: improving-product-ux\n"\\u006eame": improving-product-ux')],
+   ['trailing document',(source)=>source+'\n...\nname: other'],
+   ['explicit scalar key',(source)=>source.replace('name: improving-product-ux','? name\n: improving-product-ux')],
+   ['explicit sequence key',(source)=>source.replace('name: improving-product-ux','? [name]\n: improving-product-ux')]
+  ];
+  const metadataCases=[
+   ['unknown tag on scalar key',(source)=>source.replace('policy:\n','!untrusted policy:\n')],
+   ['unknown tag on scalar',(source)=>source.replace('allow_implicit_invocation: true','allow_implicit_invocation: !untrusted true')],
+   ['unknown tag on mapping',(source)=>source.replace('policy:\n','policy: !untrusted\n')],
+   ['unknown tag on sequence',(source)=>source.replace('policy:\n  allow_implicit_invocation: true','policy: !untrusted\n  - allow_implicit_invocation\n  - true')],
+   ['explicit core tag',(source)=>source.replace('allow_implicit_invocation: true','allow_implicit_invocation: !!bool true')],
+   ['YAML directive',(source)=>'%YAML 1.2\n---\n'+source],
+   ['scalar anchor',(source)=>source.replace('allow_implicit_invocation: true','allow_implicit_invocation: &enabled true')],
+   ['mapping anchor',(source)=>source.replace('policy:\n','policy: &policy\n')],
+   ['alias',(source)=>'enabled: &enabled true\n'+source.replace('allow_implicit_invocation: true','allow_implicit_invocation: *enabled')],
+   ['merge key',(source)=>source.replace('policy:\n  allow_implicit_invocation: true','defaults: &defaults\n  allow_implicit_invocation: true\npolicy:\n  <<: *defaults')],
+   ['duplicate decoded key',(source)=>source.replace('  allow_implicit_invocation: true','  allow_implicit_invocation: true\n  "\\u0061llow_implicit_invocation": true')],
+   ['multiple documents',(source)=>source+'---\npolicy:\n  allow_implicit_invocation: true\n'],
+   ['trailing document',(source)=>source+'...\n---\nnull\n'],
+   ['explicit scalar key',(source)=>source.replace('policy:\n','? policy\n:\n')],
+   ['explicit sequence key',(source)=>source.replace('policy:\n','? [policy]\n:\n')]
+  ];
+
+  await withRepository(async(root)=>{
+   await expectPass('exact simple contract',()=>validateSkill({repositoryRoot:root}));
+   await mutateFrontmatter(root,(source)=>source.replace('name: improving-product-ux','name: "improving-product-ux"'));
+   await expectPass('quoted simple frontmatter scalar',()=>validateSkill({repositoryRoot:root}));
+  });
+  for(const [label,transform] of frontmatterCases){
+   await withRepository(async(root)=>{
+    await mutateFrontmatter(root,transform);
+    await expectCode('frontmatter '+label,'SKILL_FRONTMATTER_INVALID',()=>validateSkill({repositoryRoot:root}));
+   });
+  }
+  for(const [label,transform] of metadataCases){
+   await withRepository(async(root)=>{
+    await mutateMetadata(root,transform);
+    await expectCode('metadata '+label,'SKILL_METADATA_INVALID',()=>validateSkill({repositoryRoot:root}));
+   });
+  }
+  if(failures.length>0)assert.fail('TASK12_YAML_CLOSED_AST_RED:'+failures.join('|'));
+ });
+
  test('TASK12_PORTABLE_UTF8_RED keeps portable real roots and every Skill text surface byte-strict',async()=>{
   const failures=[];
   const malformed=[
