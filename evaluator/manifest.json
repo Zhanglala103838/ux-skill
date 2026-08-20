@@ -1,0 +1,44 @@
+{
+  "behavior_version": "0.1.0",
+  "evaluator_files": [
+    {
+      "path": "evaluator/authority.mjs",
+      "file_digest": "a176e33d67a60de58a9dc020d7549cc8ba655813cc1f6896079327021170d3ea"
+    },
+    {
+      "path": "evaluator/canonical.mjs",
+      "file_digest": "4da1a1b4f359dbcd2d0a2ee5a3ae97a9c1e19f4da4890da33b45145c38f9b11d"
+    },
+    {
+      "path": "evaluator/claims.mjs",
+      "file_digest": "40ff3683a7d48d4bf59d376af423ba026244f6f34a1ab7b4f27527245d55054a"
+    },
+    {
+      "path": "evaluator/dependency-decision.mjs",
+      "file_digest": "00bb7abf2cb4a22d374e840fa521ac7a2b945355c559426419ecadd3187d4a83"
+    },
+    {
+      "path": "evaluator/digests.mjs",
+      "file_digest": "ff82059476ac15dddc63526e47fc210a0efdea3bf747f2fc314cb56c696b9078"
+    },
+    {
+      "path": "evaluator/index.mjs",
+      "file_digest": "013c4aefde40cb5cdcf1194634f5aaed58bf43fe82170d5fd3403201d0797824"
+    },
+    {
+      "path": "evaluator/projection.mjs",
+      "file_digest": "39b9676a1e83cc6b3158e9350010d0c35e25aa69661e83afed3e5045c0471112"
+    },
+    {
+      "path": "evaluator/rules-runtime.mjs",
+      "file_digest": "2ce626eb5a9e5649673eff1815056c06cf35d5f78f35c89ba4f64436bfac2cb7"
+    },
+    {
+      "path": "evaluator/validation.mjs",
+      "file_digest": "4dae31a8994cc9700db3d836b5343897e48c5a2456cdc0365ccdffb6baf38163"
+    }
+  ],
+  "schema_manifest_digest": "ddbf5c8ce87f3645206dc399fe684fef489fd6017c07376c1552420e887e0899",
+  "knowledge_manifest_digest": "1704ad07fd1e9557ab64c1e484f68b069f8c4f017e79ed979a34db47e5a0ce50",
+  "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29"
+}

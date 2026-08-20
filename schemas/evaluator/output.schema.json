@@ -1779,7 +1779,10 @@
       ],
       "properties": {
         "code": {
-          "const": "RULE_EVALUATION_ERROR"
+          "enum": [
+            "RULE_EVALUATION_ERROR",
+            "SNAPSHOT_CLOSURE_UNAVAILABLE"
+          ]
         },
         "instance_pointer": {
           "type": "string"
