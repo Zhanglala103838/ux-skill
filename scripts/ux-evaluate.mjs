@@ -91,7 +91,12 @@ const emit=(value,status,code=null)=>{
 };
 const invalid=(code,status=2)=>emit({run_status:'invalid_input',error_codes:[code]},status,code);
 const failed=(code)=>emit({run_status:'failed',error_codes:[code]},1,code);
-const errorCode=(error)=>typeof error?.code==='string'&&error.code.length>0?error.code:'EVALUATION_FAILED';
+const isArtifactIoFailure=(error)=>error!==null&&typeof error==='object'&&typeof error.errno==='number'&&typeof error.syscall==='string'&&typeof error.path==='string';
+const normalizeEvaluationFailure=(error)=>{
+ if(error?.code==='INVALID_EVALUATION_INPUT')return{kind:'invalid',code:'INVALID_EVALUATION_INPUT'};
+ if(error?.code==='ARTIFACT_VERIFICATION_FAILED'||isArtifactIoFailure(error))return{kind:'failed',code:'ARTIFACT_VERIFICATION_FAILED'};
+ return{kind:'failed',code:'EVALUATION_FAILED'};
+};
 
 const main=async()=>{
  if(validateResponse===null){diagnostic('RESPONSE_SCHEMA_INVALID');return 1;}
@@ -108,7 +113,7 @@ const main=async()=>{
  if(bundle===null||typeof bundle!=='object'||Array.isArray(bundle))return invalid('INPUT_JSON_INVALID');
  if(bundle.request_mode!==parsed.mode)return invalid('MODE_BUNDLE_MISMATCH');
  let result;
- try{result=await evaluate(bundle);}catch(error){const code=errorCode(error);return code==='INVALID_EVALUATION_INPUT'?invalid(code):failed(code);}
+ try{result=await evaluate(bundle);}catch(error){const failure=normalizeEvaluationFailure(error);return failure.kind==='invalid'?invalid(failure.code):failed(failure.code);}
  const transport={kind:'cli',request_mode:parsed.mode,request_id:process.env.UX_REQUEST_ID??null,input_kind:parsed.input==='-'?'stdin':'path',output_format:'json'};
  return emit({...result,audit_sidecar:{...result.audit_sidecar,transport}},0);
 };
