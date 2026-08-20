@@ -23,6 +23,7 @@ const HN=/^[a-z0-9!#$%&'*+.^_\x60|~-]+$/;
 const REGISTRY_DOMAIN='ux-skill:capture-registry:v1';
 const MODULE_ROW_KEYS=['relative_path','raw_sha256'];
 const registryState=new WeakMap();
+const mediatedGet=Object.freeze(globalThis.fetch.bind(globalThis));
 const E=(code,result)=>Object.assign(new TypeError(code),{code,...(result?{result}:{})});
 const bad=()=>{throw E('CAPTURE_INPUT_INVALID')};
 const unavailable=()=>{throw E('TARGET_UNAVAILABLE',{run_status:'target_unavailable',run_issues:[{code:'RULE_EVALUATION_ERROR',instance_pointer:'/snapshot_closure',dependency_id:null}],release_gate:'no_release'})};
@@ -301,7 +302,7 @@ const startInvocationWorker=async(runnerStage,transportStage)=>{
     try{
       if(message.kind==='transport-fetch'){
         const lease=leases.get(message.lease_id),input=message.input;if(!lease?.active||!plain(input)||!exact(input,['url','method','redirect'])||!['GET','HEAD'].includes(input.method)||!url(input.url)||input.redirect!=='manual')throw E('CAPTURE_NETWORK_AUTHORITY_DENIED');
-        const response=await fetch(input.url,{method:input.method,redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());if(body.length>L.maxArtifactBytes)throw E('CAPTURE_ARTIFACT_TOO_LARGE');reply(message.id,true,{status:response.status,url:response.url||input.url,headers:[...response.headers.entries()],body_base64:body.toString('base64')});return;
+        const response=await mediatedGet(input.url,{method:input.method,redirect:'manual'}),body=Buffer.from(await response.arrayBuffer());if(body.length>L.maxArtifactBytes)throw E('CAPTURE_ARTIFACT_TOO_LARGE');reply(message.id,true,{status:response.status,url:response.url||input.url,headers:[...response.headers.entries()],body_base64:body.toString('base64')});return;
       }
       if(!activeRun)throw E('TASK_RUNNER_INACTIVE_STEP');
       if(message.kind==='step-open'){
