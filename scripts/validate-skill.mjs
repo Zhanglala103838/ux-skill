@@ -222,6 +222,53 @@ function maskInlineCode(source){
  return characters.join('');
 }
 
+function indentationColumns(line){
+ let columns=0;
+ for(const character of line){
+  if(character===' '){columns++;continue;}
+  if(character==='\t'){columns+=4-(columns%4);continue;}
+  break;
+ }
+ return columns;
+}
+
+function maskIndentedCode(source){
+ const characters=source.split('');
+ let offset=0;
+ while(offset<source.length){
+  const newline=source.indexOf('\n',offset);
+  const end=newline===-1?source.length:newline;
+  const line=source.slice(offset,end);
+  if(indentationColumns(line)>=4)maskRange(characters,offset,end);
+  if(newline===-1)break;
+  offset=newline+1;
+ }
+ return characters.join('');
+}
+
+function maskHtmlComments(source){
+ const characters=source.split('');
+ let cursor=0;
+ while(cursor<source.length){
+  const start=source.indexOf('<!--',cursor);
+  if(start===-1)break;
+  if(isEscaped(source,start)){cursor=start+4;continue;}
+  const end=source.indexOf('-->',start+4);
+  if(end===-1)fail('SKILL_LINK_INVALID');
+  if(source.indexOf('<!--',start+4)!==-1&&source.indexOf('<!--',start+4)<end)fail('SKILL_LINK_INVALID');
+  maskRange(characters,start,end+3);
+  cursor=end+3;
+ }
+ return characters.join('');
+}
+
+function maskInactiveMarkdown(source){
+ let surface=maskFencedCode(source);
+ surface=maskInlineCode(surface);
+ surface=maskIndentedCode(surface);
+ return maskHtmlComments(surface);
+}
+
 function maskExactProgressiveLinks(source){
  const characters=source.split('');
  const destinations=[];
@@ -241,14 +288,10 @@ function maskExactProgressiveLinks(source){
   if(count!==1)fail('SKILL_LINK_INVALID');
  }
  if(!sameData(destinations,LINKS))fail('SKILL_LINK_INVALID');
- return characters.join('');
+ return Object.freeze({surface:characters.join(''),destinations:Object.freeze(destinations)});
 }
 
-function validateSkillLinkSurface(source){
- let surface=maskFencedCode(source);
- surface=maskInlineCode(surface);
- surface=maskExactProgressiveLinks(surface);
-
+function validateSkillLinkRemainder(surface){
  let precedingBackslashes=0;
  for(const character of surface){
   if(character==='\\'){precedingBackslashes++;continue;}
@@ -264,7 +307,6 @@ function validateSkillLinkSurface(source){
  const localPath=/(?:^|[\s("'=])(?:\.{0,2}[\\/]|[A-Za-z0-9._%+-]+[\\/])(?=\S)/u;
  const webHost=/(?:^|[\s("'=])www\./iu;
  if(rawScheme.test(surface)||protocolRelative.test(surface)||htmlResource.test(surface)||encodedAlias.test(surface)||backslashPath.test(surface)||resourceExtension.test(surface)||localPath.test(surface)||webHost.test(surface))fail('SKILL_LINK_INVALID');
- return LINKS;
 }
 
 function validateMetadataPrompt(prompt){
@@ -278,22 +320,24 @@ function validateSkillSource(source){
  const frontmatter=/^---\n([\s\S]*?)\n---\n/.exec(source);
  if(frontmatter===null)fail('SKILL_FRONTMATTER_INVALID');
  const value=parseYaml(frontmatter[1],'SKILL_FRONTMATTER_INVALID',YAML_SKILL_SCHEMA);
+ const body=source.slice(frontmatter[0].length);
  if(!sameKeys(value,['name','description']))fail('SKILL_FRONTMATTER_FIELDS_INVALID');
  if(value.name!==SKILL_NAME)fail('SKILL_NAME_INVALID');
  if(typeof value.description!=='string'||value.description.length===0||value.description.length>1024)fail('SKILL_DESCRIPTION_INVALID');
  const triggers=[/digital product/iu,/design/iu,/UX review/iu,/migrat/iu,/refactor/iu,/verif/iu,/website/iu,/Admin/iu,/cross-platform/iu,/HulianUI/iu,/brand art/iu,/physical-space/iu,/legal/iu,/medical/iu];
  if(triggers.some((pattern)=>!pattern.test(value.description)))fail('SKILL_DESCRIPTION_INVALID');
  if(source.split('\n').length>=500)fail('SKILL_TOO_LONG');
- if((source.split(COMMAND).length-1)!==1)fail('SKILL_CLI_CONTRACT_INVALID');
- if(!source.includes('routes[request_mode].paths')||!source.includes('knowledge/manifest.json'))fail('SKILL_ROUTE_INSTRUCTION_INVALID');
- const instructionSurface=maskInlineCode(maskFencedCode(source));
+ if((body.split(COMMAND).length-1)!==1)fail('SKILL_CLI_CONTRACT_INVALID');
+ const instructionSurface=maskInactiveMarkdown(body);
+ const matchedLinks=maskExactProgressiveLinks(instructionSurface);
+ if(!body.includes('routes[request_mode].paths')||!body.includes('knowledge/manifest.json'))fail('SKILL_ROUTE_INSTRUCTION_INVALID');
  if(/references\/[a-z0-9-]+\.md/u.test(instructionSurface))fail('SKILL_REFERENCE_PATH_FORBIDDEN');
- for(const mode of MODES)if(!new RegExp('\\b'+mode+'\\b','u').test(source))fail('SKILL_MODE_INVALID');
+ for(const mode of MODES)if(!new RegExp('\\b'+mode+'\\b','u').test(body))fail('SKILL_MODE_INVALID');
  const requirements=[/Assurance/u,/Inquiry/u,/authoriz/iu,/external effect/iu,/missing|gap/iu,/fail closed|stop before/iu,/compare/iu,/audit/iu,/release/iu,/no_release/u];
- if(requirements.some((pattern)=>!pattern.test(source)))fail('SKILL_WORKFLOW_INVALID');
- validateSkillLinkSurface(source);
- if(source.slice(frontmatter[0].length).includes('\n|---'))fail('SKILL_SEMANTIC_TABLE_FORBIDDEN');
- return value;
+ if(requirements.some((pattern)=>!pattern.test(body)))fail('SKILL_WORKFLOW_INVALID');
+ validateSkillLinkRemainder(matchedLinks.surface);
+ if(body.includes('\n|---'))fail('SKILL_SEMANTIC_TABLE_FORBIDDEN');
+ return Object.freeze({name:value.name,links:matchedLinks.destinations});
 }
 
 function validateMetadataSource(source){
@@ -342,7 +386,7 @@ export async function validateSkill(options){
   const reference=await readSecure(root,path,'SKILL_REFERENCE_MISSING',MAX_REFERENCE_BYTES);
   decodeText(reference.bytes,{utf8Code:'SKILL_REFERENCE_UTF8_INVALID',bomCode:'SKILL_REFERENCE_BOM_FORBIDDEN',unicodeCode:'SKILL_REFERENCE_UNICODE_INVALID'});
  }
- return Object.freeze({name:skill.name,modes:Object.freeze([...MODES]),links:Object.freeze([...LINKS])});
+ return Object.freeze({name:skill.name,modes:Object.freeze([...MODES]),links:skill.links});
 }
 
 if(process.argv[1]&&resolve(process.argv[1])===MODULE_PATH){
