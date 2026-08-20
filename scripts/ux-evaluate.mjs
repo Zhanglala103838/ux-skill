@@ -6,7 +6,6 @@ import {TextDecoder} from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {digestJcs} from '../evaluator/digests.mjs';
-import {evaluate} from '../evaluator/index.mjs';
 import {parseKnowledgeJson} from './check-knowledge.mjs';
 
 const ROOT=new URL('../',import.meta.url);
@@ -92,6 +91,8 @@ const emit=(value,status,code=null)=>{
 const invalid=(code,status=2)=>emit({run_status:'invalid_input',error_codes:[code]},status,code);
 const failed=(code)=>emit({run_status:'failed',error_codes:[code]},1,code);
 const isArtifactIoFailure=(error)=>error!==null&&typeof error==='object'&&typeof error.errno==='number'&&typeof error.syscall==='string'&&typeof error.path==='string';
+const ARTIFACT_MODULE_CODES=new Set(['ERR_MODULE_NOT_FOUND','ERR_UNKNOWN_FILE_EXTENSION','ERR_UNSUPPORTED_DIR_IMPORT']);
+const normalizeEvaluatorInitializationFailure=(error)=>error?.code==='ARTIFACT_VERIFICATION_FAILED'||isArtifactIoFailure(error)||error?.name==='SyntaxError'||ARTIFACT_MODULE_CODES.has(error?.code)?'ARTIFACT_VERIFICATION_FAILED':'EVALUATION_FAILED';
 const normalizeEvaluationFailure=(error)=>{
  if(error?.code==='INVALID_EVALUATION_INPUT')return{kind:'invalid',code:'INVALID_EVALUATION_INPUT'};
  if(error?.code==='ARTIFACT_VERIFICATION_FAILED'||isArtifactIoFailure(error))return{kind:'failed',code:'ARTIFACT_VERIFICATION_FAILED'};
@@ -112,6 +113,8 @@ const main=async()=>{
  catch(error){return invalid(error?.code==='KNOWLEDGE_JSON_DUPLICATE_KEY'?'INPUT_JSON_DUPLICATE_MEMBER':'INPUT_JSON_INVALID');}
  if(bundle===null||typeof bundle!=='object'||Array.isArray(bundle))return invalid('INPUT_JSON_INVALID');
  if(bundle.request_mode!==parsed.mode)return invalid('MODE_BUNDLE_MISMATCH');
+ let evaluate;
+ try{({evaluate}=await import('../evaluator/index.mjs'));}catch(error){return failed(normalizeEvaluatorInitializationFailure(error));}
  let result;
  try{result=await evaluate(bundle);}catch(error){const failure=normalizeEvaluationFailure(error);return failure.kind==='invalid'?invalid(failure.code):failed(failure.code);}
  const transport={kind:'cli',request_mode:parsed.mode,request_id:process.env.UX_REQUEST_ID??null,input_kind:parsed.input==='-'?'stdin':'path',output_format:'json'};
