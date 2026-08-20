@@ -174,6 +174,65 @@ function maskRange(characters,start,end){
  for(let index=start;index<end;index++)if(characters[index]!=='\n')characters[index]=' ';
 }
 
+function indentationColumns(line){
+ let columns=0;
+ for(const character of line){
+  if(character===' '){columns++;continue;}
+  if(character==='\t'){columns+=4-(columns%4);continue;}
+  break;
+ }
+ return columns;
+}
+
+function consumeIndent(line,start,requiredColumns){
+ let cursor=start;let columns=0;
+ while(cursor<line.length&&columns<requiredColumns){
+  if(line[cursor]===' '){columns++;cursor++;continue;}
+  if(line[cursor]==='\t'){columns+=4-(columns%4);cursor++;continue;}
+  break;
+ }
+ return columns>=requiredColumns?cursor:undefined;
+}
+
+function consumeBlockquotes(line){
+ let cursor=0;let depth=0;
+ while(cursor<line.length){
+  const start=cursor;
+  let spaces=0;
+  while(spaces<3&&line[cursor]===' '){cursor++;spaces++;}
+  if(line[cursor]!=='>'||isEscaped(line,cursor)){cursor=start;break;}
+  cursor++;depth++;
+  if(line[cursor]===' ')cursor++;
+  else if(line[cursor]==='\t')cursor++;
+ }
+ return Object.freeze({cursor,depth});
+}
+
+function consumeListContainers(line,start){
+ let cursor=start;let continuationIndent=0;
+ while(cursor<line.length){
+  const remaining=line.slice(cursor);
+  const marker=/^( {0,3})([*+-]|\d{1,9}[.)])([ \t]+)(?=\S)/u.exec(remaining);
+  if(marker===null)break;
+  const whitespaceColumns=indentationColumns(marker[3]);
+  const separatorLength=whitespaceColumns<=4?marker[3].length:1;
+  const consumed=marker[1].length+marker[2].length+separatorLength;
+  continuationIndent+=indentationColumns(marker[1])+marker[2].length+indentationColumns(marker[3].slice(0,separatorLength));
+  cursor+=consumed;
+ }
+ return Object.freeze({cursor,continuationIndent});
+}
+
+function activeLineView(line){
+ const quote=consumeBlockquotes(line);
+ const list=consumeListContainers(line,quote.cursor);
+ return Object.freeze({
+  content:line.slice(list.cursor),
+  quoteDepth:quote.depth,
+  continuationIndent:list.continuationIndent
+ });
+}
+
 function maskFencedCode(source){
  const characters=source.split('');
  let offset=0;let fence;
@@ -183,12 +242,17 @@ function maskFencedCode(source){
   const line=source.slice(offset,end);
   if(fence!==undefined){
    maskRange(characters,offset,end);
-   const close=/^ {0,3}(`+|~+)[ \t]*$/u.exec(line);
-   if(close!==null&&close[1][0]===fence.character&&close[1].length>=fence.length)fence=undefined;
+   const quote=consumeBlockquotes(line);
+   const continuationStart=quote.depth===fence.quoteDepth?consumeIndent(line,quote.cursor,fence.continuationIndent):undefined;
+   if(continuationStart!==undefined){
+    const close=/^ {0,3}(`+|~+)[ \t]*$/u.exec(line.slice(continuationStart));
+    if(close!==null&&close[1][0]===fence.character&&close[1].length>=fence.length)fence=undefined;
+   }
   }else{
-   const open=/^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
+   const view=activeLineView(line);
+   const open=/^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(view.content);
    if(open!==null&&(open[1][0]==='~'||!open[2].includes('`'))){
-    fence=Object.freeze({character:open[1][0],length:open[1].length});
+    fence=Object.freeze({character:open[1][0],length:open[1].length,quoteDepth:view.quoteDepth,continuationIndent:view.continuationIndent});
     maskRange(characters,offset,end);
    }
   }
@@ -222,16 +286,6 @@ function maskInlineCode(source){
  return characters.join('');
 }
 
-function indentationColumns(line){
- let columns=0;
- for(const character of line){
-  if(character===' '){columns++;continue;}
-  if(character==='\t'){columns+=4-(columns%4);continue;}
-  break;
- }
- return columns;
-}
-
 function maskIndentedCode(source){
  const characters=source.split('');
  let offset=0;
@@ -239,7 +293,9 @@ function maskIndentedCode(source){
   const newline=source.indexOf('\n',offset);
   const end=newline===-1?source.length:newline;
   const line=source.slice(offset,end);
-  if(indentationColumns(line)>=4)maskRange(characters,offset,end);
+  const quote=consumeBlockquotes(line);
+  const list=consumeListContainers(line,quote.cursor);
+  if(indentationColumns(line.slice(list.cursor))>=4)maskRange(characters,offset,end);
   if(newline===-1)break;
   offset=newline+1;
  }
@@ -309,6 +365,20 @@ function validateSkillLinkRemainder(surface){
  if(rawScheme.test(surface)||protocolRelative.test(surface)||htmlResource.test(surface)||encodedAlias.test(surface)||backslashPath.test(surface)||resourceExtension.test(surface)||localPath.test(surface)||webHost.test(surface))fail('SKILL_LINK_INVALID');
 }
 
+function maskValidatedSemanticSyntax(source){
+ const characters=source.split('');
+ for(const literal of [COMMAND,'routes[request_mode].paths']){
+  let cursor=0;
+  while(cursor<source.length){
+   const start=source.indexOf(literal,cursor);
+   if(start===-1)break;
+   maskRange(characters,start,start+literal.length);
+   cursor=start+literal.length;
+  }
+ }
+ return characters.join('');
+}
+
 function validateMetadataPrompt(prompt){
  if(typeof prompt!=='string'||prompt!==EXPECTED_METADATA.interface.default_prompt)fail('SKILL_METADATA_INVALID');
  if((prompt.split('$'+SKILL_NAME).length-1)!==1)fail('SKILL_METADATA_DEFAULT_PROMPT_INVALID');
@@ -327,16 +397,16 @@ function validateSkillSource(source){
  const triggers=[/digital product/iu,/design/iu,/UX review/iu,/migrat/iu,/refactor/iu,/verif/iu,/website/iu,/Admin/iu,/cross-platform/iu,/HulianUI/iu,/brand art/iu,/physical-space/iu,/legal/iu,/medical/iu];
  if(triggers.some((pattern)=>!pattern.test(value.description)))fail('SKILL_DESCRIPTION_INVALID');
  if(source.split('\n').length>=500)fail('SKILL_TOO_LONG');
- if((body.split(COMMAND).length-1)!==1)fail('SKILL_CLI_CONTRACT_INVALID');
- const instructionSurface=maskInactiveMarkdown(body);
- const matchedLinks=maskExactProgressiveLinks(instructionSurface);
- if(!body.includes('routes[request_mode].paths')||!body.includes('knowledge/manifest.json'))fail('SKILL_ROUTE_INSTRUCTION_INVALID');
- if(/references\/[a-z0-9-]+\.md/u.test(instructionSurface))fail('SKILL_REFERENCE_PATH_FORBIDDEN');
- for(const mode of MODES)if(!new RegExp('\\b'+mode+'\\b','u').test(body))fail('SKILL_MODE_INVALID');
+ const activeBody=maskInactiveMarkdown(body);
+ if((activeBody.split(COMMAND).length-1)!==1)fail('SKILL_CLI_CONTRACT_INVALID');
+ const matchedLinks=maskExactProgressiveLinks(activeBody);
+ if(!activeBody.includes('routes[request_mode].paths')||!activeBody.includes('knowledge/manifest.json'))fail('SKILL_ROUTE_INSTRUCTION_INVALID');
+ if(/references\/[a-z0-9-]+\.md/u.test(activeBody))fail('SKILL_REFERENCE_PATH_FORBIDDEN');
+ for(const mode of MODES)if(!new RegExp('\\b'+mode+'\\b','u').test(activeBody))fail('SKILL_MODE_INVALID');
  const requirements=[/Assurance/u,/Inquiry/u,/authoriz/iu,/external effect/iu,/missing|gap/iu,/fail closed|stop before/iu,/compare/iu,/audit/iu,/release/iu,/no_release/u];
- if(requirements.some((pattern)=>!pattern.test(body)))fail('SKILL_WORKFLOW_INVALID');
- validateSkillLinkRemainder(matchedLinks.surface);
- if(body.includes('\n|---'))fail('SKILL_SEMANTIC_TABLE_FORBIDDEN');
+ if(requirements.some((pattern)=>!pattern.test(activeBody)))fail('SKILL_WORKFLOW_INVALID');
+ validateSkillLinkRemainder(maskValidatedSemanticSyntax(matchedLinks.surface));
+ if(activeBody.includes('\n|---'))fail('SKILL_SEMANTIC_TABLE_FORBIDDEN');
  return Object.freeze({name:value.name,links:matchedLinks.destinations});
 }
 

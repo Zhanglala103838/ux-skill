@@ -8,13 +8,13 @@ description: Evidence-aware guidance for digital product design, UX review, migr
 ## Route the request
 
 1. Normalize exactly one request mode.
-   - Use `guide` for design guidance or a new experience.
-   - Use `scan` for review, audit, or comparison of an existing experience.
-   - Use `refactor` for migration or restructuring work.
-   - Use `verify` for acceptance, regression, or release-readiness evidence.
-2. Resolve ambiguity before evaluation. Treat a compare or audit request as `scan` unless it asks to verify an implemented change. Treat a release-readiness request as `verify`.
-3. Validate the [knowledge manifest](knowledge/manifest.json). Read only `routes[request_mode].paths`, in its listed order, after its digest and dependency checks pass. Do not guess, add, reorder, or hardcode reference files.
-4. When a `refactor` target actually uses HulianUI, obtain adapter evidence only through the existing HulianUI bridge. Do not infer adapter evidence or load vendor material for other targets.
+   - Use guide for design guidance or a new experience.
+   - Use scan for review, audit, or comparison of an existing experience.
+   - Use refactor for migration or restructuring work.
+   - Use verify for acceptance, regression, or release-readiness evidence.
+2. Resolve ambiguity before evaluation. Treat a compare or audit request as scan unless it asks to verify an implemented change. Treat a release-readiness request as verify.
+3. Validate the [knowledge manifest](knowledge/manifest.json). Read only routes[request_mode].paths, in its listed order, after its digest and dependency checks pass. Do not guess, add, reorder, or hardcode reference files.
+4. When a refactor target actually uses HulianUI, obtain adapter evidence only through the existing HulianUI bridge. Do not infer adapter evidence or load vendor material for other targets.
 
 ## Build the input
 
@@ -28,9 +28,9 @@ description: Evidence-aware guidance for digital product design, UX review, migr
 
 1. Invoke the existing [CLI](scripts/ux-evaluate.mjs) once with the bundle on standard input:
 
-   `pnpm ux:evaluate -- --mode <mode> --input - --output json`
+   Run pnpm ux:evaluate -- --mode <mode> --input - --output json.
 
-2. Preserve the CLI exit code, error codes, semantic projection, audit sidecar, recommendation, and release decision exactly. Never convert `no_release`, incomplete evidence, or a failed run into approval.
+2. Preserve the CLI exit code, error codes, semantic projection, audit sidecar, recommendation, and release decision exactly. Never convert no_release, incomplete evidence, or a failed run into approval.
 
 ## Respond on two tracks
 
