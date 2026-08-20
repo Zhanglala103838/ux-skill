@@ -6,6 +6,8 @@ import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {TextDecoder} from 'node:util';
 import {spawn} from 'node:child_process';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import YAML from 'yaml';
 
 const PRODUCTION_PATHS=['SKILL.md','agents/openai.yaml','scripts/validate-skill.mjs'];
@@ -40,6 +42,14 @@ if(entryFailure){
   child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
   child.stdout.on('data',(chunk)=>{stdout+=chunk;});child.stderr.on('data',(chunk)=>{stderr+=chunk;});
   child.on('close',(status,signal)=>resolve({status,signal,stdout,stderr}));
+ });
+ const runPnpm=(args,stdin)=>new Promise((resolve,reject)=>{
+  const child=spawn('pnpm',args,{cwd:process.cwd(),env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['pipe','pipe','pipe']});
+  const stdout=[];const stderr=[];
+  child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));
+  child.on('error',reject);
+  child.on('close',(status,signal)=>resolve({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
+  child.stdin.end(stdin);
  });
 
  async function copyInto(root,path){
@@ -694,8 +704,31 @@ if(entryFailure){
    await expectCode(label,'SKILL_LINK_INVALID',({frontmatter,body})=>({frontmatter,body:removeActiveLinks(body)+suffix}));
   }
 
-  await expectLinks('tab-stop active blockquote paragraph','\n>\t '+manifestLink+'\n>\t '+cliLink+'\n');
-  await expectLinks('tab-stop active bullet list item','\n> -\t  '+manifestLink+'\n> -\t  '+cliLink+'\n');
+ await expectLinks('tab-stop active blockquote paragraph','\n>\t '+manifestLink+'\n>\t '+cliLink+'\n');
+ await expectLinks('tab-stop active bullet list item','\n> -\t  '+manifestLink+'\n> -\t  '+cliLink+'\n');
+
+  try{
+   const packageJson=JSON.parse(await read('package.json'));
+   assert.equal(packageJson.packageManager,'pnpm@8.15.5','pinned pnpm fixture');
+   const [responseSchema,semanticSchema]=await Promise.all([
+    read('schemas/adapters/ux-evaluate-response-v1.schema.json').then(JSON.parse),
+    read('schemas/evaluator/semantic-projection.schema.json').then(JSON.parse)
+   ]);
+   const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});
+   addFormats(ajv);ajv.addSchema(semanticSchema);
+   const validateResponse=ajv.compile(responseSchema);
+   for(const mode of ['guide','scan','refactor','verify']){
+    const input=await read('evals/parity/'+mode+'.json');
+    const result=await runPnpm(['--silent','ux:evaluate','--','--mode',mode,'--input','-','--output','json'],input);
+    let output;
+    try{output=JSON.parse(result.stdout);}catch{}
+    const exactJson=output!==undefined&&result.stdout===JSON.stringify(output)+'\n';
+    if(result.signal!==null||result.status!==0||result.stderr!==''||!exactJson||!validateResponse(output)){
+     const diagnostic=result.stderr.trim()||'invalid-output';
+     failures.push('documented pnpm '+mode+':status '+result.status+' stderr '+diagnostic+' schema '+Boolean(output&&validateResponse(output)));
+    }
+   }
+  }catch(error){failures.push('documented pnpm command probe:'+(error?.code??error?.message??error?.name));}
 
   if(failures.length>0)assert.fail('TASK12_COMMONMARK_CONTAINER_TABS_RED:'+failures.join('|'));
  });
