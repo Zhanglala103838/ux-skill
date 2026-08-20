@@ -3,7 +3,7 @@ import {constants as fsConstants} from 'node:fs';
 import {lstat,open,realpath} from 'node:fs/promises';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {TextDecoder} from 'node:util';
+import {TextDecoder,types as utilTypes} from 'node:util';
 import YAML from 'yaml';
 import {loadKnowledgeManifest,parseKnowledgeJson} from './check-knowledge.mjs';
 
@@ -52,10 +52,23 @@ const sameKeys=(value,keys)=>isRecord(value)&&JSON.stringify(Object.keys(value))
 const sameData=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 const snapshotEqual=(left,right)=>left.isFile()&&right.isFile()&&left.dev===right.dev&&left.ino===right.ino&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs;
 
-async function resolveRoot(options){
- if(options!==undefined&&(!isRecord(options)||Object.keys(options).some((key)=>key!=='repositoryRoot')))fail('SKILL_OPTIONS_INVALID');
- const supplied=options?.repositoryRoot??DEFAULT_ROOT;
- if(typeof supplied!=='string'||!isAbsolute(supplied)||resolve(supplied)!==supplied)fail('SKILL_REPOSITORY_ROOT_INVALID');
+function normalizeOptions(options){
+ try{
+  if(options===undefined)return undefined;
+  if(options===null||typeof options!=='object'||Array.isArray(options)||utilTypes.isProxy(options))throw new TypeError();
+  const prototype=Reflect.getPrototypeOf(options);
+  if(prototype!==Object.prototype&&prototype!==null)throw new TypeError();
+  const keys=Reflect.ownKeys(options);
+  if(keys.length===0)return undefined;
+  if(keys.length!==1||keys[0]!=='repositoryRoot')throw new TypeError();
+  const descriptor=Reflect.getOwnPropertyDescriptor(options,'repositoryRoot');
+  if(descriptor===undefined||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value')||Object.hasOwn(descriptor,'get')||Object.hasOwn(descriptor,'set')||typeof descriptor.value!=='string')throw new TypeError();
+  return descriptor.value;
+ }catch{fail('SKILL_OPTIONS_INVALID');}
+}
+
+async function resolveRoot(supplied=DEFAULT_ROOT){
+ if(supplied.includes('\0')||supplied.normalize('NFC')!==supplied||!isAbsolute(supplied)||resolve(supplied)!==supplied)fail('SKILL_REPOSITORY_ROOT_INVALID');
  let status;let actual;
  try{status=await lstat(supplied);actual=await realpath(supplied);}catch{fail('SKILL_REPOSITORY_ROOT_INVALID');}
  if(status.isSymbolicLink()||!status.isDirectory()||actual!==supplied)fail('SKILL_REPOSITORY_ROOT_INVALID');
@@ -308,7 +321,8 @@ async function validatePackage(root){
 }
 
 export async function validateSkill(options){
- const root=await resolveRoot(options);
+ const suppliedRoot=normalizeOptions(options);
+ const root=await resolveRoot(suppliedRoot);
  const [skillFile,metadataFile,cliFile]=await Promise.all([
   readSecure(root,'SKILL.md','SKILL_FILE_MISSING'),
   readSecure(root,'agents/openai.yaml','SKILL_METADATA_MISSING'),
