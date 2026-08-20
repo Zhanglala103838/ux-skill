@@ -129,10 +129,12 @@
           "items": {
             "enum": [
               "ARGUMENT_UNKNOWN",
+              "INPUT_BOM_FORBIDDEN",
               "INPUT_JSON_INVALID",
               "INPUT_MULTIPLE",
               "INPUT_REQUIRED",
               "INPUT_UNREADABLE",
+              "INPUT_UTF8_INVALID",
               "INPUT_VALUE_REQUIRED",
               "INVALID_EVALUATION_INPUT",
               "MODE_BUNDLE_MISMATCH",

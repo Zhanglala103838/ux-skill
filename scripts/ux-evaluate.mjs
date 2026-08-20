@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
+import {TextDecoder} from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {digestJcs} from '../evaluator/digests.mjs';
@@ -8,6 +9,8 @@ import {evaluate} from '../evaluator/index.mjs';
 
 const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
+const UTF8_BOM=Buffer.from([0xef,0xbb,0xbf]);
+const UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
 const MODES=new Set(['guide','scan','refactor','verify']);
 const SWITCHES=new Map([['--mode','mode'],['--input','input'],['--output','output']]);
 const fail=(code,status=2)=>({code,status});
@@ -29,7 +32,8 @@ const parseArguments=(argv)=>{
  if(values.input.length===0)return fail('INPUT_REQUIRED');
  return{mode:values.mode[0],input:values.input[0],output:values.output[0]};
 };
-const readStdin=async()=>{const chunks=[];for await(const chunk of process.stdin)chunks.push(Buffer.from(chunk));return Buffer.concat(chunks).toString('utf8');};
+const readStdin=async()=>{const chunks=[];for await(const chunk of process.stdin)chunks.push(Buffer.from(chunk));return Buffer.concat(chunks);};
+const hasLeadingBom=(bytes)=>bytes.length>=UTF8_BOM.length&&bytes.subarray(0,UTF8_BOM.length).equals(UTF8_BOM);
 const writeJson=(value)=>process.stdout.write(JSON.stringify(value)+'\n');
 const diagnostic=(code)=>process.stderr.write(code+'\n');
 const sha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
@@ -58,8 +62,11 @@ const main=async()=>{
  if(validateResponse===null){diagnostic('RESPONSE_SCHEMA_INVALID');return 1;}
  const parsed=parseArguments(process.argv.slice(2));
  if(parsed.code)return invalid(parsed.code,parsed.status);
+ let raw;
+ try{raw=parsed.input==='-'?await readStdin():await readFile(parsed.input);}catch{return invalid('INPUT_UNREADABLE');}
+ if(hasLeadingBom(raw))return invalid('INPUT_BOM_FORBIDDEN');
  let source;
- try{source=parsed.input==='-'?await readStdin():await readFile(parsed.input,'utf8');}catch{return invalid('INPUT_UNREADABLE');}
+ try{source=UTF8_DECODER.decode(raw);}catch{return invalid('INPUT_UTF8_INVALID');}
  let bundle;
  try{bundle=JSON.parse(source);}catch{return invalid('INPUT_JSON_INVALID');}
  if(bundle===null||typeof bundle!=='object'||Array.isArray(bundle))return invalid('INPUT_JSON_INVALID');
