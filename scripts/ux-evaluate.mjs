@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {createHash} from 'node:crypto';
+import {constants as fsConstants} from 'node:fs';
 import {open,readFile} from 'node:fs/promises';
 import {TextDecoder} from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -12,6 +13,7 @@ const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
 const MAX_BYTES=1_048_576;
 const MAX_BYTES_BIGINT=BigInt(MAX_BYTES);
+const PATH_OPEN_FLAGS=fsConstants.O_RDONLY|fsConstants.O_NONBLOCK|fsConstants.O_NOFOLLOW;
 const UTF8_BOM=Buffer.from([0xef,0xbb,0xbf]);
 const UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
 const MODES=new Set(['guide','scan','refactor','verify']);
@@ -47,7 +49,7 @@ const readStdin=async()=>{
 };
 const readPath=async(path)=>{
  let handle;
- try{handle=await open(path,'r');}catch{throw inputFailure('INPUT_UNREADABLE');}
+ try{handle=await open(path,PATH_OPEN_FLAGS);}catch{throw inputFailure('INPUT_UNREADABLE');}
  try{
   const before=await handle.stat({bigint:true});
   if(!before.isFile())throw inputFailure('INPUT_UNREADABLE');
@@ -56,9 +58,10 @@ const readPath=async(path)=>{
   while(total<bytes.length){const {bytesRead}=await handle.read(bytes,total,bytes.length-total,total);if(bytesRead===0)break;total+=bytesRead;}
   if(total>MAX_BYTES)throw inputFailure('INPUT_TOO_LARGE');
   const after=await handle.stat({bigint:true});
-  if(before.dev!==after.dev||before.ino!==after.ino)throw inputFailure('INPUT_UNREADABLE');
+  if(!after.isFile())throw inputFailure('INPUT_UNREADABLE');
+  if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size)throw inputFailure('INPUT_UNREADABLE');
   if(after.size>MAX_BYTES_BIGINT)throw inputFailure('INPUT_TOO_LARGE');
-  if(after.size!==BigInt(total))throw inputFailure('INPUT_UNREADABLE');
+  if(before.size!==BigInt(total))throw inputFailure('INPUT_UNREADABLE');
   return bytes.subarray(0,total);
  }catch(error){
   if(error?.code==='INPUT_TOO_LARGE'||error?.code==='INPUT_UNREADABLE')throw error;
