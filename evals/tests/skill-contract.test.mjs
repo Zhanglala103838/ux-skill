@@ -458,4 +458,77 @@ if(entryFailure){
 
   if(failures.length>0)assert.fail('TASK12_OPTIONS_BOUNDARY_RED:'+failures.join('|'));
  });
+
+ test('TASK12_ACTIVE_BODY_LINKS_RED counts required links only in active Markdown body nodes',async()=>{
+  const failures=[];
+  const manifestLink='[knowledge manifest](knowledge/manifest.json)';
+  const cliLink='[CLI](scripts/ux-evaluate.mjs)';
+  const expectedLinks=['knowledge/manifest.json','scripts/ux-evaluate.mjs'];
+  const splitSkill=(source)=>{
+   const match=/^---\n([\s\S]*?)\n---\n/u.exec(source);
+   assert.ok(match,'Skill frontmatter fixture');
+   return{frontmatter:match[1],body:source.slice(match[0].length)};
+  };
+  const joinSkill=({frontmatter,body})=>'---\n'+frontmatter+'\n---\n'+body;
+  const withoutActiveLinks=(source)=>{
+   const parts=splitSkill(source);
+   assert.equal(parts.body.split(manifestLink).length-1,1,'one active manifest link fixture');
+   assert.equal(parts.body.split(cliLink).length-1,1,'one active CLI link fixture');
+   return{frontmatter:parts.frontmatter,body:parts.body.replace(manifestLink,'knowledge manifest').replace(cliLink,'CLI')};
+  };
+  const expectMissing=async(label,transform)=>{
+   await withRepository(async(root)=>{
+    const path=join(root,'SKILL.md');
+    const parts=withoutActiveLinks(await read('SKILL.md',root));
+    await writeFile(path,joinSkill(transform(parts)),'utf8');
+    try{await validateSkill({repositoryRoot:root});failures.push(label+':accepted');}
+    catch(error){if(error?.code!=='SKILL_LINK_INVALID')failures.push(label+':expected SKILL_LINK_INVALID got '+(error?.code??error?.name));}
+   });
+  };
+  const expectActive=async(label,transform)=>{
+   await withRepository(async(root)=>{
+    const path=join(root,'SKILL.md');
+    await writeFile(path,joinSkill(transform(splitSkill(await read('SKILL.md',root)))),'utf8');
+    try{
+     const result=await validateSkill({repositoryRoot:root});
+     assert.deepEqual(result.links,expectedLinks,label+' returned links');
+    }catch(error){failures.push(label+':unexpected '+(error?.code??error?.name));}
+   });
+  };
+
+  const inertCases=[
+   ['frontmatter comments',({frontmatter,body})=>({frontmatter:frontmatter+'\n# '+manifestLink+'\n# '+cliLink,body})],
+   ['frontmatter quoted scalar',({frontmatter,body})=>{
+    const prefix='description: ';
+    const line=frontmatter.split('\n').find((row)=>row.startsWith(prefix));
+    assert.ok(line,'description fixture');
+    const next=frontmatter.replace(line,prefix+JSON.stringify(line.slice(prefix.length)+' '+manifestLink+' '+cliLink));
+    return{frontmatter:next,body};
+   }],
+   ['HTML comment',({frontmatter,body})=>({frontmatter,body:body+'\n<!-- '+manifestLink+'\n'+cliLink+' -->\n'})],
+   ['four-space indented code',({frontmatter,body})=>({frontmatter,body:body+'\n    '+manifestLink+'\n    '+cliLink+'\n'})],
+   ['tab-indented code',({frontmatter,body})=>({frontmatter,body:body+'\n\t'+manifestLink+'\n\t'+cliLink+'\n'})],
+   ['blank-continuation indented code',({frontmatter,body})=>({frontmatter,body:body+'\n    inert example\n\n    '+manifestLink+'\n    '+cliLink+'\n'})],
+   ['list-nested indented code',({frontmatter,body})=>({frontmatter,body:body+'\n- Inert examples:\n\n      '+manifestLink+'\n      '+cliLink+'\n'})],
+   ['fenced code',({frontmatter,body})=>({frontmatter,body:body+'\n```markdown\n'+manifestLink+'\n'+cliLink+'\n```\n'})],
+   ['inline code',({frontmatter,body})=>({frontmatter,body:body+'\n`'+manifestLink+'` and `'+cliLink+'`\n'})],
+   ['escaped text',({frontmatter,body})=>({frontmatter,body:body+'\n\\'+manifestLink+' and \\'+cliLink+'\n'})]
+  ];
+  for(const [label,transform] of inertCases)await expectMissing(label,transform);
+
+  await expectActive('active body paragraphs',({frontmatter,body})=>{
+   const stripped=withoutActiveLinks(joinSkill({frontmatter,body}));
+   return{frontmatter:stripped.frontmatter,body:stripped.body+'\nUse the '+manifestLink+' for routing.\nInvoke the '+cliLink+' for evaluation.\n'};
+  });
+  await expectActive('active body list items',({frontmatter,body})=>{
+   const stripped=withoutActiveLinks(joinSkill({frontmatter,body}));
+   return{frontmatter:stripped.frontmatter,body:stripped.body+'\n- Route with the '+manifestLink+'.\n- Evaluate with the '+cliLink+'.\n'};
+  });
+  await expectActive('active links ignore inert duplicate strings',({frontmatter,body})=>({
+   frontmatter:frontmatter+'\n# '+manifestLink+' '+cliLink,
+   body:body+'\n<!-- '+manifestLink+' '+cliLink+' -->\n    '+manifestLink+'\n    '+cliLink+'\n'
+  }));
+
+  if(failures.length>0)assert.fail('TASK12_ACTIVE_BODY_LINKS_RED:'+failures.join('|'));
+ });
 }
