@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {chmod,cp,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname,join,relative,resolve} from 'node:path';
@@ -8,11 +9,19 @@ import {fileURLToPath} from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {ImportType,init,parse} from 'es-module-lexer';
+import {canonicalize} from 'json-canonicalize';
 
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const CLI=join(ROOT,'scripts/ux-evaluate.mjs');
 const RACE_PRELOAD=fileURLToPath(new URL('../helpers/task11-path-race.cjs',import.meta.url));
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
+const SEMANTIC_PATH='schemas/evaluator/semantic-projection.schema.json';
+const SCHEMA_MANIFEST_PATH='schemas/manifest.json';
+const EVALUATOR_MANIFEST_PATH='evaluator/manifest.json';
+const RESPONSE_SCHEMA_CLOSURE=Object.freeze([
+ Object.freeze({path:RESPONSE_PATH,id:'https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json'}),
+ Object.freeze({path:SEMANTIC_PATH,id:'https://ux-skill.invalid/schemas/evaluator/semantic-projection.schema.json'})
+]);
 const [responseSchema,semanticSchema,bundle,fixtureBytes]=await Promise.all([
  readFile(new URL('../../'+RESPONSE_PATH,import.meta.url),'utf8').then(JSON.parse),
  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse),
@@ -40,6 +49,18 @@ const isolatedRun=async(mutate,options={})=>{
   return await spawnCli(isolated,options);
  }finally{await rm(isolated,{recursive:true,force:true});}
 };
+const isolatedTrustRootRuns=async(mutate)=>{
+ const isolated=await mkdtemp(join(ROOT,'.task11-response-trust-'));
+ try{
+  for(const name of ['scripts','evaluator','schemas','knowledge'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
+  await cp(join(ROOT,'package.json'),join(isolated,'package.json'));
+  await writeFile(join(isolated,'runtime-input.json'),JSON.stringify(bundle));
+  await mutate(isolated);
+  const earlyInvalid=await spawnCli(isolated,{args:['--unknown','x']});
+  const validBundle=await spawnCli(isolated);
+  return{earlyInvalid,validBundle};
+ }finally{await rm(isolated,{recursive:true,force:true});}
+};
 const expectFailed=(row,code,label)=>{
  assert.equal(row.status,1,label+':exit');assert.equal(row.signal,null,label+':signal');
  assert.deepEqual(row.json,{run_status:'failed',error_codes:[code]},label+':json');
@@ -57,6 +78,36 @@ const expectResponseSchemaBoundary=(row,label)=>{
  assert.equal(row.status,1,label+':exit');assert.equal(row.signal,null,label+':signal');assert.equal(row.stdout,'',label+':stdout');assert.equal(row.stderr,'RESPONSE_SCHEMA_INVALID\n',label+':stderr');assert.equal(row.json,null,label+':json');
 };
 const capture=async(failures,label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+error.message);}};
+const rawSha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
+const schemaManifestDigest=(manifest)=>createHash('sha256').update('ux-skill:manifest:v1','utf8').update(canonicalize(manifest),'utf8').digest('hex');
+const semanticRowIndex=(manifest)=>{const indexes=[];for(let index=0;index<manifest.length;index+=1){if(manifest[index]?.path===SEMANTIC_PATH)indexes.push(index);}assert.deepEqual(indexes.length,1,'semantic manifest row precondition');return indexes[0];};
+const rewriteBoundSchemaManifest=async(root,mutate)=>{
+ const schemaPath=join(root,SCHEMA_MANIFEST_PATH),evaluatorPath=join(root,EVALUATOR_MANIFEST_PATH);
+ const manifest=JSON.parse(await readFile(schemaPath,'utf8'));await mutate(manifest);
+ const evaluatorManifest=JSON.parse(await readFile(evaluatorPath,'utf8'));evaluatorManifest.schema_manifest_digest=schemaManifestDigest(manifest);
+ await Promise.all([writeFile(schemaPath,JSON.stringify(manifest,null,2)+'\n'),writeFile(evaluatorPath,JSON.stringify(evaluatorManifest,null,2)+'\n')]);
+};
+const assertResponseSchemaClosure=async(root)=>{
+ const manifest=JSON.parse(await readFile(join(root,SCHEMA_MANIFEST_PATH),'utf8')),schemasById=new Map(),pathsById=new Map();
+ for(const expected of RESPONSE_SCHEMA_CLOSURE){
+  const raw=await readFile(join(root,expected.path)),schema=JSON.parse(raw);
+  assert.equal(schema.$id,expected.id,expected.path+':$id');
+  const rows=manifest.filter((row)=>row?.path===expected.path);assert.equal(rows.length,1,expected.path+':manifest row');assert.equal(rows[0].file_digest,rawSha(raw),expected.path+':raw digest');
+  assert.equal(schemasById.has(expected.id),false,expected.id+':duplicate id');schemasById.set(expected.id,schema);pathsById.set(expected.id,expected.path);
+ }
+ const visited=new Set();
+ const visit=(id)=>{
+  if(visited.has(id))return;visited.add(id);const schema=schemasById.get(id);assert.ok(schema,id+':schema missing');
+  const walk=(value)=>{
+   if(value===null||typeof value!=='object')return;
+   if(typeof value.$ref==='string'&&!value.$ref.startsWith('#')){const target=new URL(value.$ref,id);target.hash='';assert.equal(target.hostname,'ux-skill.invalid',value.$ref+':remote ref');assert.ok(schemasById.has(target.href),target.href+':unbound external ref');visit(target.href);}
+   for(const child of Array.isArray(value)?value:Object.values(value))walk(child);
+  };
+  walk(schema);
+ };
+ visit(RESPONSE_SCHEMA_CLOSURE[0].id);
+ const actual=[...visited].map((id)=>pathsById.get(id)).sort(),expected=RESPONSE_SCHEMA_CLOSURE.map((row)=>row.path).sort();assert.deepEqual(actual,expected,'response schema external closure');
+};
 const collectStaticLocalClosure=async(entry)=>{
  const visited=new Set();
  const visit=async(path)=>{
@@ -93,9 +144,10 @@ const runTornSnapshot=async()=>{
  }finally{await rm(directory,{recursive:true,force:true});}
 };
 
-test('CLI closes bootstrap failures and rejects a same-size torn path snapshot',async()=>{
+test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',async()=>{
  const failures=[];
  await capture(failures,'CLI static local bootstrap closure',async()=>assert.deepEqual(await collectStaticLocalClosure(CLI),[]));
+ await capture(failures,'response schema external closure is exact and raw-bound',async()=>assertResponseSchemaClosure(ROOT));
  const cases=[
   ['missing evaluator digests stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'evaluator/digests.mjs')),{inputKind:'stdin'}],
   ['malformed evaluator digests path','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'evaluator/digests.mjs'),'export const =\n'),{inputKind:'path'}],
@@ -128,6 +180,20 @@ test('CLI closes bootstrap failures and rejects a same-size torn path snapshot',
   ['response schema malformed trust root',async(root)=>writeFile(join(root,RESPONSE_PATH),'{')]
  ];
  for(const [label,mutate,options] of responseSchemaCases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectResponseSchemaBoundary(row,label));}
+ const responseClosureCases=[
+  ['semantic schema whitespace raw tamper',async(root)=>{const path=join(root,SEMANTIC_PATH);await writeFile(path,(await readFile(path,'utf8'))+' \n');}],
+  ['semantic schema missing',async(root)=>rm(join(root,SEMANTIC_PATH))],
+  ['semantic schema malformed',async(root)=>writeFile(join(root,SEMANTIC_PATH),'{')],
+  ['semantic manifest row missing',async(root)=>rewriteBoundSchemaManifest(root,(manifest)=>{manifest.splice(semanticRowIndex(manifest),1);})],
+  ['semantic manifest row duplicate',async(root)=>rewriteBoundSchemaManifest(root,(manifest)=>{const index=semanticRowIndex(manifest);manifest.splice(index+1,0,{...manifest[index]});})],
+  ['semantic manifest row wrong path',async(root)=>rewriteBoundSchemaManifest(root,(manifest)=>{manifest[semanticRowIndex(manifest)].path='schemas/evaluator/semantic-projection-copy.schema.json';})],
+  ['semantic manifest row wrong digest',async(root)=>rewriteBoundSchemaManifest(root,(manifest)=>{manifest[semanticRowIndex(manifest)].file_digest='0'.repeat(64);})]
+ ];
+ for(const [label,mutate] of responseClosureCases){
+  const rows=await isolatedTrustRootRuns(mutate);
+  await capture(failures,label+' early invalid',async()=>expectResponseSchemaBoundary(rows.earlyInvalid,label+' early invalid'));
+  await capture(failures,label+' valid bundle',async()=>expectResponseSchemaBoundary(rows.validBundle,label+' valid bundle'));
+ }
  await capture(failures,'same-inode same-size torn snapshot',async()=>{
   const {row,marker,finalMatchesReplacement,partialBytes}=await runTornSnapshot();
   assert.equal(marker.fired,true,'mutation marker');assert.equal(marker.firstReadBytes,partialBytes,'partial read');assert.equal(finalMatchesReplacement,true,'final file B');
@@ -136,5 +202,5 @@ test('CLI closes bootstrap failures and rejects a same-size torn path snapshot',
   assert.equal(row.timedOut,false,'timeout');expectInvalid(row,'INPUT_UNREADABLE','torn snapshot');
   for(const forbidden of ['audit_sidecar','assurance','inquiry','semantic_projection','semantic_digest'])assert.equal(Object.hasOwn(row.json,forbidden),false,'torn snapshot:'+forbidden);
  });
- if(failures.length>0)assert.fail('TASK11_CLI_BOOTSTRAP_SNAPSHOT_RED\n'+failures.join('\n'));
+ if(failures.length>0)assert.fail('TASK11_RESPONSE_SCHEMA_CLOSURE_RED\n'+failures.join('\n'));
 });
