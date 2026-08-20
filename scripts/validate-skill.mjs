@@ -96,10 +96,13 @@ function validateSkillSource(source){
 
 function validateMetadataSource(source){
  if(source.startsWith('\uFEFF')||source.includes('\r')||source.normalize('NFC')!==source)fail('SKILL_METADATA_INVALID');
- for(const key of ['display_name','short_description','default_prompt']){
-  const pattern=new RegExp('^  '+key+': "(?:[^"\\]|\\.)*"$','m');
-  if(!pattern.test(source))fail('SKILL_METADATA_STRING_UNQUOTED');
- }
+ const lines=new Set(source.split('\n'));
+ const quotedLines=[
+  '  display_name: "Evidence-aware Product UX"',
+  '  short_description: "Evidence-bounded guidance for digital product UX"',
+  '  default_prompt: "Use $improving-product-ux to guide, scan, refactor, or verify this product experience."'
+ ];
+ if(quotedLines.some((line)=>!lines.has(line)))fail('SKILL_METADATA_STRING_UNQUOTED');
  const value=parseYaml(source,'SKILL_METADATA_INVALID');
  if(!sameKeys(value,['interface','policy'])||!sameKeys(value.interface,['display_name','short_description','default_prompt'])||!sameKeys(value.policy,['allow_implicit_invocation']))fail('SKILL_METADATA_FIELDS_INVALID');
  if(!sameData(value,EXPECTED_METADATA))fail('SKILL_METADATA_INVALID');
