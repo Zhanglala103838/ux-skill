@@ -23,7 +23,7 @@
     },
     {
       "path": "evaluator/index.mjs",
-      "file_digest": "013c4aefde40cb5cdcf1194634f5aaed58bf43fe82170d5fd3403201d0797824"
+      "file_digest": "127110e2194cc4a56ff12510102ca3152be7b7db3941b83781323ae78a219ebb"
     },
     {
       "path": "evaluator/projection.mjs",
@@ -38,7 +38,7 @@
       "file_digest": "4dae31a8994cc9700db3d836b5343897e48c5a2456cdc0365ccdffb6baf38163"
     }
   ],
-  "schema_manifest_digest": "ddbf5c8ce87f3645206dc399fe684fef489fd6017c07376c1552420e887e0899",
+  "schema_manifest_digest": "480db8a8c735adcdf9b0eae6085b40671906404b266fa0d1a2bd4ceca0772d93",
   "knowledge_manifest_digest": "1704ad07fd1e9557ab64c1e484f68b069f8c4f017e79ed979a34db47e5a0ce50",
   "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29"
 }

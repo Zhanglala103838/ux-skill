@@ -29,7 +29,7 @@ else{
   const nfc=structuredClone(golden.bundle);nfc.scenario_profile_id='e\u0301';
   await assert.rejects(()=>evaluate(nfc),e=>{assert.deepEqual([...new Set(e.errors.map(x=>x.stage))],['nfc']);return true});
   const b=structuredClone(golden.bundle);delete b.scenario_profile_id;
-  await assert.rejects(()=>evaluate(b),e=>{assert.equal(e.errors[0].stage,'schema');assert.ok(e.errors.some(x=>x.stage==='collections'&&x.code==='SUPPRESSED_BY_STAGE'));return true})
+  await assert.rejects(()=>evaluate(b),e=>{assert.ok(e.errors.some(x=>x.stage==='schema'&&x.code==='REQUIRED_MISSING'));assert.ok(e.errors.some(x=>x.stage==='collections'&&x.code==='SUPPRESSED_BY_STAGE'));return true})
  });
  test('all manifests and the canonical nine-module evaluator closure are raw-byte authenticated',async()=>{
   const[m,s,k,p,d]=await Promise.all(['evaluator/manifest.json','schemas/manifest.json','knowledge/manifest.json','knowledge/policy-manifest.json'].map(x=>readFile(x,'utf8').then(JSON.parse)).concat(readFile('knowledge/decision-policies.json')));
@@ -61,5 +61,5 @@ else{
  test('semantic projection excludes volatile localized MCP and Inquiry text',async()=>{
   const p=(await evaluate(structuredClone(golden.bundle))).semantic_projection;for(const f of['audit_sidecar','assurance','inquiry','inquiry_draft','wall_clock_started_at','wall_clock_finished_at','localized_messages','mcp_text'])assert.equal(Object.hasOwn(p,f),false,f);if(golden.bundle.inquiry_draft?.text)assert.equal(JSON.stringify(p).includes(golden.bundle.inquiry_draft.text),false);assert.equal(JSON.stringify(p).includes('MCP_TRANSPORT_TEXT_DO_NOT_HASH'),false)
  });
- test('Task9 incomplete inputs remain no_release',async()=>{const p=(await evaluate(structuredClone(golden.task9_incomplete_bundle))).semantic_projection;assert.equal(p.release_recommendation.status,'no_release');assert.notEqual(p.run_status,'completed_clear');assert.ok(p.run_issues.some(x=>x.code==='SNAPSHOT_CLOSURE_UNAVAILABLE'));assert.ok(!['allow','allow_with_conditions'].includes(p.release_recommendation.status))})
+ test('Task9 incomplete inputs remain no_release',async()=>{const p=(await evaluate(structuredClone(golden.task9_incomplete_bundle))).semantic_projection;assert.equal(p.release_recommendation.status,'no_release');assert.notEqual(p.run_status,'completed_clear');assert.ok(p.run_issues.some(x=>x.code==='RULE_EVALUATION_ERROR'&&x.instance_pointer==='/snapshot_closure'&&x.dependency_id===null));assert.ok(p.coverage_gaps.some(x=>x.reason_code==='SNAPSHOT_CLOSURE_UNAVAILABLE'&&x.release_critical===true));assert.ok(!['allow','allow_with_conditions'].includes(p.release_recommendation.status))})
 }

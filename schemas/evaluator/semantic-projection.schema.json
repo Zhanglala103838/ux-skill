@@ -88,37 +88,7 @@
     "release_recommendation": {
       "anyOf": [
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "status",
-            "next_action",
-            "condition_ids"
-          ],
-          "properties": {
-            "status": {
-              "type": "string",
-              "enum": [
-                "allow",
-                "allow_with_conditions",
-                "block",
-                "escalation",
-                "undecided",
-                "no_release"
-              ]
-            },
-            "next_action": {
-              "type": "string",
-              "minLength": 1
-            },
-            "condition_ids": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
-          }
+          "$ref": "#/$defs/ReleaseRecommendation"
         },
         {
           "type": "null"
@@ -366,37 +336,7 @@
         "release_recommendation": {
           "anyOf": [
             {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "status",
-                "next_action",
-                "condition_ids"
-              ],
-              "properties": {
-                "status": {
-                  "type": "string",
-                  "enum": [
-                    "allow",
-                    "allow_with_conditions",
-                    "block",
-                    "escalation",
-                    "undecided",
-                    "no_release"
-                  ]
-                },
-                "next_action": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "condition_ids": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              }
+              "$ref": "#/$defs/ReleaseRecommendation"
             },
             {
               "type": "null"
@@ -2098,10 +2038,7 @@
       ],
       "properties": {
         "code": {
-          "enum": [
-            "RULE_EVALUATION_ERROR",
-            "SNAPSHOT_CLOSURE_UNAVAILABLE"
-          ]
+          "const": "RULE_EVALUATION_ERROR"
         },
         "instance_pointer": {
           "type": "string"

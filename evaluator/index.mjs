@@ -51,7 +51,7 @@ const evaluateCore=(normalized,artifacts)=>{
  const context=deriveFindingContext(normalized);
  const findings=canonicalSet(ruleEvaluations.map((row)=>emitFinding(row,context)).filter(Boolean),(row)=>row.fingerprint);const replayRules=[evaluateRule(rule,normalized,[])],replayFindings=canonicalSet(replayRules.map((row)=>emitFinding(row,context)).filter(Boolean),(row)=>row.fingerprint);if(!jcsBytes(ruleEvaluations).equals(jcsBytes(replayRules))||!jcsBytes(findings).equals(jcsBytes(replayFindings)))artifactFailure('TASK5_PROVENANCE_REPLAY_MISMATCH');
  const incomplete=normalized.research_state.status==='blocked'||(normalized.target_snapshot.target_kind==='hulianui_contract'&&normalized.adapter_evidence.length===0);
- const runIssues=incomplete?[{code:'SNAPSHOT_CLOSURE_UNAVAILABLE',instance_pointer:'/adapter_evidence',dependency_id:null}]:[];
+ const runIssues=incomplete?[{code:'RULE_EVALUATION_ERROR',instance_pointer:'/snapshot_closure',dependency_id:null}]:[];
  let runStatus=reduceRunStatus([...ruleEvaluations,...findings]);if(incomplete&&runStatus==='completed_clear')runStatus='completed_with_gaps';
  const claimSources=normalized.claims.map(claimSource),claimAssessments=canonicalSet(claimSources.map(materializeClaimAssessment),(row)=>row.claim_assessment_id);
  const findingOwner={findings};

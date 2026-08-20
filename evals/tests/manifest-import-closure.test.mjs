@@ -39,8 +39,8 @@ test('MANIFEST_IMPORT_CLOSURE_RED freezes exact nine evaluator paths for Task10 
     .sort(utf8Compare);
   assert.deepEqual(
     currentEvaluatorModules,
-    EXPECTED_EVALUATOR_MODULE_PATHS.filter((path) => path !== 'evaluator/index.mjs'),
-    'the pre-Task10 evaluator surface must remain the exact current eight modules'
+    EXPECTED_EVALUATOR_MODULE_PATHS,
+    'the Task10 evaluator surface must be the exact canonical nine modules'
   );
 
   const [plan, design] = await Promise.all([
