@@ -377,6 +377,85 @@ if(entryFailure){
    await reset();
   });
 
-  if(failures.length>0)assert.fail('TASK12_PORTABLE_UTF8_RED:'+failures.join('|'));
+ if(failures.length>0)assert.fail('TASK12_PORTABLE_UTF8_RED:'+failures.join('|'));
+ });
+
+ test('TASK12_OPTIONS_BOUNDARY_RED rejects hostile validator option shapes without executing them',async()=>{
+  const failures=[];
+  const expectCode=async(label,options,expectedCode='SKILL_OPTIONS_INVALID')=>{
+   try{await validateSkill(options);failures.push(label+':accepted');}
+   catch(error){if(error?.code!==expectedCode)failures.push(label+':expected '+expectedCode+' got '+(error?.code??error?.name));}
+  };
+  const expectPass=async(label,options)=>{
+   try{await validateSkill(options);}catch(error){failures.push(label+':unexpected '+(error?.code??error?.name));}
+  };
+  const rawTrap=(name)=>()=>{const error=new Error(name+'_EXECUTED');error.code='RAW_'+name;throw error;};
+
+  await expectPass('undefined options',undefined);
+  await expectPass('empty ordinary options',{});
+  await expectPass('ordinary own data root',{repositoryRoot:process.cwd()});
+  const nullPrototypeOptions=Object.create(null);
+  Object.defineProperty(nullPrototypeOptions,'repositoryRoot',{value:process.cwd(),enumerable:true,writable:true,configurable:true});
+  await expectPass('null-prototype own data root',nullPrototypeOptions);
+
+  await expectCode('inherited repositoryRoot',Object.create({repositoryRoot:process.cwd()}));
+  let getterCalls=0;
+  const getterOptions={};
+  Object.defineProperty(getterOptions,'repositoryRoot',{enumerable:true,get(){getterCalls+=1;return process.cwd();}});
+  await expectCode('own getter',getterOptions);
+  if(getterCalls!==0)failures.push('own getter executed '+getterCalls+' time(s)');
+  const throwingGetter={};
+  Object.defineProperty(throwingGetter,'repositoryRoot',{enumerable:true,get:rawTrap('GETTER')});
+  await expectCode('throwing own getter',throwingGetter);
+  const setterOnly={};
+  Object.defineProperty(setterOnly,'repositoryRoot',{enumerable:true,set(){throw new Error('SETTER_EXECUTED');}});
+  await expectCode('setter-only accessor',setterOnly);
+
+  const rejectedObjects=[
+   ['Date',new Date(0)],
+   ['RegExp',/root/u],
+   ['Map',new Map()],
+   ['Set',new Set()],
+   ['boxed String',new String('root')],
+   ['boxed Number',new Number(1)],
+   ['boxed Boolean',new Boolean(true)],
+   ['array',[]],
+   ['function',function options(){}],
+   ['class instance',new(class Options{})()]
+  ];
+  for(const [label,options] of rejectedObjects)await expectCode(label,options);
+
+  await expectCode('symbol key',{[Symbol('repositoryRoot')]:process.cwd()});
+  const hiddenRoot={};
+  Object.defineProperty(hiddenRoot,'repositoryRoot',{value:process.cwd(),enumerable:false});
+  await expectCode('non-enumerable repositoryRoot',hiddenRoot);
+  const hiddenExtra={};
+  Object.defineProperty(hiddenExtra,'extra',{value:true,enumerable:false});
+  await expectCode('non-enumerable extra key',hiddenExtra);
+  await expectCode('enumerable extra key',{repositoryRoot:process.cwd(),extra:true});
+
+  await expectCode('throwing Proxy ownKeys',new Proxy({}, {ownKeys:rawTrap('OWN_KEYS')}));
+  await expectCode('throwing Proxy getPrototypeOf',new Proxy({}, {getPrototypeOf:rawTrap('GET_PROTOTYPE_OF')}));
+  await expectCode('throwing Proxy descriptor',new Proxy({repositoryRoot:process.cwd()},{getOwnPropertyDescriptor:rawTrap('GET_DESCRIPTOR')}));
+  await expectCode('throwing Proxy get',new Proxy({repositoryRoot:process.cwd()},{get:rawTrap('GET')}));
+  const revocable=Proxy.revocable({},{});revocable.revoke();
+  await expectCode('revoked Proxy',revocable.proxy);
+
+  for(const [label,value] of [
+   ['null repositoryRoot',null],
+   ['numeric repositoryRoot',1],
+   ['object repositoryRoot',{}],
+   ['symbol repositoryRoot',Symbol('root')]
+  ])await expectCode(label,{repositoryRoot:value});
+  await expectCode('NUL repositoryRoot',{repositoryRoot:process.cwd()+'\0suffix'},'SKILL_REPOSITORY_ROOT_INVALID');
+  await withRepository(async(root)=>{
+   const nonNfcRoot=root+'-e\u0301';
+   try{
+    await cp(root,nonNfcRoot,{recursive:true});
+    await expectCode('non-NFC real repositoryRoot',{repositoryRoot:nonNfcRoot},'SKILL_REPOSITORY_ROOT_INVALID');
+   }finally{await rm(nonNfcRoot,{recursive:true,force:true});}
+  });
+
+  if(failures.length>0)assert.fail('TASK12_OPTIONS_BOUNDARY_RED:'+failures.join('|'));
  });
 }
