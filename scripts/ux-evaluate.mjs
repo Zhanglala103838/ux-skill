@@ -5,8 +5,7 @@ import {open,readFile} from 'node:fs/promises';
 import {TextDecoder} from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import {digestJcs} from '../evaluator/digests.mjs';
-import {parseKnowledgeJson} from './check-knowledge.mjs';
+import {parseKnowledgeJson,responseSchemaManifestDigest} from './strict-json.mjs';
 
 const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
@@ -78,7 +77,7 @@ const loadResponseValidator=async()=>{
  const responseSchema=JSON.parse(responseRaw),semanticSchema=JSON.parse(semanticRaw),manifest=JSON.parse(manifestRaw),evaluatorManifest=JSON.parse(evaluatorManifestRaw);
  const rows=manifest.filter((row)=>row.path===RESPONSE_PATH);
  if(rows.length!==1||rows[0].file_digest!==sha(responseRaw))throw new TypeError('RESPONSE_SCHEMA_MANIFEST_INVALID');
- if(evaluatorManifest.schema_manifest_digest!==digestJcs('ux-skill:manifest:v1',manifest))throw new TypeError('RESPONSE_SCHEMA_DOMAIN_DIGEST_INVALID');
+ if(evaluatorManifest.schema_manifest_digest!==responseSchemaManifestDigest(manifest))throw new TypeError('RESPONSE_SCHEMA_DOMAIN_DIGEST_INVALID');
  const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});addFormats(ajv);ajv.addSchema(semanticSchema);
  return ajv.compile(responseSchema);
 };

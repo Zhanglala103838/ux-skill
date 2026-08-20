@@ -395,7 +395,7 @@ git commit -m "feat: add evidence-aware UX recommendation reducers"
 
 **Files:**
 - Create: all eight `references/*.md`
-- Create: `knowledge/manifest.json`, `knowledge/policy-manifest.json`, `scripts/check-knowledge.mjs`
+- Create: `knowledge/manifest.json`, `knowledge/policy-manifest.json`, `scripts/check-knowledge.mjs`, `scripts/strict-json.mjs`
 - Create: `evals/tests/knowledge-manifest.test.mjs`
 
 **Interfaces:**
@@ -429,7 +429,7 @@ Run: `node scripts/check-knowledge.mjs && node --test evals/tests/knowledge-mani
 Expected: PASS; changing one knowledge or reference byte fails the manifest check.
 
 ```bash
-git add references knowledge/manifest.json knowledge/policy-manifest.json scripts/check-knowledge.mjs evals/tests/knowledge-manifest.test.mjs
+git add references knowledge/manifest.json knowledge/policy-manifest.json scripts/check-knowledge.mjs scripts/strict-json.mjs evals/tests/knowledge-manifest.test.mjs
 git commit -m "feat: add UX knowledge and route manifest"
 ```
 
@@ -592,8 +592,8 @@ git commit -m "feat: compose deterministic UX evaluator"
 ### Task 11: CLI and HulianUI Bridge Transports
 
 **Files:**
-- Create: `scripts/ux-evaluate.mjs`, `adapters/hulianui/bridge.mjs`
-- Modify: `package.json`, `schemas/adapters/hulian-evaluation-request-v1.schema.json`, `schemas/manifest.json`, `evaluator/manifest.json`
+- Create: `scripts/ux-evaluate.mjs`, `scripts/strict-json.mjs`, `adapters/hulianui/bridge.mjs`
+- Modify: `scripts/check-knowledge.mjs`, `package.json`, `schemas/adapters/hulian-evaluation-request-v1.schema.json`, `schemas/manifest.json`, `evaluator/manifest.json`
 - Create: `schemas/adapters/ux-evaluate-response-v1.schema.json`
 - Consume: `adapters/hulianui/adapter.mjs`
 - Create: `evals/tests/cli.test.mjs`, `evals/tests/cli-response-schema.test.mjs`, `evals/helpers/process.mjs`
@@ -633,7 +633,7 @@ Expected before: FAIL; after: PASS. The CLI and bridge must call `evaluate(bundl
 - [x] **Step 3: Commit**
 
 ```bash
-git add package.json scripts/ux-evaluate.mjs adapters/hulianui/bridge.mjs schemas/adapters/hulian-evaluation-request-v1.schema.json schemas/adapters/ux-evaluate-response-v1.schema.json schemas/manifest.json evaluator/manifest.json evals/tests/cli.test.mjs evals/tests/cli-response-schema.test.mjs evals/tests/validation.test.mjs evals/helpers/process.mjs evals/parity docs/superpowers/plans/2026-08-18-evidence-aware-product-ux-skill-v0.1-vertical-slice.md
+git add package.json scripts/ux-evaluate.mjs scripts/strict-json.mjs scripts/check-knowledge.mjs adapters/hulianui/bridge.mjs schemas/adapters/hulian-evaluation-request-v1.schema.json schemas/adapters/ux-evaluate-response-v1.schema.json schemas/manifest.json evaluator/manifest.json evals/tests/cli.test.mjs evals/tests/cli-response-schema.test.mjs evals/tests/validation.test.mjs evals/helpers/process.mjs evals/parity docs/superpowers/plans/2026-08-18-evidence-aware-product-ux-skill-v0.1-vertical-slice.md
 git commit -m "feat: expose UX evaluator transports"
 ```
 
