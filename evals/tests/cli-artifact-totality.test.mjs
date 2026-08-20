@@ -30,7 +30,12 @@ const [responseSchema,semanticSchema,bundle,fixtureBytes,snapshotFallbackBundle]
  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse),
  readFile(new URL('../parity/scan.json',import.meta.url),'utf8').then(JSON.parse),
  readFile(new URL('../parity/scan.json',import.meta.url)),
- readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8').then(JSON.parse).then((value)=>value.bundle)
+ readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8').then(JSON.parse).then((value)=>{
+  const fallback=value.bundle;
+  fallback.target_snapshot={target_snapshot_id:'task10-black-box-snapshot',target_kind:'black_box_site',canonical_locator:'public-sites/task10-example',snapshot_digest:'5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b'};
+  fallback.research_state={research_state_id:'task10-tamper-research',status:'authorized',authorization_ref:'task10-read-only'};
+  fallback.adapter_evidence=[];fallback.snapshot_closure_result=null;return fallback;
+ })
 ]);
 await init;
 const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});addFormats(ajv);ajv.addSchema(semanticSchema);
