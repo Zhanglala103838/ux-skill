@@ -2,18 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {chmod,cp,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {dirname,join,relative,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import {ImportType,init,parse} from 'es-module-lexer';
 
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
+const CLI=join(ROOT,'scripts/ux-evaluate.mjs');
+const RACE_PRELOAD=fileURLToPath(new URL('../helpers/task11-path-race.cjs',import.meta.url));
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
-const [responseSchema,semanticSchema,bundle]=await Promise.all([
+const [responseSchema,semanticSchema,bundle,fixtureBytes]=await Promise.all([
  readFile(new URL('../../'+RESPONSE_PATH,import.meta.url),'utf8').then(JSON.parse),
  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse),
- readFile(new URL('../parity/scan.json',import.meta.url),'utf8').then(JSON.parse)
+ readFile(new URL('../parity/scan.json',import.meta.url),'utf8').then(JSON.parse),
+ readFile(new URL('../parity/scan.json',import.meta.url))
 ]);
+await init;
 const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});addFormats(ajv);ajv.addSchema(semanticSchema);
 const validateResponse=ajv.compile(responseSchema);
 const spawnCli=(isolated,options={})=>new Promise((resolve,reject)=>{
@@ -51,9 +57,45 @@ const expectResponseSchemaBoundary=(row,label)=>{
  assert.equal(row.status,1,label+':exit');assert.equal(row.signal,null,label+':signal');assert.equal(row.stdout,'',label+':stdout');assert.equal(row.stderr,'RESPONSE_SCHEMA_INVALID\n',label+':stderr');assert.equal(row.json,null,label+':json');
 };
 const capture=async(failures,label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+error.message);}};
+const collectStaticLocalClosure=async(entry)=>{
+ const visited=new Set();
+ const visit=async(path)=>{
+  if(visited.has(path))return;visited.add(path);
+  const [imports]=parse(await readFile(path,'utf8'),relative(ROOT,path));
+  for(const row of imports){if(row.t===ImportType.Static&&typeof row.n==='string'&&row.n.startsWith('.'))await visit(resolve(dirname(path),row.n));}
+ };
+ await visit(entry);
+ return [...visited].filter((path)=>path!==entry).map((path)=>relative(ROOT,path).split('\\').join('/')).sort();
+};
+const runTornSnapshot=async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'ux-skill-task11-torn-'));
+ try{
+  const inputPath=join(directory,'input.json'),replacementPath=join(directory,'replacement.json'),markerPath=join(directory,'mutation.json');
+  const source=fixtureBytes.toString('utf8');
+  const replacementSource=source.replace('2026-08-20T00:00:00.000Z','2026-08-21T00:00:00.000Z').replace('snap-delete-001','snap-update-001');
+  assert.notEqual(replacementSource,source,'replacement must differ');
+  const replacement=Buffer.from(replacementSource,'utf8'),partialBytes=160;
+  assert.equal(replacement.length,fixtureBytes.length,'replacement size');
+  const hybrid=Buffer.concat([fixtureBytes.subarray(0,partialBytes),replacement.subarray(partialBytes)]);
+  assert.doesNotThrow(()=>JSON.parse(hybrid.toString('utf8')),'hybrid JSON');
+  assert.equal(hybrid.equals(fixtureBytes),false,'hybrid differs from A');assert.equal(hybrid.equals(replacement),false,'hybrid differs from B');
+  await Promise.all([writeFile(inputPath,fixtureBytes),writeFile(replacementPath,replacement)]);
+  const env={LANG:'C',LC_ALL:'C',TZ:'UTC',UX_REQUEST_ID:'task11-torn-snapshot',TASK11_RACE_PATH:inputPath,TASK11_RACE_MODE:'same-size-overwrite',TASK11_RACE_REPLACEMENT_PATH:replacementPath,TASK11_RACE_PARTIAL_BYTES:String(partialBytes),TASK11_RACE_MARKER_PATH:markerPath};
+  const row=await new Promise((resolveRow,reject)=>{
+   const child=spawn(process.execPath,['--require',RACE_PRELOAD,CLI,'--mode','scan','--input',inputPath,'--output','json'],{cwd:ROOT,env,stdio:['ignore','pipe','pipe']});
+   const stdout=[];const stderr=[];let timedOut=false;let forceTimer=null;
+   child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));child.on('error',reject);
+   const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');forceTimer=setTimeout(()=>child.kill('SIGKILL'),250);},15_000);
+   child.on('close',(status,signal)=>{clearTimeout(timer);if(forceTimer!==null)clearTimeout(forceTimer);const stdoutText=Buffer.concat(stdout).toString('utf8'),stderrText=Buffer.concat(stderr).toString('utf8');let json=null;try{if(stdoutText.length>0)json=JSON.parse(stdoutText);}catch(error){reject(Object.assign(error,{stdout:stdoutText,stderr:stderrText,status,signal,timedOut}));return;}resolveRow({status,signal,stdout:stdoutText,stderr:stderrText,json,timedOut});});
+  });
+  const marker=JSON.parse(await readFile(markerPath,'utf8'));const finalBytes=await readFile(inputPath);
+  return{row,marker,finalMatchesReplacement:finalBytes.equals(replacement),partialBytes};
+ }finally{await rm(directory,{recursive:true,force:true});}
+};
 
-test('CLI emits one closed total response for every evaluator artifact failure domain',async()=>{
+test('CLI closes bootstrap failures and rejects a same-size torn path snapshot',async()=>{
  const failures=[];
+ await capture(failures,'CLI static local bootstrap closure',async()=>assert.deepEqual(await collectStaticLocalClosure(CLI),[]));
  const cases=[
   ['missing evaluator digests stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'evaluator/digests.mjs')),{inputKind:'stdin'}],
   ['malformed evaluator digests path','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'evaluator/digests.mjs'),'export const =\n'),{inputKind:'path'}],
@@ -78,10 +120,21 @@ test('CLI emits one closed total response for every evaluator artifact failure d
  ];
  for(const [label,code,mutate,options] of precedenceCases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectInvalid(row,code,label));}
  const responseSchemaCases=[
+  ['strict JSON bootstrap missing',async(root)=>rm(join(root,'scripts/strict-json.mjs'))],
+  ['strict JSON bootstrap malformed',async(root)=>writeFile(join(root,'scripts/strict-json.mjs'),'export const =\n')],
+  ['strict JSON bootstrap precedes invalid mode',async(root)=>rm(join(root,'scripts/strict-json.mjs')),{args:['--mode','audit','--input','-','--output','json']}],
   ['response schema digest trust root',async(root)=>{const path=join(root,RESPONSE_PATH);await writeFile(path,(await readFile(path,'utf8'))+' ');}],
   ['response schema missing trust root',async(root)=>rm(join(root,RESPONSE_PATH))],
   ['response schema malformed trust root',async(root)=>writeFile(join(root,RESPONSE_PATH),'{')]
  ];
- for(const [label,mutate] of responseSchemaCases){const row=await isolatedRun(mutate);await capture(failures,label,async()=>expectResponseSchemaBoundary(row,label));}
- if(failures.length>0)assert.fail('TASK11_EVALUATOR_BOOTSTRAP_TOTAL_RESPONSE_RED\n'+failures.join('\n'));
+ for(const [label,mutate,options] of responseSchemaCases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectResponseSchemaBoundary(row,label));}
+ await capture(failures,'same-inode same-size torn snapshot',async()=>{
+  const {row,marker,finalMatchesReplacement,partialBytes}=await runTornSnapshot();
+  assert.equal(marker.fired,true,'mutation marker');assert.equal(marker.firstReadBytes,partialBytes,'partial read');assert.equal(finalMatchesReplacement,true,'final file B');
+  for(const field of ['dev','ino','size'])assert.equal(marker.before[field],marker.after[field],field+' stable');
+  assert.ok(marker.before.mtimeNs!==marker.after.mtimeNs||marker.before.ctimeNs!==marker.after.ctimeNs,'nanosecond mutation metadata must change');
+  assert.equal(row.timedOut,false,'timeout');expectInvalid(row,'INPUT_UNREADABLE','torn snapshot');
+  for(const forbidden of ['audit_sidecar','assurance','inquiry','semantic_projection','semantic_digest'])assert.equal(Object.hasOwn(row.json,forbidden),false,'torn snapshot:'+forbidden);
+ });
+ if(failures.length>0)assert.fail('TASK11_CLI_BOOTSTRAP_SNAPSHOT_RED\n'+failures.join('\n'));
 });
