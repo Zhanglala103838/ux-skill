@@ -21,7 +21,7 @@
   },
   {
     "path": "schemas/core/evaluation-input.schema.json",
-    "file_digest": "062c2c87ec4ae06fed06cb38cbe312373020d6373e5d34fed7f837d2ede9ca0f"
+    "file_digest": "1880ba92b12e5bca19c999af69fbc53c3ce607d8c414a1dd38dd8ccbdc20e496"
   },
   {
     "path": "schemas/core/real-world-case.schema.json",
@@ -33,7 +33,7 @@
   },
   {
     "path": "schemas/evaluator/output.schema.json",
-    "file_digest": "28c109d381aece4b23c2593cdbfbea9453da1f13ef895156037e9c65c95a3725"
+    "file_digest": "b250807653b4a34539b3a2d47908821c4f262d1ab3a3f5c1be36db5a86cb3f4c"
   },
   {
     "path": "schemas/evaluator/rule.schema.json",
@@ -41,6 +41,6 @@
   },
   {
     "path": "schemas/evaluator/semantic-projection.schema.json",
-    "file_digest": "c4c9a8b1bd65495204f273d64b51fa10c7e3bd102d5290a9d0d83f6669098d0b"
+    "file_digest": "96577ce0065a70b5c57c8714b3224e19c866e966c3591a93e75767e57dfd889d"
   }
 ]

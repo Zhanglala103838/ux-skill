@@ -305,6 +305,7 @@ const normalizeEvaluationInput=(value,schemaRows,out)=>{
  normalizeSet(value,'source_registry_refs',(item)=>item,null,'/source_registry_refs',invariant,out);
  if(Array.isArray(value.candidate_universe))value.candidate_universe.forEach((row,index)=>{if(isPlainObject(row))normalizeSet(row,'option_ids',(item)=>item,null,`/candidate_universe/${index}/option_ids`,invariant,out);});
  if(Array.isArray(value.claims))value.claims.forEach((row,index)=>{if(isPlainObject(row)&&!schemaErrorAt(schemaRows,`/claims/${index}/evidence_refs`))normalizeSet(row,'evidence_refs',(item)=>item,null,`/claims/${index}/evidence_refs`,invariant,out);});
+ const targetKind=value.target_snapshot?.target_kind;if(!schemaErrorAt(schemaRows,'/target_snapshot/target_kind')&&!schemaErrorAt(schemaRows,'/snapshot_closure_result')&&targetKind!=='black_box_site'&&value.snapshot_closure_result!==null)out.push(normalizedError('collections','TARGET_KIND_MISMATCH','/snapshot_closure_result','SnapshotClosureTargetBinding-v1',{target_kind:targetKind}));
  for(const relation of inputReferenceRelations)relation.check(value,schemaRows,out);
 };
 const normalizeSnapshot=(schemaId,value,out)=>{

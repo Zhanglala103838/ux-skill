@@ -276,7 +276,7 @@ test('evidence source relation suppresses every invalid source or target prerequ
  for(const value of cases){let result;assert.doesNotThrow(()=>{result=validateInput(value);});noReferenceLeak(result);assert.deepEqual(suppressionRows(result).filter((row)=>row.invariant_or_schema_id==='SourceRegistryRef-v1'),[{stage:'collections',code:'SUPPRESSED_BY_STAGE',instance_pointer:'/evidence/0/source_ref',invariant_or_schema_id:'SourceRegistryRef-v1',params_jcs:'{"prerequisite_stage":"schema"}'}]);}
 });
 
-const validOutput=()=>({schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:digest('1'),evaluator_digest:digest('2'),run_status:'completed_clear',validation_errors:[],rule_evaluations:[],findings:[],run_issues:[],claim_assessments:[{claim_assessment_id:'ca_'+ 'a'.repeat(32),source_material_digest:'b'.repeat(64),claim_id:'claim-1',policy_id:'policy-1',admissible_conclusion:'descriptive',assessed_predicate:{relation_kind:'descriptive',context_id:'context-1',time_scope_id:'time-1',subject_id:'subject-1',value:'observed'},checks:[],dimension_scores:[{dimension:'directness',score:1,grade:'limited'},{dimension:'precision',score:1,grade:'limited'},{dimension:'transportability',score:1,grade:'limited'},{dimension:'validity',score:1,grade:'limited'}],evidence_grade:{validity:'limited',directness:'limited',precision:'limited',transportability:'limited',overall:'limited'},reason_codes:[]}],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]});
+const validOutput=()=>({schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:digest('1'),evaluator_digest:digest('2'),run_status:'completed_clear',validation_errors:[],rule_evaluations:[],findings:[],run_issues:[],claim_assessments:[{claim_assessment_id:'ca_'+ 'a'.repeat(32),source_material_digest:'b'.repeat(64),claim_id:'claim-1',policy_id:'policy-1',admissible_conclusion:'descriptive',assessed_predicate:{relation_kind:'descriptive',context_id:'context-1',time_scope_id:'time-1',subject_id:'subject-1',value:'observed'},checks:[],dimension_scores:[{dimension:'directness',score:1,grade:'limited'},{dimension:'precision',score:1,grade:'limited'},{dimension:'transportability',score:1,grade:'limited'},{dimension:'validity',score:1,grade:'limited'}],evidence_grade:{validity:'limited',directness:'limited',precision:'limited',transportability:'limited',overall:'limited'},reason_codes:[]}],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[],snapshot_closure_verification:null});
 test('EvaluationOutput assessed predicate is a closed nullable definition',()=>{
  assert.equal(validateBySchema('EvaluationOutput',validOutput()).ok,true);
  const invalid=validOutput();invalid.claim_assessments[0].assessed_predicate.unexpected=true;
@@ -342,7 +342,7 @@ test('TASK5_PUBLIC_SHAPE_RED preserves full RuleEvaluation Finding and RunIssue 
   assert.equal(validateFinding(shortFinding),false,'three-key Finding remained public-valid');
   assert.equal(validateIssue(ruleEvaluation.run_issue),true,JSON.stringify(validateIssue.errors));
  }
- const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'4'.repeat(64),evaluator_digest:'5'.repeat(64),run_status:'completed_escalated',rule_evaluations:[ruleEvaluation],findings:[finding],run_issues:[ruleEvaluation.run_issue],claim_assessments:[],risk_assessments:[risk],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+ const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'4'.repeat(64),evaluator_digest:'5'.repeat(64),run_status:'completed_escalated',rule_evaluations:[ruleEvaluation],findings:[finding],run_issues:[ruleEvaluation.run_issue],claim_assessments:[],risk_assessments:[risk],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[],snapshot_closure_verification:null};
  const output={...common,validation_errors:[]};
  const projection={...common,semantic_digest:'6'.repeat(64)};
  for(const [schemaId,value] of [['EvaluationOutput',output],['SemanticProjection',projection]]){
@@ -369,7 +369,7 @@ test('TASK5_RUN_ISSUE_CODE_RED closes public RunIssue code domain',async()=>{
   assert.equal(validate(validIssue),true,JSON.stringify(validate.errors));
   assert.equal(validate(unknownIssue),false,'unknown RunIssue code remains valid in isolation');
  }
- const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'7'.repeat(64),evaluator_digest:'8'.repeat(64),run_status:'completed_with_gaps',rule_evaluations:[],findings:[],run_issues:[validIssue],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+ const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'7'.repeat(64),evaluator_digest:'8'.repeat(64),run_status:'completed_with_gaps',rule_evaluations:[],findings:[],run_issues:[validIssue],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[],snapshot_closure_verification:null};
  const roots=[
   ['EvaluationOutput',{...common,validation_errors:[]}],
   ['SemanticProjection',{...common,semantic_digest:'9'.repeat(64)}]
@@ -426,7 +426,7 @@ test('TASK5_INVALID_TERMINAL_BRANCH_RED closes invalid input and invalid rule pr
   ['dependency_id',{...row,run_issue:{...row.run_issue,dependency_id:'dependency-tamper'}}]
  ];
  const root=(schemaId,row)=>{
-  const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'a'.repeat(64),evaluator_digest:'b'.repeat(64),run_status:'failed',rule_evaluations:[row],findings:[],run_issues:[row.run_issue],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+  const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'a'.repeat(64),evaluator_digest:'b'.repeat(64),run_status:'failed',rule_evaluations:[row],findings:[],run_issues:[row.run_issue],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[],snapshot_closure_verification:null};
   return schemaId==='EvaluationOutput'?{...common,validation_errors:[]}:{...common,semantic_digest:'c'.repeat(64)};
  };
  const ajv=new Ajv2020({strict:true,allErrors:true});
@@ -454,7 +454,7 @@ test('TASK5_PUBLIC_DEPENDENCY_COHERENCE_RED reuses Task5 dependency decision sem
   precondition:{node_id:'pre',op:'literal',value:true},check:{node_id:'check',op:'literal',value:true}
  });
  const root=(schemaId,row)=>{
-  const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'d'.repeat(64),evaluator_digest:'e'.repeat(64),run_status:row.outcome==='pass'?'completed_clear':'completed_with_gaps',rule_evaluations:[row],findings:[],run_issues:row.run_issue?[row.run_issue]:[],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[]};
+  const common={schema_version:'evaluation-output-v1',behavior_version:'0.1.0',input_digest:'d'.repeat(64),evaluator_digest:'e'.repeat(64),run_status:row.outcome==='pass'?'completed_clear':'completed_with_gaps',rule_evaluations:[row],findings:[],run_issues:row.run_issue?[row.run_issue]:[],claim_assessments:[],risk_assessments:[],recommendation_assessments:[],release_recommendation:null,resolution_traces:[],inquiry_validation:null,coverage_gaps:[],snapshot_closure_verification:null};
   return schemaId==='EvaluationOutput'?{...common,validation_errors:[]}:{...common,semantic_digest:'f'.repeat(64)};
  };
  const validEverywhere=(row,label)=>{for(const schemaId of ['EvaluationOutput','SemanticProjection'])assert.equal(validateBySchema(schemaId,root(schemaId,row)).ok,true,schemaId+' rejects '+label);};

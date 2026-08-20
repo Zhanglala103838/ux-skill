@@ -7,6 +7,7 @@ import { evaluate } from '../../evaluator/index.mjs';
 import { replayClosure, snapshotClosureDigest } from '../../scripts/capture-snapshot-closure.mjs';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const domainSha = (domain, value) => createHash('sha256').update(domain).update(jcs(value)).digest('hex');
 const jcs = (value) => Buffer.from(canonicalize(value), 'utf8');
 const clone = (value) => structuredClone(value);
 const closureIssue = Object.freeze({
@@ -248,10 +249,21 @@ test('TASK10_TASK9_PROVENANCE_RED binds real closure replay and fails closed', a
   const completeBundle = clone(blackBox);
   completeBundle.snapshot_closure_result = clone(complete);
   try {
-    const projection = (await evaluate(completeBundle)).semantic_projection;
+    const evaluated = await evaluate(completeBundle);
+    const repeated = await evaluate(clone(completeBundle));
+    const projection = evaluated.semantic_projection;
+    const verification = projection.snapshot_closure_verification;
     if (projection.release_recommendation?.status === 'no_release') issues.push('complete:no-release');
     if (projection.run_issues?.some((row) => row.instance_pointer === '/snapshot_closure')) issues.push('complete:run-issue');
     if (projection.coverage_gaps?.some((row) => row.reason_code === 'SNAPSHOT_CLOSURE_UNAVAILABLE')) issues.push('complete:coverage-gap');
+    if (!verification || verification.closure_manifest_digest !== complete.closure.manifest_digest) issues.push('complete:closure-binding');
+    if (verification?.closure_bytes_digest !== sha(jcs(complete.closure))) issues.push('complete:closure-bytes-digest');
+    if (verification?.source_material_digest !== sha(jcs(complete))) issues.push('complete:source-material-digest');
+    if (verification?.cas_artifact_set_digest !== domainSha('ux-skill:snapshot-cas-artifacts:v1', complete.cas_artifacts)) issues.push('complete:cas-binding');
+    if (verification?.replay_evidence_digest !== domainSha('ux-skill:snapshot-replay-evidence:v1', complete.replay_evidence)) issues.push('complete:replay-binding');
+    if (verification?.source_identity_digest !== domainSha('ux-skill:snapshot-source-identity:v1', complete.source_identity)) issues.push('complete:source-binding');
+    if (!verification?.snapshot_closure_verification_id?.startsWith('scv_')) issues.push('complete:verification-id');
+    if (!jcs(projection).equals(jcs(repeated.semantic_projection)) || evaluated.semantic_digest !== repeated.semantic_digest) issues.push('complete:repeat');
   } catch (error) {
     issues.push('complete:rejected:' + (error?.code ?? error?.name ?? 'unknown'));
   }
@@ -264,7 +276,7 @@ test('TASK10_TASK9_PROVENANCE_RED binds real closure replay and fails closed', a
     if (error?.code !== 'INVALID_EVALUATION_INPUT') issues.push('black-box:absent-channel-wrong-error');
   }
 
-  const hulian = clone(golden.task9_incomplete_bundle);
+  const hulian = clone(golden.non_black_box_blocked_bundle);
   hulian.snapshot_closure_result = null;
   try {
     const projection = (await evaluate(hulian)).semantic_projection;

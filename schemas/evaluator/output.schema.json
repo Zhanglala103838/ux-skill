@@ -20,7 +20,8 @@
     "release_recommendation",
     "resolution_traces",
     "inquiry_validation",
-    "coverage_gaps"
+    "coverage_gaps",
+    "snapshot_closure_verification"
   ],
   "properties": {
     "schema_version": {
@@ -140,6 +141,16 @@
       "items": {
         "$ref": "#/$defs/UnsatCore"
       }
+    },
+    "snapshot_closure_verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SnapshotClosureVerification"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "$defs": {
@@ -1948,7 +1959,8 @@
         "release_recommendation",
         "resolution_traces",
         "inquiry_validation",
-        "coverage_gaps"
+        "coverage_gaps",
+        "snapshot_closure_verification"
       ],
       "properties": {
         "schema_version": {
@@ -2068,6 +2080,16 @@
           "items": {
             "$ref": "#/$defs/UnsatCore"
           }
+        },
+        "snapshot_closure_verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SnapshotClosureVerification"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -3354,6 +3376,49 @@
             "adequate",
             "high"
           ]
+        }
+      }
+    },
+    "SnapshotClosureVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_closure_verification_id",
+        "source_material_digest",
+        "closure_manifest_digest",
+        "closure_bytes_digest",
+        "cas_artifact_set_digest",
+        "replay_evidence_digest",
+        "source_identity_digest"
+      ],
+      "properties": {
+        "snapshot_closure_verification_id": {
+          "type": "string",
+          "pattern": "^scv_[0-9a-f]{32}$"
+        },
+        "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "closure_manifest_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "closure_bytes_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "cas_artifact_set_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "replay_evidence_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_identity_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     }

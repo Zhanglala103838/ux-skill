@@ -84,94 +84,14 @@
       "inquiry_draft_id": "inq-delete",
       "text": "MCP_TRANSPORT_TEXT_DO_NOT_HASH",
       "authoritative": true
-    }
-  },
-  "task9_incomplete_bundle": {
-    "schema_version": "evaluation-input-v1",
-    "behavior_version": "0.1.0",
-    "evaluation_effective_at": "2026-08-20T00:00:00.000Z",
-    "request_mode": "verify",
-    "target_snapshot": {
-      "target_snapshot_id": "snap-delete-001",
-      "target_kind": "hulianui_contract",
-      "canonical_locator": "packages/ui/src/components/confirm-delete.tsx",
-      "snapshot_digest": "1111111111111111111111111111111111111111111111111111111111111111"
     },
-    "scenario_profile_id": "admin-delete",
-    "scenario_profiles": [
-      {
-        "scenario_profile_id": "admin-delete",
-        "scenario_family_id": "admin-internal-tool"
-      }
-    ],
-    "candidate_universe": [
-      {
-        "solution_id": "delete-confirmation",
-        "option_ids": [
-          "explicit-confirmation"
-        ]
-      }
-    ],
-    "journeys": [
-      {
-        "journey_id": "delete-journey",
-        "step_ids": [
-          "open",
-          "confirm",
-          "delete"
-        ]
-      }
-    ],
-    "source_registry_refs": [
-      "src-delete-contract"
-    ],
-    "evidence": [
-      {
-        "evidence_id": "ev-delete-contract",
-        "evidence_kind": "component-contract",
-        "artifact_digest": "2222222222222222222222222222222222222222222222222222222222222222",
-        "source_ref": "src-delete-contract"
-      }
-    ],
-    "studies": [],
-    "claims": [
-      {
-        "claim_id": "claim-delete-risk",
-        "claim_kind": "observed_signal",
-        "relation_kind": "observed_signal",
-        "predicate_id": "delete-needs-authorization",
-        "population_id": "admin-users",
-        "context_id": "destructive-action",
-        "time_scope_id": "evaluation-window",
-        "subject_id": "delete-control",
-        "value": "authorization is not evidenced",
-        "evidence_refs": [
-          "ev-delete-contract"
-        ]
-      }
-    ],
-    "research_state": {
-      "research_state_id": "research-delete",
-      "status": "blocked",
-      "authorization_ref": null
-    },
-    "adapter_evidence": [],
-    "policy_digests": {
-      "decision_policy_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e",
-      "claim_policy_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
-      "rule_registry_digest": "f975c67ce228dfe564bb025c95b6a841efb060fec6bd1d1d1ebb99fb80f76cb0"
-    },
-    "inquiry_draft": {
-      "inquiry_draft_id": "inq-delete",
-      "text": "MCP_TRANSPORT_TEXT_DO_NOT_HASH",
-      "authoritative": true
-    }
+    "snapshot_closure_result": null
   },
   "expected_semantic_projection": {
     "schema_version": "evaluation-output-v1",
     "behavior_version": "0.1.0",
-    "input_digest": "eb5eae40cd619d48a32b5816673fb7f0b3a91cb45a0ded249d6840ceeb7888ba",
-    "evaluator_digest": "ac4bbc1ff1fbb831cef5b1bef5b2fabd99fe7a13a49450e326e3e620563747c9",
+    "input_digest": "cb2d682be1332e68aa86b0e2c5f3d4714f0ad3223c292d896dd9f81546dd0772",
+    "evaluator_digest": "12b1b166d6d603f98baec0fc4cc6b0c1133c7e8e023717b3e49aa564c4a06823",
     "run_status": "completed_escalated",
     "rule_evaluations": [
       {
@@ -386,6 +306,89 @@
       "status": "invalid"
     },
     "coverage_gaps": [],
-    "semantic_digest": "7453b5530a1a3fdbf2e8dea3e63b21e811d110e8b299dca48f600f8eac9d4d74"
+    "snapshot_closure_verification": null,
+    "semantic_digest": "23a4aa1fb575d299119f719cd0612d8c27e622b72cee2002390553d4904eee17"
+  },
+  "non_black_box_blocked_bundle": {
+    "schema_version": "evaluation-input-v1",
+    "behavior_version": "0.1.0",
+    "evaluation_effective_at": "2026-08-20T00:00:00.000Z",
+    "request_mode": "verify",
+    "target_snapshot": {
+      "target_snapshot_id": "snap-delete-001",
+      "target_kind": "hulianui_contract",
+      "canonical_locator": "packages/ui/src/components/confirm-delete.tsx",
+      "snapshot_digest": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "scenario_profile_id": "admin-delete",
+    "scenario_profiles": [
+      {
+        "scenario_profile_id": "admin-delete",
+        "scenario_family_id": "admin-internal-tool"
+      }
+    ],
+    "candidate_universe": [
+      {
+        "solution_id": "delete-confirmation",
+        "option_ids": [
+          "explicit-confirmation"
+        ]
+      }
+    ],
+    "journeys": [
+      {
+        "journey_id": "delete-journey",
+        "step_ids": [
+          "open",
+          "confirm",
+          "delete"
+        ]
+      }
+    ],
+    "source_registry_refs": [
+      "src-delete-contract"
+    ],
+    "evidence": [
+      {
+        "evidence_id": "ev-delete-contract",
+        "evidence_kind": "component-contract",
+        "artifact_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+        "source_ref": "src-delete-contract"
+      }
+    ],
+    "studies": [],
+    "claims": [
+      {
+        "claim_id": "claim-delete-risk",
+        "claim_kind": "observed_signal",
+        "relation_kind": "observed_signal",
+        "predicate_id": "delete-needs-authorization",
+        "population_id": "admin-users",
+        "context_id": "destructive-action",
+        "time_scope_id": "evaluation-window",
+        "subject_id": "delete-control",
+        "value": "authorization is not evidenced",
+        "evidence_refs": [
+          "ev-delete-contract"
+        ]
+      }
+    ],
+    "research_state": {
+      "research_state_id": "research-delete",
+      "status": "blocked",
+      "authorization_ref": null
+    },
+    "adapter_evidence": [],
+    "policy_digests": {
+      "decision_policy_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e",
+      "claim_policy_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
+      "rule_registry_digest": "f975c67ce228dfe564bb025c95b6a841efb060fec6bd1d1d1ebb99fb80f76cb0"
+    },
+    "inquiry_draft": {
+      "inquiry_draft_id": "inq-delete",
+      "text": "MCP_TRANSPORT_TEXT_DO_NOT_HASH",
+      "authoritative": true
+    },
+    "snapshot_closure_result": null
   }
 }

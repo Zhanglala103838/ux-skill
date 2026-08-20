@@ -20,7 +20,8 @@
     "claims",
     "research_state",
     "adapter_evidence",
-    "policy_digests"
+    "policy_digests",
+    "snapshot_closure_result"
   ],
   "properties": {
     "schema_version": {
@@ -110,6 +111,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/InquiryDraft"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "snapshot_closure_result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SnapshotClosureResult"
         },
         {
           "type": "null"
@@ -486,7 +497,8 @@
         "claims",
         "research_state",
         "adapter_evidence",
-        "policy_digests"
+        "policy_digests",
+        "snapshot_closure_result"
       ],
       "properties": {
         "schema_version": {
@@ -576,6 +588,897 @@
           "anyOf": [
             {
               "$ref": "#/$defs/InquiryDraft"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot_closure_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SnapshotClosureResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "HeaderItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "name_lower_ascii",
+        "value_bytes_base64"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name_lower_ascii": {
+          "type": "string",
+          "pattern": "^[a-z0-9!#$%&'*+.^_`|~-]+$"
+        },
+        "value_bytes_base64": {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "CanonicalResponseHeaders": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headers"
+      ],
+      "properties": {
+        "headers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HeaderItem"
+          }
+        }
+      }
+    },
+    "ReplayProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_profile_id",
+        "viewport_width_css_px",
+        "viewport_height_css_px",
+        "device_scale_factor",
+        "input_modality",
+        "prefers_reduced_motion",
+        "prefers_contrast",
+        "color_scheme",
+        "locale",
+        "timezone",
+        "assistive_technology_id",
+        "browser_engine_digest"
+      ],
+      "properties": {
+        "replay_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "viewport_width_css_px": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "viewport_height_css_px": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "device_scale_factor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "input_modality": {
+          "type": "string",
+          "enum": [
+            "keyboard",
+            "pointer",
+            "touch"
+          ]
+        },
+        "prefers_reduced_motion": {
+          "type": "string",
+          "enum": [
+            "reduce",
+            "no-preference"
+          ]
+        },
+        "prefers_contrast": {
+          "type": "string",
+          "enum": [
+            "no-preference",
+            "more",
+            "less",
+            "custom"
+          ]
+        },
+        "color_scheme": {
+          "type": "string",
+          "enum": [
+            "light",
+            "dark"
+          ]
+        },
+        "locale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assistive_technology_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "browser_engine_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "RedirectHop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "status",
+        "url",
+        "location",
+        "header_digest",
+        "content_addressed_header_artifact_locator"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri"
+        },
+        "header_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_addressed_header_artifact_locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        }
+      }
+    },
+    "NetworkRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_profile_id",
+        "sequence",
+        "task_step_id",
+        "request_method",
+        "request_url",
+        "redirect_chain",
+        "final_url",
+        "network_kind",
+        "disposition",
+        "response_status",
+        "header_digest",
+        "content_addressed_header_artifact_locator",
+        "raw_body_digest",
+        "content_addressed_body_artifact_locator"
+      ],
+      "properties": {
+        "replay_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "task_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "HEAD"
+          ]
+        },
+        "request_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "redirect_chain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RedirectHop"
+          }
+        },
+        "final_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "network_kind": {
+          "type": "string",
+          "enum": [
+            "document",
+            "script",
+            "style",
+            "image",
+            "font",
+            "xhr",
+            "fetch",
+            "other"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "captured",
+            "blocked_by_policy"
+          ]
+        },
+        "response_status": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "header_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_addressed_header_artifact_locator": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "canonical-relative-path"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raw_body_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_addressed_body_artifact_locator": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "canonical-relative-path"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ObservationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_profile_id",
+        "task_step_id",
+        "evidence_kind",
+        "ordinal",
+        "artifact_digest",
+        "content_addressed_artifact_locator"
+      ],
+      "properties": {
+        "replay_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_kind": {
+          "type": "string",
+          "enum": [
+            "screenshot",
+            "dom_snapshot",
+            "accessibility_tree",
+            "interaction_trace",
+            "performance_trace",
+            "content_extract"
+          ]
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_addressed_artifact_locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        }
+      }
+    },
+    "SnapshotClosureManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "closure_version",
+        "entry_url",
+        "task_script_digest",
+        "capture_environment_digest",
+        "captured_at",
+        "authenticated",
+        "replay_profiles",
+        "network_records",
+        "observation_records",
+        "outbound_effect_ledger_digest",
+        "completeness_status",
+        "manifest_digest"
+      ],
+      "properties": {
+        "closure_version": {
+          "type": "string",
+          "const": "snapshot-closure-v1"
+        },
+        "entry_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "task_script_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "capture_environment_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "authenticated": {
+          "type": "boolean"
+        },
+        "replay_profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReplayProfile"
+          }
+        },
+        "network_records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NetworkRecord"
+          }
+        },
+        "observation_records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ObservationRecord"
+          }
+        },
+        "outbound_effect_ledger_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "completeness_status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "incomplete"
+          ]
+        },
+        "manifest_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "SnapshotCasArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locator",
+        "digest",
+        "bytes_base64"
+      ],
+      "properties": {
+        "locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes_base64": {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "SnapshotClosureSourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_snapshot_id",
+        "target_kind",
+        "canonical_locator",
+        "entry_url",
+        "snapshot_digest"
+      ],
+      "properties": {
+        "target_snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_kind": {
+          "const": "black_box_site"
+        },
+        "canonical_locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        },
+        "entry_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ReplayedRedirect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "status",
+        "url",
+        "location",
+        "header_digest",
+        "content_addressed_header_artifact_locator",
+        "headers"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri"
+        },
+        "header_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_addressed_header_artifact_locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        },
+        "headers": {
+          "$ref": "#/$defs/CanonicalResponseHeaders"
+        }
+      }
+    },
+    "ReplayedNetworkResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_profile_id",
+        "sequence",
+        "task_step_id",
+        "request_method",
+        "request_url",
+        "redirect_chain",
+        "final_url",
+        "network_kind",
+        "disposition",
+        "response_status",
+        "header_digest",
+        "content_addressed_header_artifact_locator",
+        "raw_body_digest",
+        "content_addressed_body_artifact_locator",
+        "redirects",
+        "headers",
+        "body_bytes_base64"
+      ],
+      "properties": {
+        "replay_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "task_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "HEAD"
+          ]
+        },
+        "request_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "redirect_chain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RedirectHop"
+          }
+        },
+        "final_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "network_kind": {
+          "type": "string",
+          "enum": [
+            "document",
+            "script",
+            "style",
+            "image",
+            "font",
+            "xhr",
+            "fetch",
+            "other"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "captured",
+            "blocked_by_policy"
+          ]
+        },
+        "response_status": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "header_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_addressed_header_artifact_locator": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "canonical-relative-path"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raw_body_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_addressed_body_artifact_locator": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "canonical-relative-path"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redirects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReplayedRedirect"
+          }
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanonicalResponseHeaders"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body_bytes_base64": {
+          "anyOf": [
+            {
+              "type": "string",
+              "contentEncoding": "base64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ReplayedObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_profile_id",
+        "task_step_id",
+        "evidence_kind",
+        "ordinal",
+        "artifact_digest",
+        "content_addressed_artifact_locator",
+        "artifact_bytes_base64"
+      ],
+      "properties": {
+        "replay_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_kind": {
+          "type": "string",
+          "enum": [
+            "screenshot",
+            "dom_snapshot",
+            "accessibility_tree",
+            "interaction_trace",
+            "performance_trace",
+            "content_extract"
+          ]
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_addressed_artifact_locator": {
+          "type": "string",
+          "format": "canonical-relative-path"
+        },
+        "artifact_bytes_base64": {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "SnapshotReplayEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_status",
+        "run_issues",
+        "release_gate",
+        "live_network_events",
+        "responses",
+        "observations"
+      ],
+      "properties": {
+        "run_status": {
+          "enum": [
+            "completed",
+            "target_unavailable"
+          ]
+        },
+        "run_issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotRunIssue"
+          }
+        },
+        "release_gate": {
+          "enum": [
+            "eligible",
+            "no_release"
+          ]
+        },
+        "live_network_events": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "responses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReplayedNetworkResponse"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReplayedObservation"
+          }
+        }
+      }
+    },
+    "SnapshotRunIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "instance_pointer",
+        "dependency_id"
+      ],
+      "properties": {
+        "code": {
+          "const": "RULE_EVALUATION_ERROR"
+        },
+        "instance_pointer": {
+          "const": "/snapshot_closure"
+        },
+        "dependency_id": {
+          "type": "null"
+        }
+      }
+    },
+    "SnapshotClosureResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "closure",
+        "closure_bytes_base64",
+        "cas_artifacts",
+        "source_identity",
+        "completeness_status",
+        "run_status",
+        "release_gate",
+        "run_issues",
+        "replay_evidence"
+      ],
+      "properties": {
+        "closure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SnapshotClosureManifest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closure_bytes_base64": {
+          "anyOf": [
+            {
+              "type": "string",
+              "contentEncoding": "base64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cas_artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotCasArtifact"
+          }
+        },
+        "source_identity": {
+          "$ref": "#/$defs/SnapshotClosureSourceIdentity"
+        },
+        "completeness_status": {
+          "enum": [
+            "complete",
+            "incomplete"
+          ]
+        },
+        "run_status": {
+          "enum": [
+            "completed",
+            "target_unavailable"
+          ]
+        },
+        "release_gate": {
+          "const": "no_release"
+        },
+        "run_issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotRunIssue"
+          }
+        },
+        "replay_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SnapshotReplayEvidence"
             },
             {
               "type": "null"

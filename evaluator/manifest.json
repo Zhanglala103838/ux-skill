@@ -23,11 +23,11 @@
     },
     {
       "path": "evaluator/index.mjs",
-      "file_digest": "127110e2194cc4a56ff12510102ca3152be7b7db3941b83781323ae78a219ebb"
+      "file_digest": "dee1964e7bdf370b798f1a4332e484781948e55ab79952e52fb68d744685abe9"
     },
     {
       "path": "evaluator/projection.mjs",
-      "file_digest": "39b9676a1e83cc6b3158e9350010d0c35e25aa69661e83afed3e5045c0471112"
+      "file_digest": "cd2ab9ec87387b9983e5d8462c156f87c82c3fd787bfa2ef37ee9a4e82934244"
     },
     {
       "path": "evaluator/rules-runtime.mjs",
@@ -35,10 +35,10 @@
     },
     {
       "path": "evaluator/validation.mjs",
-      "file_digest": "4dae31a8994cc9700db3d836b5343897e48c5a2456cdc0365ccdffb6baf38163"
+      "file_digest": "c6c1daf54806847bd3ac4d6b0c54d974d6a16cf166c528d901652113609c386d"
     }
   ],
-  "schema_manifest_digest": "480db8a8c735adcdf9b0eae6085b40671906404b266fa0d1a2bd4ceca0772d93",
+  "schema_manifest_digest": "29d1f68338daa64889912a886f64c2e8984be57db0cfbb6b712a448851108a3f",
   "knowledge_manifest_digest": "1704ad07fd1e9557ab64c1e484f68b069f8c4f017e79ed979a34db47e5a0ce50",
   "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29"
 }
