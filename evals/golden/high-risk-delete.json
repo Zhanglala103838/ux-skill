@@ -91,7 +91,7 @@
     "schema_version": "evaluation-output-v1",
     "behavior_version": "0.1.0",
     "input_digest": "cb2d682be1332e68aa86b0e2c5f3d4714f0ad3223c292d896dd9f81546dd0772",
-    "evaluator_digest": "12b1b166d6d603f98baec0fc4cc6b0c1133c7e8e023717b3e49aa564c4a06823",
+    "evaluator_digest": "86cade16fadf4111b5c3da81b3bfd0a11f84d976f9ebe302c85d6694c7ad3f7a",
     "run_status": "completed_escalated",
     "rule_evaluations": [
       {
@@ -307,7 +307,7 @@
     },
     "coverage_gaps": [],
     "snapshot_closure_verification": null,
-    "semantic_digest": "23a4aa1fb575d299119f719cd0612d8c27e622b72cee2002390553d4904eee17"
+    "semantic_digest": "c554e78eaebcf8cede92f2f6dc0c2eb8230e97f95b65a7a3820c4fcbed611695"
   },
   "non_black_box_blocked_bundle": {
     "schema_version": "evaluation-input-v1",

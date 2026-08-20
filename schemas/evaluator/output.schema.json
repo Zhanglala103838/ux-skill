@@ -172,12 +172,37 @@
             "nfc",
             "schema",
             "collections",
-            "semantic"
+            "semantic",
+            "policy"
           ]
         },
         "code": {
           "type": "string",
-          "minLength": 1
+          "anyOf": [
+            {
+              "enum": [
+                "PARSE_ERROR",
+                "UNICODE_NOT_NFC",
+                "REQUIRED_MISSING",
+                "ADDITIONAL_PROPERTY",
+                "TYPE_MISMATCH",
+                "ENUM_MISMATCH",
+                "FORMAT_INVALID",
+                "PATH_INVALID",
+                "AST_OP_REQUIRED",
+                "AST_OP_UNKNOWN",
+                "DUPLICATE_ID_CONFLICT",
+                "REF_MISSING",
+                "SUPPRESSED_BY_STAGE"
+              ]
+            },
+            {
+              "pattern": "^IJSON_[A-Z0-9]+(?:_[A-Z0-9]+)*$"
+            },
+            {
+              "pattern": "^INVARIANT_[A-Z0-9]+(?:_[A-Z0-9]+)*$"
+            }
+          ]
         },
         "instance_pointer": {
           "type": "string"
@@ -3385,6 +3410,8 @@
       "required": [
         "snapshot_closure_verification_id",
         "source_material_digest",
+        "source_authority_id",
+        "source_authority_digest",
         "closure_manifest_digest",
         "closure_bytes_digest",
         "cas_artifact_set_digest",
@@ -3397,6 +3424,14 @@
           "pattern": "^scv_[0-9a-f]{32}$"
         },
         "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_authority_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_authority_digest": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },

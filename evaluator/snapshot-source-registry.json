@@ -1,0 +1,65 @@
+{
+  "registry_version": "snapshot-source-registry-v1",
+  "sources": [
+    {
+      "source_authority_id": "RW-DOCS-STRIPE-001",
+      "target_snapshot_id": "RW-DOCS-STRIPE-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "https://docs.stripe.com/",
+      "entry_url": "https://docs.stripe.com/",
+      "task_script_digest": "ad3245cef7c2f2d322c9f4a8a865266cf04685da7fd799d0804fd611e748636b",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "a8e80babac6648b6a92ce01648cb64e4936d903ed47358b622aeadf576844052"
+      ]
+    },
+    {
+      "source_authority_id": "RW-WEBSITE-APPLE-001",
+      "target_snapshot_id": "RW-WEBSITE-APPLE-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "https://www.apple.com.cn/",
+      "entry_url": "https://www.apple.com.cn/",
+      "task_script_digest": "5b484bd7469fe2d5d0ca290e89277c58a15b987eead241c7dca65f1beff6d97b",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0"
+      ]
+    },
+    {
+      "source_authority_id": "RW-WEBSITE-GOVUK-001",
+      "target_snapshot_id": "RW-WEBSITE-GOVUK-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "https://www.gov.uk/register-to-vote",
+      "entry_url": "https://www.gov.uk/register-to-vote",
+      "task_script_digest": "7282e1cd8559cd36eef58577d7bbe7f7a4647537b19e9b27c78bdf66ca6ee974",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "fadf34d60ba3888b7038b18f0bc1da5011d507b1cbf8b9f166f1b54a047e006c"
+      ]
+    },
+    {
+      "source_authority_id": "RW-WEBSITE-IKEA-001",
+      "target_snapshot_id": "RW-WEBSITE-IKEA-001",
+      "target_kind": "black_box_site",
+      "canonical_locator": "https://www.ikea.cn/cn/zh/",
+      "entry_url": "https://www.ikea.cn/cn/zh/",
+      "task_script_digest": "8cc5bef0f51f13e7c6d85c3d6cef8e96da049295470726e111ea472dc2ff3e0e",
+      "capture_environment_digest": "5b24ecc6710e707e19bb9cdded99e4136f5753e3523547ad62186f9fe8705a4d",
+      "allowed_snapshot_digests": [
+        "52f514488d50c2865fa1a82cf312446c910df8223cfe0eea5fcdcf0e88bab5ed"
+      ]
+    },
+    {
+      "source_authority_id": "task10-example-source-v1",
+      "target_snapshot_id": "task10-black-box-snapshot",
+      "target_kind": "black_box_site",
+      "canonical_locator": "public-sites/task10-example",
+      "entry_url": "https://example.test/task10",
+      "task_script_digest": "0ec48f7f3851c7e948824663e9d0f787dd74b40587eaf424663db483b63f0d4b",
+      "capture_environment_digest": "478b2ce5472830245aca689bc2880dab4398aeb8656c69f6c6b99c7bf18dc24c",
+      "allowed_snapshot_digests": [
+        "5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b"
+      ]
+    }
+  ]
+}

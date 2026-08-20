@@ -23,11 +23,11 @@
     },
     {
       "path": "evaluator/index.mjs",
-      "file_digest": "dee1964e7bdf370b798f1a4332e484781948e55ab79952e52fb68d744685abe9"
+      "file_digest": "3b67a78cbebaae5b099d95207ed3937e9d4384dc749cd4260cb672c177bfe459"
     },
     {
       "path": "evaluator/projection.mjs",
-      "file_digest": "cd2ab9ec87387b9983e5d8462c156f87c82c3fd787bfa2ef37ee9a4e82934244"
+      "file_digest": "af887dc356fe9175405a71668300ebc6e0ced1339ef4cd3a48fbdc6090e87326"
     },
     {
       "path": "evaluator/rules-runtime.mjs",
@@ -35,10 +35,14 @@
     },
     {
       "path": "evaluator/validation.mjs",
-      "file_digest": "c6c1daf54806847bd3ac4d6b0c54d974d6a16cf166c528d901652113609c386d"
+      "file_digest": "052d62d0715fb777a6e526857999650c08b71d25d0db064fbc2a6c2d4e41ca7e"
     }
   ],
-  "schema_manifest_digest": "29d1f68338daa64889912a886f64c2e8984be57db0cfbb6b712a448851108a3f",
+  "schema_manifest_digest": "7592d0e58d2ea8d5d7933272d4618c31024d68c325849b755cd53e9fb4d2b929",
   "knowledge_manifest_digest": "1704ad07fd1e9557ab64c1e484f68b069f8c4f017e79ed979a34db47e5a0ce50",
-  "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29"
+  "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
+  "snapshot_source_registry": {
+    "path": "evaluator/snapshot-source-registry.json",
+    "file_digest": "836282da717662df9fcb747f765af7908d1b6ffac15cba48735730aec4c933a9"
+  }
 }

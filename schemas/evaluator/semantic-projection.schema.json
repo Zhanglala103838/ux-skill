@@ -3846,6 +3846,8 @@
       "required": [
         "snapshot_closure_verification_id",
         "source_material_digest",
+        "source_authority_id",
+        "source_authority_digest",
         "closure_manifest_digest",
         "closure_bytes_digest",
         "cas_artifact_set_digest",
@@ -3858,6 +3860,14 @@
           "pattern": "^scv_[0-9a-f]{32}$"
         },
         "source_material_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_authority_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_authority_digest": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },

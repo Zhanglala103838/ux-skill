@@ -33,7 +33,8 @@ else{
  });
  test('all manifests and the canonical nine-module evaluator closure are raw-byte authenticated',async()=>{
   const[m,s,k,p,d]=await Promise.all(['evaluator/manifest.json','schemas/manifest.json','knowledge/manifest.json','knowledge/policy-manifest.json'].map(x=>readFile(x,'utf8').then(JSON.parse)).concat(readFile('knowledge/decision-policies.json')));
-  exact(m,['behavior_version','evaluator_files','schema_manifest_digest','knowledge_manifest_digest','policy_manifest_digest'],'manifest');
+  exact(m,['behavior_version','evaluator_files','snapshot_source_registry','schema_manifest_digest','knowledge_manifest_digest','policy_manifest_digest'],'manifest');
+  exact(m.snapshot_source_registry,['path','file_digest'],'snapshot source registry ref');assert.equal(m.snapshot_source_registry.path,'evaluator/snapshot-source-registry.json');assert.equal(m.snapshot_source_registry.file_digest,sha(await readFile(m.snapshot_source_registry.path)));
   assert.deepEqual(m.evaluator_files.map(x=>x.path),EXPECTED_EVALUATOR_MODULE_PATHS);
   await assertEvaluatorManifestMatchesImportClosure({repositoryRoot:process.cwd(),manifestPaths:m.evaluator_files.map(x=>x.path)});
   for(const row of m.evaluator_files)assert.equal(row.file_digest,sha(await readFile(row.path)),row.path);

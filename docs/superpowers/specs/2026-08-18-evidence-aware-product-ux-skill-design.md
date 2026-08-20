@@ -745,6 +745,8 @@ RW-ROTATION-DIGEST-001 的 JCS preimage 固定为：
 
 intervention hypothesis 永远不是 evidence。black_box_site 默认 read-only，不提交表单、不创建账号、不采集敏感信息；pinned_repository 只在隔离环境修改派生副本，第三方 upstream 不写入。
 
+Task 10 对 `black_box_site` 的 SnapshotClosure 只接受仓库固定的 `evaluator/snapshot-source-registry.json` 作为来源权威。该闭合注册表逐行绑定 source authority id、target snapshot id/kind、canonical locator、entry URL、task script digest、capture environment digest（包含 producer runner/transport closure identity）及允许的 closure/snapshot digest；调用方 bundle 不提供、不能新增或覆盖注册行。evaluator 必须在完成 closure bytes、CAS 与 replay 重算后再与唯一注册行逐字段精确匹配；缺失、未注册、coordinated relabel、digest 不在 allowlist 或注册表/manifest tamper 一律 fail closed 为 `/snapshot_closure` critical coverage gap 与 `no_release`。注册表 JSON 由 `evaluator/manifest.json` 的 raw-byte digest 纳入总 evaluator digest，但不计入固定九个 `.mjs` import closure。
+
 ### 18.4 首批真实目标注册表
 
 以下 ref 是 v0.1 的发现基线；正式运行仍要生成完整 RegressionCase、可取回 SnapshotClosureManifest 与环境 digest。2026-08-18 的 curl 摘要只证明当次公开响应，不是正式可复放 snapshot_artifact。任务均从匿名、无个人数据 seed 开始。
