@@ -6,232 +6,73 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "behavior_version",
+    "evaluation_effective_at",
     "request_mode",
-    "bundle_base",
-    "component_request"
+    "target_snapshot",
+    "scenario_profile_id",
+    "scenario_profiles",
+    "candidate_universe",
+    "journeys",
+    "source_registry_refs",
+    "evidence",
+    "studies",
+    "claims",
+    "research_state",
+    "policy_digests",
+    "snapshot_closure_result"
   ],
   "properties": {
     "schema_version": {
-      "type": "string",
-      "const": "hulian-evaluation-request-v1"
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/schema_version"
+    },
+    "behavior_version": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/behavior_version"
+    },
+    "evaluation_effective_at": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/evaluation_effective_at"
     },
     "request_mode": {
-      "type": "string",
-      "enum": [
-        "guide",
-        "scan",
-        "refactor",
-        "verify"
-      ]
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/request_mode"
     },
-    "bundle_base": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version",
-        "behavior_version",
-        "evaluation_effective_at",
-        "target_snapshot",
-        "scenario_profile_id"
-      ],
-      "properties": {
-        "schema_version": {
-          "type": "string",
-          "minLength": 1
-        },
-        "behavior_version": {
-          "type": "string",
-          "minLength": 1
-        },
-        "evaluation_effective_at": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "target_snapshot": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "target_snapshot_id",
-            "target_kind",
-            "canonical_locator",
-            "snapshot_digest"
-          ],
-          "properties": {
-            "target_snapshot_id": {
-              "type": "string",
-              "minLength": 1
-            },
-            "target_kind": {
-              "type": "string",
-              "enum": [
-                "black_box_site",
-                "pinned_repository",
-                "hulianui_contract"
-              ]
-            },
-            "canonical_locator": {
-              "type": "string",
-              "format": "canonical-relative-path"
-            },
-            "snapshot_digest": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            }
-          }
-        },
-        "scenario_profile_id": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
+    "target_snapshot": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/target_snapshot"
     },
-    "component_request": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "name",
-        "format",
-        "sections"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "format": {
-          "type": "string",
-          "const": "json"
-        },
-        "sections": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "props",
-              "events",
-              "slots"
-            ]
-          }
-        }
-      }
-    }
-  },
-  "$defs": {
-    "HulianEvaluationRequestV1": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version",
-        "request_mode",
-        "bundle_base",
-        "component_request"
-      ],
-      "properties": {
-        "schema_version": {
-          "type": "string",
-          "const": "hulian-evaluation-request-v1"
-        },
-        "request_mode": {
-          "type": "string",
-          "enum": [
-            "guide",
-            "scan",
-            "refactor",
-            "verify"
-          ]
-        },
-        "bundle_base": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "behavior_version",
-            "evaluation_effective_at",
-            "target_snapshot",
-            "scenario_profile_id"
-          ],
-          "properties": {
-            "schema_version": {
-              "type": "string",
-              "minLength": 1
-            },
-            "behavior_version": {
-              "type": "string",
-              "minLength": 1
-            },
-            "evaluation_effective_at": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "target_snapshot": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "target_snapshot_id",
-                "target_kind",
-                "canonical_locator",
-                "snapshot_digest"
-              ],
-              "properties": {
-                "target_snapshot_id": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "target_kind": {
-                  "type": "string",
-                  "enum": [
-                    "black_box_site",
-                    "pinned_repository",
-                    "hulianui_contract"
-                  ]
-                },
-                "canonical_locator": {
-                  "type": "string",
-                  "format": "canonical-relative-path"
-                },
-                "snapshot_digest": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                }
-              }
-            },
-            "scenario_profile_id": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
-        "component_request": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "name",
-            "format",
-            "sections"
-          ],
-          "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1
-            },
-            "format": {
-              "type": "string",
-              "const": "json"
-            },
-            "sections": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "props",
-                  "events",
-                  "slots"
-                ]
-              }
-            }
-          }
-        }
-      }
+    "scenario_profile_id": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/scenario_profile_id"
+    },
+    "scenario_profiles": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/scenario_profiles"
+    },
+    "candidate_universe": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/candidate_universe"
+    },
+    "journeys": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/journeys"
+    },
+    "source_registry_refs": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/source_registry_refs"
+    },
+    "evidence": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/evidence"
+    },
+    "studies": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/studies"
+    },
+    "claims": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/claims"
+    },
+    "research_state": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/research_state"
+    },
+    "policy_digests": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/policy_digests"
+    },
+    "inquiry_draft": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/inquiry_draft"
+    },
+    "snapshot_closure_result": {
+      "$ref": "https://ux-skill.invalid/schemas/core/evaluation-input.schema.json#/properties/snapshot_closure_result"
     }
   }
 }

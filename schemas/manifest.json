@@ -5,7 +5,7 @@
   },
   {
     "path": "schemas/adapters/hulian-evaluation-request-v1.schema.json",
-    "file_digest": "f3e3062a97ce9d58ab660b3007f0b0287e6b1c1f1131e942e16d36170cea79af"
+    "file_digest": "a16bf36fcbad935c7875c5583b0e7530b78a1083329ee00d719fe183dcb4d871"
   },
   {
     "path": "schemas/core/authority.schema.json",
