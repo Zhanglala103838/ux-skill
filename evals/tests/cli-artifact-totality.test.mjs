@@ -55,6 +55,10 @@ const capture=async(failures,label,operation)=>{try{await operation();}catch(err
 test('CLI emits one closed total response for every evaluator artifact failure domain',async()=>{
  const failures=[];
  const cases=[
+  ['missing evaluator digests stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'evaluator/digests.mjs')),{inputKind:'stdin'}],
+  ['malformed evaluator digests path','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'evaluator/digests.mjs'),'export const =\n'),{inputKind:'path'}],
+  ['missing evaluator canonical path','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'evaluator/canonical.mjs')),{inputKind:'path'}],
+  ['malformed evaluator canonical stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'evaluator/canonical.mjs'),'export const =\n'),{inputKind:'stdin'}],
   ['missing evaluation schema stdin','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{inputKind:'stdin'}],
   ['missing authority registry path','ARTIFACT_VERIFICATION_FAILED',async(root)=>rm(join(root,'knowledge/registries.json')),{inputKind:'path'}],
   ['malformed evaluation schema path','ARTIFACT_VERIFICATION_FAILED',async(root)=>writeFile(join(root,'schemas/core/evaluation-input.schema.json'),'{'),{inputKind:'path'}],
@@ -68,7 +72,9 @@ test('CLI emits one closed total response for every evaluator artifact failure d
  for(const [label,code,mutate,options] of cases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectFailed(row,code,label));}
  const precedenceCases=[
   ['argument precedence','MODE_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{args:['--mode','audit','--input','-','--output','json']}],
-  ['input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{stdinBytes:'{'}]
+  ['input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{stdinBytes:'{'}],
+  ['evaluator bootstrap argument precedence','MODE_INVALID',async(root)=>rm(join(root,'evaluator/digests.mjs')),{args:['--mode','audit','--input','-','--output','json']}],
+  ['evaluator bootstrap input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'evaluator/canonical.mjs')),{stdinBytes:'{'}]
  ];
  for(const [label,code,mutate,options] of precedenceCases){const row=await isolatedRun(mutate,options);await capture(failures,label,async()=>expectInvalid(row,code,label));}
  const responseSchemaCases=[
@@ -77,5 +83,5 @@ test('CLI emits one closed total response for every evaluator artifact failure d
   ['response schema malformed trust root',async(root)=>writeFile(join(root,RESPONSE_PATH),'{')]
  ];
  for(const [label,mutate] of responseSchemaCases){const row=await isolatedRun(mutate);await capture(failures,label,async()=>expectResponseSchemaBoundary(row,label));}
- if(failures.length>0)assert.fail('TASK11_STARTUP_ARTIFACT_TOTAL_RESPONSE_RED\n'+failures.join('\n'));
+ if(failures.length>0)assert.fail('TASK11_EVALUATOR_BOOTSTRAP_TOTAL_RESPONSE_RED\n'+failures.join('\n'));
 });
