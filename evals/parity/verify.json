@@ -1,395 +1,88 @@
 {
-  "bundle": {
-    "schema_version": "evaluation-input-v1",
-    "behavior_version": "0.1.0",
-    "evaluation_effective_at": "2026-08-20T00:00:00.000Z",
-    "request_mode": "verify",
-    "target_snapshot": {
-      "target_snapshot_id": "snap-delete-001",
-      "target_kind": "hulianui_contract",
-      "canonical_locator": "packages/ui/src/components/confirm-delete.tsx",
-      "snapshot_digest": "1111111111111111111111111111111111111111111111111111111111111111"
-    },
-    "scenario_profile_id": "admin-delete",
-    "scenario_profiles": [
-      {
-        "scenario_profile_id": "admin-delete",
-        "scenario_family_id": "admin-internal-tool"
-      }
-    ],
-    "candidate_universe": [
-      {
-        "solution_id": "delete-confirmation",
-        "option_ids": [
-          "explicit-confirmation"
-        ]
-      }
-    ],
-    "journeys": [
-      {
-        "journey_id": "delete-journey",
-        "step_ids": [
-          "open",
-          "confirm",
-          "delete"
-        ]
-      }
-    ],
-    "source_registry_refs": [
-      "src-delete-contract"
-    ],
-    "evidence": [
-      {
-        "evidence_id": "ev-delete-contract",
-        "evidence_kind": "component-contract",
-        "artifact_digest": "2222222222222222222222222222222222222222222222222222222222222222",
-        "source_ref": "src-delete-contract"
-      }
-    ],
-    "studies": [],
-    "claims": [
-      {
-        "claim_id": "claim-delete-risk",
-        "claim_kind": "observed_signal",
-        "relation_kind": "observed_signal",
-        "predicate_id": "delete-needs-authorization",
-        "population_id": "admin-users",
-        "context_id": "destructive-action",
-        "time_scope_id": "evaluation-window",
-        "subject_id": "delete-control",
-        "value": "authorization is not evidenced",
-        "evidence_refs": [
-          "ev-delete-contract"
-        ]
-      }
-    ],
-    "research_state": {
-      "research_state_id": "research-delete",
-      "status": "not_requested",
-      "authorization_ref": null
-    },
-    "adapter_evidence": [
-      {
-        "adapter_evidence_id": "hulianui.get-component-doc.alert-dialog.v1",
-        "adapter_contract_id": "hulianui.get-component-doc.alert-dialog.v1",
-        "artifact_digest": "9041876c0cd50cb4e194b4fa83b1b60bb5f69ae8c6b8d5e3588fa0a93e4f5ee3"
-      }
-    ],
-    "policy_digests": {
-      "decision_policy_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e",
-      "claim_policy_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
-      "rule_registry_digest": "f975c67ce228dfe564bb025c95b6a841efb060fec6bd1d1d1ebb99fb80f76cb0"
-    },
-    "inquiry_draft": {
-      "inquiry_draft_id": "inq-delete",
-      "text": "MCP_TRANSPORT_TEXT_DO_NOT_HASH",
-      "authoritative": true
-    },
-    "snapshot_closure_result": null
+  "schema_version": "evaluation-input-v1",
+  "behavior_version": "0.1.0",
+  "evaluation_effective_at": "2026-08-20T00:00:00.000Z",
+  "request_mode": "verify",
+  "target_snapshot": {
+    "target_snapshot_id": "snap-delete-001",
+    "target_kind": "hulianui_contract",
+    "canonical_locator": "packages/ui/src/components/confirm-delete.tsx",
+    "snapshot_digest": "1111111111111111111111111111111111111111111111111111111111111111"
   },
-  "expected_semantic_projection": {
-    "schema_version": "evaluation-output-v1",
-    "behavior_version": "0.1.0",
-    "input_digest": "cb2d682be1332e68aa86b0e2c5f3d4714f0ad3223c292d896dd9f81546dd0772",
-    "evaluator_digest": "51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba",
-    "run_status": "completed_escalated",
-    "rule_evaluations": [
-      {
-        "dependency_trace": [],
-        "finding_type": "escalation",
-        "outcome": "fail",
-        "reason_code": "CHECK_FAILED",
-        "release_critical": true,
-        "rule_id": "delete-safety",
-        "rule_version": "1.0.0",
-        "run_issue": null,
-        "terminal": "completed",
-        "trace": [
-          {
-            "node_id": "applicable",
-            "parent_node_id": null,
-            "value": "T"
-          },
-          {
-            "node_id": "excluded",
-            "parent_node_id": null,
-            "value": "F"
-          },
-          {
-            "node_id": "ready",
-            "parent_node_id": null,
-            "value": "T"
-          },
-          {
-            "node_id": "authorized",
-            "parent_node_id": null,
-            "value": "F"
-          }
-        ]
-      }
-    ],
-    "findings": [
-      {
-        "emission_reason_code": "RULE_CHECK_FAILED",
-        "finding_id": "f_3ed93fefdbf097c9ab1b8641730fc0e0",
-        "finding_type": "escalation",
-        "fingerprint": {
-          "behavior_version": "0.1.0",
-          "canonical_target_locator": "packages/ui/src/components/confirm-delete.tsx",
-          "claim_key": null,
-          "emission_reason_code": "RULE_CHECK_FAILED",
-          "finding_type": "escalation",
-          "rule_id": "delete-safety",
-          "rule_version": "1.0.0",
-          "scenario_binding_ids": [
-            "admin-delete"
-          ],
-          "schema_version": "finding-v1",
-          "target_snapshot_digest": "1111111111111111111111111111111111111111111111111111111111111111"
-        },
-        "fingerprint_full_digest": "3ed93fefdbf097c9ab1b8641730fc0e0b070fc9a1939babdfda7724fcf32dd0a",
-        "rule_id": "delete-safety",
-        "rule_version": "1.0.0"
-      }
-    ],
-    "run_issues": [],
-    "claim_assessments": [
-      {
-        "admissible_conclusion": "observed_signal",
-        "assessed_predicate": {
-          "context_id": "destructive-action",
-          "population_id": "admin-users",
-          "predicate_id": "delete-needs-authorization",
-          "relation_kind": "observed_signal",
-          "subject_id": "delete-control",
-          "time_scope_id": "evaluation-window",
-          "value": "authorization is not evidenced"
-        },
-        "checks": [
-          {
-            "critical": true,
-            "dimension": "directness",
-            "evidence_refs": [
-              "ev-delete-contract"
-            ],
-            "reason_codes": [],
-            "required_check_id": "directness",
-            "score": 2,
-            "status": "verified_with_limit"
-          },
-          {
-            "critical": false,
-            "dimension": "precision",
-            "evidence_refs": [
-              "ev-delete-contract"
-            ],
-            "reason_codes": [],
-            "required_check_id": "precision",
-            "score": 2,
-            "status": "verified_with_limit"
-          },
-          {
-            "critical": false,
-            "dimension": "transportability",
-            "evidence_refs": [
-              "ev-delete-contract"
-            ],
-            "reason_codes": [],
-            "required_check_id": "transportability",
-            "score": 2,
-            "status": "verified_with_limit"
-          },
-          {
-            "critical": true,
-            "dimension": "validity",
-            "evidence_refs": [
-              "ev-delete-contract"
-            ],
-            "reason_codes": [],
-            "required_check_id": "validity",
-            "score": 2,
-            "status": "verified_with_limit"
-          }
-        ],
-        "claim_assessment_id": "ca_a44df9a5fcfe9f6943e116833d391851",
-        "claim_id": "claim-delete-risk",
-        "dimension_scores": [
-          {
-            "dimension": "directness",
-            "grade": "adequate",
-            "score": 2
-          },
-          {
-            "dimension": "precision",
-            "grade": "adequate",
-            "score": 2
-          },
-          {
-            "dimension": "transportability",
-            "grade": "adequate",
-            "score": 2
-          },
-          {
-            "dimension": "validity",
-            "grade": "adequate",
-            "score": 2
-          }
-        ],
-        "evidence_grade": {
-          "directness": "adequate",
-          "overall": "adequate",
-          "precision": "adequate",
-          "transportability": "adequate",
-          "validity": "adequate"
-        },
-        "policy_id": "task10-observed_signal-policy-v1",
-        "reason_codes": [],
-        "source_material_digest": "9da83eb6bf2881bebacfb40107254c3b320b7bd46d1b828893a8fe24d902ee1a"
-      }
-    ],
-    "risk_assessments": [
-      {
-        "decision": "escalation",
-        "exposure": "unknown",
-        "finding_id": "f_3ed93fefdbf097c9ab1b8641730fc0e0",
-        "likelihood": "unknown",
-        "reason_codes": [
-          "HARD_DECISION_ESCALATION"
-        ],
-        "reversibility": "irreversible",
-        "risk_assessment_id": "ra_5a09929580e2e8a6d6dceaa2812c954a",
-        "severity": "severe",
-        "source_material_digest": "d780a11e0389f2ec3749b6ed8dd7f4e8f29ad3041792603b71c1ceea8c885e22",
-        "status": "complete"
-      }
-    ],
-    "recommendation_assessments": [
-      {
-        "action_id": "require-delete-authorization",
-        "authority_ceiling": "required",
-        "evidence_ceiling": "conditional_advice",
-        "minimum_ceiling": "explore",
-        "output_kind": "recommendation",
-        "policy_version": "1.0.0",
-        "reason_codes": [],
-        "recommendation": {
-          "action": {
-            "action_id": "require-delete-authorization",
-            "scope_id": "admin-delete",
-            "target_id": "snap-delete-001"
-          },
-          "recommendation_id": "rec_4f87fc97f603d7f6e20d1f99c733309a",
-          "strength": "explore"
-        },
-        "recommendation_assessment_id": "rma_47fc84cdf1a274e7ce1b3c167835f5a0",
-        "research_question": null,
-        "reversibility_ceiling": "conditional_advice",
-        "risk_ceiling": "explore",
-        "source_material_digest": "46be104e914d57d4a102d6ffb53a7153c5ec6eab1bc9c26d748d04ec538d88de",
-        "status": "complete",
-        "strength": "explore"
-      }
-    ],
-    "release_recommendation": {
-      "condition_ids": [],
-      "conditions": [],
-      "next_action": "escalate",
-      "reason_code": "RELEASE_ESCALATED",
-      "release_recommendation_id": "rr_43950ddf66a90cf707df7d043f3c2ffb",
-      "source_material_digest": "667c6693fd9f0bf3a4ff0613f523b270fdde543cc789045381ff5ed896b884c9",
-      "status": "escalation"
-    },
-    "resolution_traces": [],
-    "inquiry_validation": {
-      "authoritative": false,
-      "gap_ids": [],
-      "status": "invalid"
-    },
-    "coverage_gaps": [],
-    "snapshot_closure_verification": null,
-    "semantic_digest": "e1261ec74aea2bb2dfd3722d891d314f3e3da6bc6c171eea7f7a06ede8fb3d6d"
+  "scenario_profile_id": "admin-delete",
+  "scenario_profiles": [
+    {
+      "scenario_profile_id": "admin-delete",
+      "scenario_family_id": "admin-internal-tool"
+    }
+  ],
+  "candidate_universe": [
+    {
+      "solution_id": "delete-confirmation",
+      "option_ids": [
+        "explicit-confirmation"
+      ]
+    }
+  ],
+  "journeys": [
+    {
+      "journey_id": "delete-journey",
+      "step_ids": [
+        "open",
+        "confirm",
+        "delete"
+      ]
+    }
+  ],
+  "source_registry_refs": [
+    "src-delete-contract"
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev-delete-contract",
+      "evidence_kind": "component-contract",
+      "artifact_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_ref": "src-delete-contract"
+    }
+  ],
+  "studies": [],
+  "claims": [
+    {
+      "claim_id": "claim-delete-risk",
+      "claim_kind": "observed_signal",
+      "relation_kind": "observed_signal",
+      "predicate_id": "delete-needs-authorization",
+      "population_id": "admin-users",
+      "context_id": "destructive-action",
+      "time_scope_id": "evaluation-window",
+      "subject_id": "delete-control",
+      "value": "authorization is not evidenced",
+      "evidence_refs": [
+        "ev-delete-contract"
+      ]
+    }
+  ],
+  "research_state": {
+    "research_state_id": "research-delete",
+    "status": "not_requested",
+    "authorization_ref": null
   },
-  "non_black_box_blocked_bundle": {
-    "schema_version": "evaluation-input-v1",
-    "behavior_version": "0.1.0",
-    "evaluation_effective_at": "2026-08-20T00:00:00.000Z",
-    "request_mode": "verify",
-    "target_snapshot": {
-      "target_snapshot_id": "snap-delete-001",
-      "target_kind": "hulianui_contract",
-      "canonical_locator": "packages/ui/src/components/confirm-delete.tsx",
-      "snapshot_digest": "1111111111111111111111111111111111111111111111111111111111111111"
-    },
-    "scenario_profile_id": "admin-delete",
-    "scenario_profiles": [
-      {
-        "scenario_profile_id": "admin-delete",
-        "scenario_family_id": "admin-internal-tool"
-      }
-    ],
-    "candidate_universe": [
-      {
-        "solution_id": "delete-confirmation",
-        "option_ids": [
-          "explicit-confirmation"
-        ]
-      }
-    ],
-    "journeys": [
-      {
-        "journey_id": "delete-journey",
-        "step_ids": [
-          "open",
-          "confirm",
-          "delete"
-        ]
-      }
-    ],
-    "source_registry_refs": [
-      "src-delete-contract"
-    ],
-    "evidence": [
-      {
-        "evidence_id": "ev-delete-contract",
-        "evidence_kind": "component-contract",
-        "artifact_digest": "2222222222222222222222222222222222222222222222222222222222222222",
-        "source_ref": "src-delete-contract"
-      }
-    ],
-    "studies": [],
-    "claims": [
-      {
-        "claim_id": "claim-delete-risk",
-        "claim_kind": "observed_signal",
-        "relation_kind": "observed_signal",
-        "predicate_id": "delete-needs-authorization",
-        "population_id": "admin-users",
-        "context_id": "destructive-action",
-        "time_scope_id": "evaluation-window",
-        "subject_id": "delete-control",
-        "value": "authorization is not evidenced",
-        "evidence_refs": [
-          "ev-delete-contract"
-        ]
-      }
-    ],
-    "research_state": {
-      "research_state_id": "research-delete",
-      "status": "blocked",
-      "authorization_ref": null
-    },
-    "adapter_evidence": [],
-    "policy_digests": {
-      "decision_policy_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e",
-      "claim_policy_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
-      "rule_registry_digest": "f975c67ce228dfe564bb025c95b6a841efb060fec6bd1d1d1ebb99fb80f76cb0"
-    },
-    "inquiry_draft": {
-      "inquiry_draft_id": "inq-delete",
-      "text": "MCP_TRANSPORT_TEXT_DO_NOT_HASH",
-      "authoritative": true
-    },
-    "snapshot_closure_result": null
+  "adapter_evidence": [
+    {
+      "adapter_evidence_id": "hulianui.get-component-doc.alert-dialog.v1",
+      "adapter_contract_id": "hulianui.get-component-doc.alert-dialog.v1",
+      "artifact_digest": "9041876c0cd50cb4e194b4fa83b1b60bb5f69ae8c6b8d5e3588fa0a93e4f5ee3"
+    }
+  ],
+  "policy_digests": {
+    "decision_policy_digest": "c17feddae57e6258ba32a3392b63b9ebc5227c90cc72374b1572da7109a7fd7e",
+    "claim_policy_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
+    "rule_registry_digest": "f975c67ce228dfe564bb025c95b6a841efb060fec6bd1d1d1ebb99fb80f76cb0"
   },
-  "request_mode": "verify"
+  "inquiry_draft": {
+    "inquiry_draft_id": "inq-delete",
+    "text": "MCP_TRANSPORT_TEXT_DO_NOT_HASH",
+    "authoritative": true
+  },
+  "snapshot_closure_result": null
 }
