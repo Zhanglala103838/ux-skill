@@ -6,6 +6,11 @@ import {TextDecoder} from 'node:util';
 
 const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
+const SEMANTIC_PATH='schemas/evaluator/semantic-projection.schema.json';
+const RESPONSE_SCHEMA_CLOSURE=Object.freeze([
+ Object.freeze({path:RESPONSE_PATH,id:'https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json'}),
+ Object.freeze({path:SEMANTIC_PATH,id:'https://ux-skill.invalid/schemas/evaluator/semantic-projection.schema.json'})
+]);
 const MAX_BYTES=1_048_576;
 const MAX_BYTES_BIGINT=BigInt(MAX_BYTES);
 const PATH_OPEN_FLAGS=fsConstants.O_RDONLY|fsConstants.O_NONBLOCK|fsConstants.O_NOFOLLOW;
@@ -67,16 +72,41 @@ const hasLeadingBom=(bytes)=>bytes.length>=UTF8_BOM.length&&bytes.subarray(0,UTF
 const writeJson=(value)=>process.stdout.write(JSON.stringify(value)+'\n');
 const diagnostic=(code)=>process.stderr.write(code+'\n');
 const sha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
+const isCanonicalRelativePath=(path)=>typeof path==='string'&&/^schemas\/(?:[a-z0-9-]+\/)*[a-z0-9-]+\.schema\.json$/u.test(path);
+const verifyResponseSchemaClosure=(loaded,manifest)=>{
+ if(loaded.length!==RESPONSE_SCHEMA_CLOSURE.length)throw new TypeError('RESPONSE_SCHEMA_CLOSURE_INVALID');
+ const schemasById=new Map();
+ for(const entry of loaded){
+  if(!isCanonicalRelativePath(entry.path)||entry.schema?.$id!==entry.id||schemasById.has(entry.id))throw new TypeError('RESPONSE_SCHEMA_CLOSURE_INVALID');
+  const rows=manifest.filter((row)=>row?.path===entry.path);
+  if(rows.length!==1||rows[0].file_digest!==sha(entry.raw))throw new TypeError('RESPONSE_SCHEMA_MANIFEST_INVALID');
+  schemasById.set(entry.id,entry.schema);
+ }
+ const visited=new Set();
+ const visit=(id)=>{
+  if(visited.has(id))return;const schema=schemasById.get(id);if(schema===undefined)throw new TypeError('RESPONSE_SCHEMA_CLOSURE_INVALID');visited.add(id);
+  const walk=(value)=>{
+   if(value===null||typeof value!=='object')return;
+   if(typeof value.$ref==='string'&&!value.$ref.startsWith('#')){const target=new URL(value.$ref,id);target.hash='';if(target.hostname!=='ux-skill.invalid'||!schemasById.has(target.href))throw new TypeError('RESPONSE_SCHEMA_CLOSURE_INVALID');visit(target.href);}
+   for(const child of Array.isArray(value)?value:Object.values(value))walk(child);
+  };
+  walk(schema);
+ };
+ visit(RESPONSE_SCHEMA_CLOSURE[0].id);
+ if(visited.size!==RESPONSE_SCHEMA_CLOSURE.length||RESPONSE_SCHEMA_CLOSURE.some((entry)=>!visited.has(entry.id)))throw new TypeError('RESPONSE_SCHEMA_CLOSURE_INVALID');
+};
 let parseKnowledgeJson=null;
 const loadResponseValidator=async()=>{
  const [{default:Ajv2020},{default:addFormats},strictJson,responseRaw,semanticRaw,manifestRaw,evaluatorManifestRaw]=await Promise.all([
   import('ajv/dist/2020.js'),import('ajv-formats'),import('./strict-json.mjs'),
-  readFile(new URL(RESPONSE_PATH,ROOT)),readFile(new URL('schemas/evaluator/semantic-projection.schema.json',ROOT)),readFile(new URL('schemas/manifest.json',ROOT)),readFile(new URL('evaluator/manifest.json',ROOT))
+  readFile(new URL(RESPONSE_PATH,ROOT)),readFile(new URL(SEMANTIC_PATH,ROOT)),readFile(new URL('schemas/manifest.json',ROOT)),readFile(new URL('evaluator/manifest.json',ROOT))
  ]);
  parseKnowledgeJson=strictJson.parseKnowledgeJson;const responseSchemaManifestDigest=strictJson.responseSchemaManifestDigest;
  const responseSchema=JSON.parse(responseRaw),semanticSchema=JSON.parse(semanticRaw),manifest=JSON.parse(manifestRaw),evaluatorManifest=JSON.parse(evaluatorManifestRaw);
- const rows=manifest.filter((row)=>row.path===RESPONSE_PATH);
- if(rows.length!==1||rows[0].file_digest!==sha(responseRaw))throw new TypeError('RESPONSE_SCHEMA_MANIFEST_INVALID');
+ verifyResponseSchemaClosure([
+  {...RESPONSE_SCHEMA_CLOSURE[0],raw:responseRaw,schema:responseSchema},
+  {...RESPONSE_SCHEMA_CLOSURE[1],raw:semanticRaw,schema:semanticSchema}
+ ],manifest);
  if(evaluatorManifest.schema_manifest_digest!==responseSchemaManifestDigest(manifest))throw new TypeError('RESPONSE_SCHEMA_DOMAIN_DIGEST_INVALID');
  const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});addFormats(ajv);ajv.addSchema(semanticSchema);
  return ajv.compile(responseSchema);
