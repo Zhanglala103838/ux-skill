@@ -48,7 +48,7 @@ const spawnDirectEvaluator=(isolated)=>new Promise((resolveRow,reject)=>{
 const isolatedRun=async(mutate,options={})=>{
  const isolated=await mkdtemp(join(ROOT,'.task11-artifact-totality-'));
  try{
-  for(const name of ['scripts','evaluator','schemas','knowledge'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
+  for(const name of ['scripts','evaluator','schemas','knowledge','references'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
   await cp(join(ROOT,'package.json'),join(isolated,'package.json'));
   await writeFile(join(isolated,'runtime-input.json'),options.pathBytes??JSON.stringify(bundle));
   await mutate(isolated);
@@ -58,7 +58,7 @@ const isolatedRun=async(mutate,options={})=>{
 const isolatedTrustRootRuns=async(mutate)=>{
  const isolated=await mkdtemp(join(ROOT,'.task11-response-trust-'));
  try{
-  for(const name of ['scripts','evaluator','schemas','knowledge'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
+  for(const name of ['scripts','evaluator','schemas','knowledge','references'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
   await cp(join(ROOT,'package.json'),join(isolated,'package.json'));
   await writeFile(join(isolated,'runtime-input.json'),JSON.stringify(bundle));
   await mutate(isolated);
@@ -70,7 +70,7 @@ const isolatedTrustRootRuns=async(mutate)=>{
 const isolatedEvaluatorRuns=async(mutate)=>{
  const isolated=await mkdtemp(join(ROOT,'.task11-evaluator-manifest-'));
  try{
-  for(const name of ['scripts','evaluator','schemas','knowledge'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
+  for(const name of ['scripts','evaluator','schemas','knowledge','references'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
   await cp(join(ROOT,'package.json'),join(isolated,'package.json'));
   await writeFile(join(isolated,'runtime-input.json'),JSON.stringify(bundle));
   await mutate(isolated);
