@@ -528,7 +528,7 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   assert.deepEqual(issues, []);
 });
 
-test('TASK10_PUBLIC_AUTHORITY_TAMPER_RED reaches every real source and isolates registry tamper', async () => {
+test('TASK10_REGISTRY_FALLBACK_IDENTITY_RED keeps unavailable-registry semantics independent of unverified bytes', async () => {
   const issues = [];
   const [golden, registry] = await Promise.all([
     readFile(new URL('../golden/high-risk-delete.json', import.meta.url), 'utf8').then(JSON.parse),
@@ -729,6 +729,12 @@ test('TASK10_PUBLIC_AUTHORITY_TAMPER_RED reaches every real source and isolates 
     const bytes = await readFile(path);
     await writeFile(path, Buffer.concat([bytes, Buffer.from(suffix, 'utf8')]));
   };
+  const validRegistryResult = await evaluate(clone(tamperBundle));
+  if (validRegistryResult.semantic_projection.evaluator_digest !== '51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba') {
+    issues.push('valid-registry:evaluator-digest-drift');
+  }
+
+  const snapshotFallbacks = [];
   const snapshotTamperCases = [
     ['registry-raw', async (root) => appendBytes(join(root, 'evaluator/snapshot-source-registry.json'), ' ')],
     ['registry-manifest-binding', async (root) => {
@@ -742,8 +748,29 @@ test('TASK10_PUBLIC_AUTHORITY_TAMPER_RED reaches every real source and isolates 
     try {
       const evaluated = await evaluateIsolated(label, mutate, tamperBundle);
       assertNoRelease(evaluated.semantic_projection, label, issues);
+      snapshotFallbacks.push({ label, evaluated });
+      if (evaluated.audit_sidecar.manifest_verification !== 'partial_failure') {
+        issues.push(label + ':manifest-verification-not-partial');
+      }
+      if (evaluated.audit_sidecar.snapshot_source_registry_verification !== 'unavailable') {
+        issues.push(label + ':registry-verification-not-unavailable');
+      }
     } catch (error) {
       issues.push(label + ':no-result:' + (error?.code ?? error?.name ?? 'unknown'));
+    }
+  }
+  if (snapshotFallbacks.length !== 2) {
+    issues.push('registry-fallback:missing-variant');
+  } else {
+    const [rawTamper, bindingTamper] = snapshotFallbacks.map((row) => row.evaluated);
+    if (!jcs(rawTamper.semantic_projection).equals(jcs(bindingTamper.semantic_projection))) {
+      issues.push('registry-fallback:semantic-bytes-differ');
+    }
+    if (rawTamper.semantic_digest !== bindingTamper.semantic_digest) {
+      issues.push('registry-fallback:semantic-digest-differs');
+    }
+    if (rawTamper.semantic_projection.evaluator_digest !== bindingTamper.semantic_projection.evaluator_digest) {
+      issues.push('registry-fallback:evaluator-identity-differs');
     }
   }
 
