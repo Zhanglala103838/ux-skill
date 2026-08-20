@@ -531,4 +531,112 @@ if(entryFailure){
 
   if(failures.length>0)assert.fail('TASK12_ACTIVE_BODY_LINKS_RED:'+failures.join('|'));
  });
+
+ test('TASK12_ACTIVE_BODY_SEMANTICS_RED derives every required instruction and link from one active Markdown body',async()=>{
+  const failures=[];
+  const manifestLink='[knowledge manifest](knowledge/manifest.json)';
+  const cliLink='[CLI](scripts/ux-evaluate.mjs)';
+  const expectedLinks=['knowledge/manifest.json','scripts/ux-evaluate.mjs'];
+  const splitSkill=(source)=>{
+   const match=/^---\n([\s\S]*?)\n---\n/u.exec(source);
+   assert.ok(match,'Skill frontmatter fixture');
+   return{frontmatter:match[1],body:source.slice(match[0].length)};
+  };
+  const joinSkill=({frontmatter,body})=>'---\n'+frontmatter+'\n---\n'+body;
+  const semanticEvidence=[
+   ['CLI command','SKILL_CLI_CONTRACT_INVALID',[EXPECTED_COMMAND],EXPECTED_COMMAND],
+   ['manifest route','SKILL_ROUTE_INSTRUCTION_INVALID',['routes[request_mode].paths'],'routes[request_mode].paths'],
+   ['guide mode','SKILL_MODE_INVALID',[/\bguide\b/giu],'guide'],
+   ['scan mode','SKILL_MODE_INVALID',[/\bscan\b/giu],'scan'],
+   ['refactor mode','SKILL_MODE_INVALID',[/\brefactor\b/giu],'refactor'],
+   ['verify mode','SKILL_MODE_INVALID',[/\bverify\b/giu],'verify'],
+   ['Assurance track','SKILL_WORKFLOW_INVALID',[/\bAssurance\b/gu],'Assurance'],
+   ['Inquiry track','SKILL_WORKFLOW_INVALID',[/\bInquiry\b/gu],'Inquiry'],
+   ['authorization boundary','SKILL_WORKFLOW_INVALID',[/\bauthoriz(?:ation|ed)\b/giu],'authorization'],
+   ['external-effect boundary','SKILL_WORKFLOW_INVALID',[/\bexternal effects?\b/giu],'external effect'],
+   ['missing-evidence boundary','SKILL_WORKFLOW_INVALID',[/\b(?:missing|gap)\b/giu],'missing gap'],
+   ['fail-closed boundary','SKILL_WORKFLOW_INVALID',[/\bfail closed\b/giu,/\bstop before\b/giu],'fail closed stop before'],
+   ['comparison instruction','SKILL_WORKFLOW_INVALID',[/\bcompare\b/giu],'compare'],
+   ['audit instruction','SKILL_WORKFLOW_INVALID',[/\baudit\b/giu],'audit'],
+   ['release and no_release preservation','SKILL_WORKFLOW_INVALID',[/\bno_release\b/gu,/\brelease(?:-readiness)?\b/giu],'release no_release']
+  ];
+  const inertSurfaces=[
+   ['HTML comment',(evidence)=>'\n<!--\n'+evidence+'\n-->\n'],
+   ['tilde fence',(evidence)=>'\n~~~~text\n'+evidence+'\n~~~~\n'],
+   ['inline code',(evidence)=>'\n`'+evidence.replaceAll('\n',' ')+'`\n'],
+   ['four-space code',(evidence)=>'\n'+evidence.split('\n').map((line)=>'    '+line).join('\n')+'\n']
+  ];
+  const stripEvidence=(body,patterns,label)=>{
+   let next=body;
+   let removed=0;
+   for(const pattern of patterns){
+    if(typeof pattern==='string'){
+     const count=next.split(pattern).length-1;
+     removed+=count;
+     next=next.split(pattern).join('omitted');
+    }else{
+     next=next.replace(pattern,()=>{removed++;return' omitted ';});
+    }
+   }
+   assert.ok(removed>0,label+' fixture must remove active evidence');
+   return next;
+  };
+  const expectReject=async(label,expectedCode,transform)=>{
+   await withRepository(async(root)=>{
+    const path=join(root,'SKILL.md');
+    await writeFile(path,joinSkill(transform(splitSkill(await read('SKILL.md',root)))),'utf8');
+    try{await validateSkill({repositoryRoot:root});failures.push(label+':accepted');}
+    catch(error){if(error?.code!==expectedCode)failures.push(label+':expected '+expectedCode+' got '+(error?.code??error?.name));}
+   });
+  };
+  const expectActiveLinks=async(label,bodySuffix)=>{
+   await withRepository(async(root)=>{
+    const path=join(root,'SKILL.md');
+    const parts=splitSkill(await read('SKILL.md',root));
+    assert.equal(parts.body.split(manifestLink).length-1,1,'one manifest link fixture');
+    assert.equal(parts.body.split(cliLink).length-1,1,'one CLI link fixture');
+    parts.body=parts.body.replace(manifestLink,'knowledge manifest').replace(cliLink,'CLI')+bodySuffix;
+    await writeFile(path,joinSkill(parts),'utf8');
+    try{
+     const result=await validateSkill({repositoryRoot:root});
+     assert.deepEqual(result.links,expectedLinks,label+' returned links');
+    }catch(error){failures.push(label+':unexpected '+(error?.code??error?.name));}
+   });
+  };
+
+  for(const [semanticLabel,expectedCode,patterns,evidence] of semanticEvidence){
+   for(const [surfaceLabel,wrap] of inertSurfaces){
+    await expectReject(semanticLabel+' only in '+surfaceLabel,expectedCode,({frontmatter,body})=>({
+     frontmatter,
+     body:stripEvidence(body,patterns,semanticLabel)+wrap(evidence)
+    }));
+   }
+  }
+
+  const allEvidence=semanticEvidence.map((row)=>row[3]).join('\n');
+  for(const [surfaceLabel,wrap] of inertSurfaces){
+   await expectReject('all required semantics only in '+surfaceLabel,'SKILL_CLI_CONTRACT_INVALID',({frontmatter,body})=>{
+    let stripped=body;
+    for(const [semanticLabel,,patterns] of semanticEvidence)stripped=stripEvidence(stripped,patterns,semanticLabel);
+    return{frontmatter,body:stripped+wrap(allEvidence)};
+   });
+  }
+
+  const inertNestedLinks=[
+   ['blockquote indented code','\n>     '+manifestLink+'\n>     '+cliLink+'\n'],
+   ['blockquote list backtick fence with longer close','\n> - ```markdown\n>   '+manifestLink+'\n>   '+cliLink+'\n>   ````\n'],
+   ['nested blockquote list tilde fence','\n> > 1.  ~~~~~ markdown\n> >     '+manifestLink+'\n> >     '+cliLink+'\n> >     ~~~~~~~\n']
+  ];
+  for(const [label,suffix] of inertNestedLinks){
+   await expectReject(label,'SKILL_LINK_INVALID',({frontmatter,body})=>({
+    frontmatter,
+    body:body.replace(manifestLink,'knowledge manifest').replace(cliLink,'CLI')+suffix
+   }));
+  }
+
+  await expectActiveLinks('active blockquote paragraphs','\n> Use the '+manifestLink+' for routing.\n> Invoke the '+cliLink+' for evaluation.\n');
+  await expectActiveLinks('active blockquote list items','\n> - Route with the '+manifestLink+'.\n> - Evaluate with the '+cliLink+'.\n');
+
+  if(failures.length>0)assert.fail('TASK12_ACTIVE_BODY_SEMANTICS_RED:'+failures.join('|'));
+ });
 }
