@@ -9,6 +9,8 @@ import{materializeClaimAssessment,materializeRiskAssessment,materializeRecommend
 
 const ROOT=new URL('../',import.meta.url);
 const EXPECTED=Object.freeze(['evaluator/authority.mjs','evaluator/canonical.mjs','evaluator/claims.mjs','evaluator/dependency-decision.mjs','evaluator/digests.mjs','evaluator/index.mjs','evaluator/projection.mjs','evaluator/rules-runtime.mjs','evaluator/validation.mjs']);
+const EVALUATOR_GLOBAL_KEYS=Object.freeze(['behavior_version','evaluator_files','schema_manifest_digest','knowledge_manifest_digest','policy_manifest_digest']);
+const EVALUATOR_MANIFEST_KEYS=Object.freeze([...EVALUATOR_GLOBAL_KEYS,'snapshot_source_registry']);
 const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every((key)=>Object.hasOwn(value,key));
 const sha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
 const nfc=(value)=>{if(typeof value==='string')return value.normalize('NFC')===value;if(Array.isArray(value))return value.every(nfc);if(value&&typeof value==='object')return Object.entries(value).every(([key,child])=>key.normalize('NFC')===key&&nfc(child));return true;};
@@ -37,7 +39,7 @@ const validateSnapshotSourceRegistry=(value)=>{
 };
 const verifyArtifacts=async()=>{
  const[evaluator,schema,knowledge,policy,rules,decision]=await Promise.all(['evaluator/manifest.json','schemas/manifest.json','knowledge/manifest.json','knowledge/policy-manifest.json','knowledge/rules.json','knowledge/decision-policies.json'].map(loadRaw));
- if(!exact(evaluator.value,['behavior_version','evaluator_files','snapshot_source_registry','schema_manifest_digest','knowledge_manifest_digest','policy_manifest_digest']))artifactFailure('EVALUATOR_MANIFEST_SHAPE');
+ if(!exact(evaluator.value,EVALUATOR_GLOBAL_KEYS)&&!exact(evaluator.value,EVALUATOR_MANIFEST_KEYS))artifactFailure('EVALUATOR_MANIFEST_SHAPE');
  if(!Array.isArray(schema.value)||!exact(knowledge.value,['manifest_version','files','dependency_graph','routes'])||!exact(policy.value,['policy_files']))artifactFailure('MANIFEST_SHAPE');
  await Promise.all([verifyRows(evaluator.value.evaluator_files,'EVALUATOR'),verifyRows(schema.value,'SCHEMA'),verifyRows(knowledge.value.files,'KNOWLEDGE'),verifyRows(policy.value.policy_files,'POLICY')]);
  if(!jcsBytes(evaluator.value.evaluator_files.map((row)=>row.path)).equals(jcsBytes(EXPECTED)))artifactFailure('EVALUATOR_CLOSURE_MISMATCH');
