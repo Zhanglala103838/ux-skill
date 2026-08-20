@@ -134,6 +134,7 @@
               "INPUT_JSON_INVALID",
               "INPUT_MULTIPLE",
               "INPUT_REQUIRED",
+              "INPUT_TOO_LARGE",
               "INPUT_UNREADABLE",
               "INPUT_UTF8_INVALID",
               "INPUT_VALUE_REQUIRED",

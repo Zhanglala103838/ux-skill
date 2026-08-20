@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {createHash} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
+import {open,readFile} from 'node:fs/promises';
 import {TextDecoder} from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
@@ -10,6 +10,8 @@ import {parseKnowledgeJson} from './check-knowledge.mjs';
 
 const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
+const MAX_BYTES=1_048_576;
+const MAX_BYTES_BIGINT=BigInt(MAX_BYTES);
 const UTF8_BOM=Buffer.from([0xef,0xbb,0xbf]);
 const UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
 const MODES=new Set(['guide','scan','refactor','verify']);
@@ -33,7 +35,36 @@ const parseArguments=(argv)=>{
  if(values.input.length===0)return fail('INPUT_REQUIRED');
  return{mode:values.mode[0],input:values.input[0],output:values.output[0]};
 };
-const readStdin=async()=>{const chunks=[];for await(const chunk of process.stdin)chunks.push(Buffer.from(chunk));return Buffer.concat(chunks);};
+const inputFailure=(code)=>Object.assign(new TypeError(code),{code});
+const readStdin=async()=>{
+ const chunks=[];let total=0;
+ for await(const chunk of process.stdin){
+  const length=chunk.byteLength;
+  if(length>MAX_BYTES-total){process.stdin.destroy();throw inputFailure('INPUT_TOO_LARGE');}
+  chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));total+=length;
+ }
+ return Buffer.concat(chunks,total);
+};
+const readPath=async(path)=>{
+ let handle;
+ try{handle=await open(path,'r');}catch{throw inputFailure('INPUT_UNREADABLE');}
+ try{
+  const before=await handle.stat({bigint:true});
+  if(!before.isFile())throw inputFailure('INPUT_UNREADABLE');
+  if(before.size>MAX_BYTES_BIGINT)throw inputFailure('INPUT_TOO_LARGE');
+  const bytes=Buffer.allocUnsafe(Math.min(Number(before.size)+1,MAX_BYTES+1));let total=0;
+  while(total<bytes.length){const {bytesRead}=await handle.read(bytes,total,bytes.length-total,total);if(bytesRead===0)break;total+=bytesRead;}
+  if(total>MAX_BYTES)throw inputFailure('INPUT_TOO_LARGE');
+  const after=await handle.stat({bigint:true});
+  if(before.dev!==after.dev||before.ino!==after.ino)throw inputFailure('INPUT_UNREADABLE');
+  if(after.size>MAX_BYTES_BIGINT)throw inputFailure('INPUT_TOO_LARGE');
+  if(after.size!==BigInt(total))throw inputFailure('INPUT_UNREADABLE');
+  return bytes.subarray(0,total);
+ }catch(error){
+  if(error?.code==='INPUT_TOO_LARGE'||error?.code==='INPUT_UNREADABLE')throw error;
+  throw inputFailure('INPUT_UNREADABLE');
+ }finally{try{await handle.close();}catch{}}
+};
 const hasLeadingBom=(bytes)=>bytes.length>=UTF8_BOM.length&&bytes.subarray(0,UTF8_BOM.length).equals(UTF8_BOM);
 const writeJson=(value)=>process.stdout.write(JSON.stringify(value)+'\n');
 const diagnostic=(code)=>process.stderr.write(code+'\n');
@@ -64,7 +95,7 @@ const main=async()=>{
  const parsed=parseArguments(process.argv.slice(2));
  if(parsed.code)return invalid(parsed.code,parsed.status);
  let raw;
- try{raw=parsed.input==='-'?await readStdin():await readFile(parsed.input);}catch{return invalid('INPUT_UNREADABLE');}
+ try{raw=parsed.input==='-'?await readStdin():await readPath(parsed.input);}catch(error){return invalid(error?.code==='INPUT_TOO_LARGE'?'INPUT_TOO_LARGE':'INPUT_UNREADABLE');}
  if(hasLeadingBom(raw))return invalid('INPUT_BOM_FORBIDDEN');
  let source;
  try{source=UTF8_DECODER.decode(raw);}catch{return invalid('INPUT_UTF8_INVALID');}
