@@ -3,11 +3,11 @@
   "evaluator_files": [
     {
       "path": "evaluator/authority.mjs",
-      "file_digest": "27ef53197f547109e9d73d4f83ec028ed6ce4c57ac4923f6df41c7068efd20c1"
+      "file_digest": "785807850b387b8d217d6c3a197759f712c67f10aa4a19c1e82ffb2777c78260"
     },
     {
       "path": "evaluator/canonical.mjs",
-      "file_digest": "fc2f7fc607af53b558b37fea73cb41f335f7086d5c2d1253211c3078b9863005"
+      "file_digest": "59ef007f05359bf7c851b2abeeec3910468cf90b4bcf33f18e17912dac369a05"
     },
     {
       "path": "evaluator/claims.mjs",
@@ -23,7 +23,7 @@
     },
     {
       "path": "evaluator/index.mjs",
-      "file_digest": "579a3a4ea66f5d29b28682b1b8bdf8538458d27befaae168094bee7eb4595346"
+      "file_digest": "bb04d60c49e17f8f707ba35fbf8f0e475098b6e96c6cbae612b7b22ee4aa2300"
     },
     {
       "path": "evaluator/projection.mjs",
@@ -35,7 +35,7 @@
     },
     {
       "path": "evaluator/validation.mjs",
-      "file_digest": "6a545d8d2ecb373f9a62ecb92d4513faab452eeadee517807521f4fbf5cc7f37"
+      "file_digest": "ce4e8079a39fab8f67920e8d46d101c72e336c56fb428f92c37976717782d010"
     }
   ],
   "schema_manifest_digest": "7c66ac79b3f6b820377b8d56eaa2e3a9b383f659e6cc3a54dbcf73a76a9622aa",

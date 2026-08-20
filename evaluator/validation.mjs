@@ -1,7 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { assertIJson, assertCanonicalRelativePath, canonicalSet, jcsBytes, parseArtifactJson } from './canonical.mjs';
+import { ARTIFACT_READ_LIMITS, assertIJson, assertCanonicalRelativePath, canonicalSet, jcsBytes, parseArtifactJson, readArtifactBytes } from './canonical.mjs';
 import { validateTask5DependencyEvaluation } from './dependency-decision.mjs';
 
 const schemaPaths=[
@@ -10,7 +9,7 @@ const schemaPaths=[
  '../schemas/core/real-world-case.schema.json','../schemas/core/snapshot-closure.schema.json','../schemas/evaluator/output.schema.json',
  '../schemas/evaluator/rule.schema.json','../schemas/evaluator/semantic-projection.schema.json'
 ];
-const schemas=await Promise.all(schemaPaths.map(async(schemaFile)=>parseArtifactJson(await readFile(new URL(schemaFile,import.meta.url)),schemaFile)));
+const schemas=await Promise.all(schemaPaths.map(async(schemaFile)=>parseArtifactJson(await readArtifactBytes(new URL(schemaFile,import.meta.url),{maxBytes:ARTIFACT_READ_LIMITS.JSON_MAX_BYTES}),schemaFile)));
 const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,verbose:false,messages:false,unicodeRegExp:true});
 addFormats(ajv);
 ajv.addFormat('canonical-relative-path',{type:'string',validate(value){try{assertCanonicalRelativePath(value);return true;}catch{return false;}}});

@@ -1,3 +1,5 @@
+import { open } from 'node:fs/promises';
+import { O_NOFOLLOW, O_NONBLOCK, O_RDONLY } from 'node:constants';
 import { TextDecoder, types as utilTypes } from 'node:util';
 import { canonicalize } from 'json-canonicalize';
 
@@ -301,6 +303,60 @@ const fail = (code) => {
   error.code = code;
   throw error;
 };
+
+export const ARTIFACT_READ_LIMITS = Object.freeze({
+  JSON_MAX_BYTES: KNOWLEDGE_JSON_LIMITS.MAX_BYTES,
+  RAW_MAX_BYTES: 1_048_576,
+});
+
+const sameArtifactSnapshot = (before, after, bytesRead) =>
+  before.isFile()
+  && after.isFile()
+  && before.dev === after.dev
+  && before.ino === after.ino
+  && before.size === after.size
+  && before.mtimeNs === after.mtimeNs
+  && before.ctimeNs === after.ctimeNs
+  && before.size === BigInt(bytesRead);
+
+export async function readArtifactBytes(path, options = {}) {
+  const maxBytes = options?.maxBytes ?? ARTIFACT_READ_LIMITS.RAW_MAX_BYTES;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) fail('ARTIFACT_VERIFICATION_FAILED');
+
+  let handle;
+  try {
+    handle = await open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile() || before.size > BigInt(maxBytes)) {
+      fail('ARTIFACT_VERIFICATION_FAILED');
+    }
+
+    const capacity = Math.min(maxBytes + 1, Number(before.size) + 1);
+    const allocation = Buffer.allocUnsafe(capacity);
+    let bytesRead = 0;
+    while (bytesRead < capacity) {
+      const result = await handle.read(
+        allocation,
+        bytesRead,
+        capacity - bytesRead,
+        bytesRead,
+      );
+      if (result.bytesRead === 0) break;
+      bytesRead += result.bytesRead;
+    }
+
+    const after = await handle.stat({ bigint: true });
+    if (bytesRead > maxBytes || !sameArtifactSnapshot(before, after, bytesRead)) {
+      fail('ARTIFACT_VERIFICATION_FAILED');
+    }
+    return allocation.subarray(0, bytesRead);
+  } catch (error) {
+    if (error?.code === 'ARTIFACT_VERIFICATION_FAILED') throw error;
+    fail('ARTIFACT_VERIFICATION_FAILED');
+  } finally {
+    if (handle !== undefined) await handle.close().catch(() => {});
+  }
+}
 
 export const parseArtifactJson = (bytes, path) => {
   try {
