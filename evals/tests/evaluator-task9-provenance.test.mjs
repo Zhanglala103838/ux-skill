@@ -528,7 +528,7 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   assert.deepEqual(issues, []);
 });
 
-test('TASK10_REGISTRY_FALLBACK_IDENTITY_RED keeps unavailable-registry semantics independent of unverified bytes', async () => {
+test('TASK10_REGISTRY_BINDING_SCOPE_RED classifies only registry binding failures as unavailable', async () => {
   const issues = [];
   const [golden, registry] = await Promise.all([
     readFile(new URL('../golden/high-risk-delete.json', import.meta.url), 'utf8').then(JSON.parse),
@@ -740,21 +740,46 @@ test('TASK10_REGISTRY_FALLBACK_IDENTITY_RED keeps unavailable-registry semantics
     issues.push('valid-registry:registry-verification-not-verified');
   }
 
+  const mutateEvaluatorManifest = async (root, mutate) => {
+    const path = join(root, 'evaluator/manifest.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    mutate(manifest);
+    await writeFile(path, JSON.stringify(manifest, null, 2) + '\n');
+  };
   const snapshotFallbacks = [];
   const snapshotTamperCases = [
-    ['registry-raw', async (root) => appendBytes(join(root, 'evaluator/snapshot-source-registry.json'), ' ')],
-    ['registry-manifest-binding', async (root) => {
-      const path = join(root, 'evaluator/manifest.json');
-      const manifest = JSON.parse(await readFile(path, 'utf8'));
+    ['registry-binding-missing', async (root) => mutateEvaluatorManifest(root, (manifest) => {
+      delete manifest.snapshot_source_registry;
+    })],
+    ['registry-binding-null', async (root) => mutateEvaluatorManifest(root, (manifest) => {
+      manifest.snapshot_source_registry = null;
+    })],
+    ['registry-binding-malformed', async (root) => mutateEvaluatorManifest(root, (manifest) => {
+      manifest.snapshot_source_registry = { path: 42, file_digest: [] };
+    })],
+    ['registry-binding-wrong-path', async (root) => mutateEvaluatorManifest(root, (manifest) => {
+      manifest.snapshot_source_registry.path = 'evaluator/not-the-source-registry.json';
+    })],
+    ['registry-binding-digest-mismatch', async (root) => mutateEvaluatorManifest(root, (manifest) => {
       manifest.snapshot_source_registry.file_digest = '0'.repeat(64);
-      await writeFile(path, JSON.stringify(manifest, null, 2) + '\n');
-    }],
+    })],
+    ['registry-raw-missing', async (root) => rm(join(root, 'evaluator/snapshot-source-registry.json'))],
+    ['registry-raw-tamper', async (root) => appendBytes(
+      join(root, 'evaluator/snapshot-source-registry.json'),
+      ' ',
+    )],
   ];
   for (const [label, mutate] of snapshotTamperCases) {
     try {
       const evaluated = await evaluateIsolated(label, mutate, tamperBundle);
       assertNoRelease(evaluated.semantic_projection, label, issues);
       snapshotFallbacks.push({ label, evaluated });
+      if (
+        evaluated.semantic_projection.evaluator_digest
+        !== '2736eb367eed0496a1aca8d7702f5cc1abd73344a2789c91d2c7ef8aca65b267'
+      ) {
+        issues.push(label + ':wrong-unavailable-sentinel');
+      }
       if (evaluated.audit_sidecar.manifest_verification !== 'partial_failure') {
         issues.push(label + ':manifest-verification-not-partial');
       }
@@ -765,22 +790,50 @@ test('TASK10_REGISTRY_FALLBACK_IDENTITY_RED keeps unavailable-registry semantics
       issues.push(label + ':no-result:' + (error?.code ?? error?.name ?? 'unknown'));
     }
   }
-  if (snapshotFallbacks.length !== 2) {
+  if (snapshotFallbacks.length !== snapshotTamperCases.length) {
     issues.push('registry-fallback:missing-variant');
   } else {
-    const [rawTamper, bindingTamper] = snapshotFallbacks.map((row) => row.evaluated);
-    if (!jcs(rawTamper.semantic_projection).equals(jcs(bindingTamper.semantic_projection))) {
-      issues.push('registry-fallback:semantic-bytes-differ');
-    }
-    if (rawTamper.semantic_digest !== bindingTamper.semantic_digest) {
-      issues.push('registry-fallback:semantic-digest-differs');
-    }
-    if (rawTamper.semantic_projection.evaluator_digest !== bindingTamper.semantic_projection.evaluator_digest) {
-      issues.push('registry-fallback:evaluator-identity-differs');
+    const baseline = snapshotFallbacks[0].evaluated;
+    for (const { label, evaluated } of snapshotFallbacks.slice(1)) {
+      if (!jcs(baseline.semantic_projection).equals(jcs(evaluated.semantic_projection))) {
+        issues.push(label + ':semantic-bytes-differ');
+      }
+      if (baseline.semantic_digest !== evaluated.semantic_digest) {
+        issues.push(label + ':semantic-digest-differs');
+      }
+      if (
+        baseline.semantic_projection.evaluator_digest
+        !== evaluated.semantic_projection.evaluator_digest
+      ) {
+        issues.push(label + ':evaluator-identity-differs');
+      }
     }
   }
 
+  const globalManifestTamperCases = [
+    ['evaluator-manifest-unknown-field', (manifest) => {
+      manifest.unregistered_outer_field = true;
+    }],
+    ...[
+      'behavior_version',
+      'evaluator_files',
+      'schema_manifest_digest',
+      'knowledge_manifest_digest',
+      'policy_manifest_digest',
+    ].flatMap((field) => [
+      ['evaluator-manifest-' + field + '-missing', (manifest) => {
+        delete manifest[field];
+      }],
+      ['evaluator-manifest-' + field + '-malformed', (manifest) => {
+        manifest[field] = null;
+      }],
+    ]),
+  ];
   const globalTamperCases = [
+    ...globalManifestTamperCases.map(([label, mutate]) => [
+      label,
+      async (root) => mutateEvaluatorManifest(root, mutate),
+    ]),
     ['schema-raw', async (root) => appendBytes(join(root, 'schemas/evaluator/rule.schema.json'), ' ')],
     ['knowledge-raw', async (root) => appendBytes(join(root, 'knowledge/rules.json'), ' ')],
     ['policy-manifest-raw', async (root) => appendBytes(join(root, 'knowledge/policy-manifest.json'), ' ')],
