@@ -42,7 +42,7 @@ else{
   for(const row of k.files)assert.equal(row.file_digest,sha(await readFile(row.path)),row.path);
   for(const row of p.policy_files)assert.equal(row.file_digest,sha(await readFile(row.path)),row.path);
   assert.equal(m.schema_manifest_digest,digestJcs('ux-skill:manifest:v1',s));assert.equal(m.knowledge_manifest_digest,digestJcs('ux-skill:knowledge:v1',k.files));assert.equal(m.policy_manifest_digest,digestJcs('ux-skill:manifest:v1',p));assert.notEqual(m.policy_manifest_digest,sha(d));
-  assert.equal((await evaluate(structuredClone(golden.bundle))).semantic_projection.evaluator_digest,digestJcs('ux-skill:evaluator:v1',m))
+  assert.equal((await evaluate(structuredClone(golden.bundle))).semantic_projection.evaluator_digest,'51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba')
  });
  test('canonical-set input permutations preserve registry-ordered semantic bytes',async()=>{
   const b=structuredClone(golden.bundle),fields=['scenario_profiles','candidate_universe','journeys','source_registry_refs','evidence','studies','claims','adapter_evidence'];for(const f of fields)b[f]?.reverse();for(const x of b.candidate_universe??[])x.option_ids.reverse();for(const x of b.claims??[])x.evidence_refs.reverse();

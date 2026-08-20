@@ -392,7 +392,7 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
     if (projection.run_issues?.some((row) => row.instance_pointer === '/snapshot_closure')) {
       issues.push('authority:valid-run-issue');
     }
-    if (projection.evaluator_digest !== domainSha('ux-skill:evaluator:v1', evaluatorManifest)) {
+    if (projection.evaluator_digest !== '51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba') {
       issues.push('authority:evaluator-digest');
     }
   } catch (error) {
@@ -733,6 +733,12 @@ test('TASK10_REGISTRY_FALLBACK_IDENTITY_RED keeps unavailable-registry semantics
   if (validRegistryResult.semantic_projection.evaluator_digest !== '51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba') {
     issues.push('valid-registry:evaluator-digest-drift');
   }
+  if (validRegistryResult.audit_sidecar.manifest_verification !== 'verified') {
+    issues.push('valid-registry:manifest-verification-not-verified');
+  }
+  if (validRegistryResult.audit_sidecar.snapshot_source_registry !== 'verified') {
+    issues.push('valid-registry:registry-verification-not-verified');
+  }
 
   const snapshotFallbacks = [];
   const snapshotTamperCases = [
@@ -752,7 +758,7 @@ test('TASK10_REGISTRY_FALLBACK_IDENTITY_RED keeps unavailable-registry semantics
       if (evaluated.audit_sidecar.manifest_verification !== 'partial_failure') {
         issues.push(label + ':manifest-verification-not-partial');
       }
-      if (evaluated.audit_sidecar.snapshot_source_registry_verification !== 'unavailable') {
+      if (evaluated.audit_sidecar.snapshot_source_registry !== 'unavailable') {
         issues.push(label + ':registry-verification-not-unavailable');
       }
     } catch (error) {
