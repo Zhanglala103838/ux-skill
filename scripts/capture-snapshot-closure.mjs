@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { types as utilTypes } from 'node:util';
@@ -23,7 +25,7 @@ const HN=/^[a-z0-9!#$%&'*+.^_\x60|~-]+$/;
 const REGISTRY_DOMAIN='ux-skill:capture-registry:v1';
 const MODULE_ROW_KEYS=['relative_path','raw_sha256'];
 const registryState=new WeakMap();
-const mediatedGet=Object.freeze(globalThis.fetch.bind(globalThis));
+const mediatedHttp=Object.freeze(httpRequest),mediatedHttps=Object.freeze(httpsRequest),NETWORK_TIMEOUT_MS=10000;
 const E=(code,result)=>Object.assign(new TypeError(code),{code,...(result?{result}:{})});
 const bad=()=>{throw E('CAPTURE_INPUT_INVALID')};
 const unavailable=()=>{throw E('TARGET_UNAVAILABLE',{run_status:'target_unavailable',run_issues:[{code:'RULE_EVALUATION_ERROR',instance_pointer:'/snapshot_closure',dependency_id:null}],release_gate:'no_release'})};
@@ -293,10 +295,20 @@ const invocationWorkerMain=async()=>{
 };
 const INVOCATION_WORKER_SOURCE=`(${invocationWorkerMain.toString()})().catch(error=>{const fault=value=>({name:value?.name??'Error',message:value?.message??String(value),code:value?.code??null});require('node:worker_threads').parentPort.postMessage({type:'load-error',error:fault(error)})})`;
 const COMPARTMENT_EXEC_ARGV=Object.freeze(['--experimental-vm-modules']);
-const brokerHeaders=response=>[...response.headers.entries()].map(([name,value],sequence)=>({sequence,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')}));
+const brokerHeaders=rawHeaders=>{
+  if(!Array.isArray(rawHeaders)||rawHeaders.length%2!==0||rawHeaders.length/2>L.maxHeaders)throw E('CAPTURE_RESPONSE_HEADERS_INVALID');const rows=[];
+  for(let index=0;index<rawHeaders.length;index+=2){const name=String(rawHeaders[index]).toLowerCase(),value=String(rawHeaders[index+1]);if(!HN.test(name))throw E('CAPTURE_RESPONSE_HEADERS_INVALID');rows.push({sequence:rows.length,name,value_bytes_base64:Buffer.from(value,'latin1').toString('base64')})}return rows;
+};
+const brokerBridgeHeaders=rows=>rows.map(row=>[row.name,Buffer.from(row.value_bytes_base64,'base64').toString('latin1')]);
+const brokerRequest=(input,signal)=>new Promise((resolvePromise,rejectPromise)=>{
+  let settled=false,request,timeout;const finish=(error,value)=>{if(settled)return;settled=true;clearTimeout(timeout);error?rejectPromise(error):resolvePromise(value)};let target;
+  try{target=new URL(input.url);if(!['http:','https:'].includes(target.protocol)||target.username||target.password)throw E('CAPTURE_NETWORK_AUTHORITY_DENIED')}catch(error){finish(error);return}
+  const requestImpl=target.protocol==='https:'?mediatedHttps:mediatedHttp;
+  try{request=requestImpl(target,{method:input.method,signal,headers:{Connection:'close'}},response=>{let rows;try{rows=brokerHeaders(response.rawHeaders);if(!Number.isInteger(response.statusCode)||response.statusCode<100||response.statusCode>599)throw E('CAPTURE_RESPONSE_INVALID')}catch(error){response.destroy(error);finish(error);return}const chunks=[];let size=0;response.on('data',chunk=>{if(settled)return;const bytes=Buffer.from(chunk);size+=bytes.length;if(size>L.maxArtifactBytes){const error=E('CAPTURE_ARTIFACT_TOO_LARGE');response.destroy(error);request.destroy(error);finish(error);return}chunks.push(bytes)});response.once('end',()=>{const body=Buffer.concat(chunks);finish(null,{status:response.statusCode,final_url:input.url,header_rows:rows,body,bridge:{status:response.statusCode,url:input.url,headers:brokerBridgeHeaders(rows),body_base64:body.toString('base64')}})});response.once('error',error=>finish(error))});timeout=setTimeout(()=>request.destroy(E('CAPTURE_NETWORK_TIMEOUT')),NETWORK_TIMEOUT_MS);request.once('error',error=>finish(error));request.end()}catch(error){finish(error)}
+});
 const brokerAdmit=(lease,input)=>{
   const controller=new AbortController(),record={input:snap(input),controller,state:'pending',response:null,error:null,done:null};lease.admitted.push(record);
-  record.done=new Promise(resolveDone=>{setTimeout(()=>{void(async()=>{try{if(!lease.active)throw E('CAPTURE_NETWORK_AUTHORITY_DENIED');const response=await mediatedGet(record.input.url,{method:record.input.method,redirect:'manual',signal:controller.signal}),body=Buffer.from(await response.arrayBuffer());if(body.length>L.maxArtifactBytes)throw E('CAPTURE_ARTIFACT_TOO_LARGE');record.response={status:response.status,final_url:response.url||record.input.url,header_rows:brokerHeaders(response),body,bridge:{status:response.status,url:response.url||record.input.url,headers:[...response.headers.entries()],body_base64:body.toString('base64')}};record.state='fulfilled'}catch(error){record.error=error;record.state='rejected'}finally{resolveDone()}})()},20)});return record;
+  record.done=new Promise(resolveDone=>{setTimeout(()=>{void(async()=>{try{if(!lease.active)throw E('CAPTURE_NETWORK_AUTHORITY_DENIED');record.response=await brokerRequest(record.input,controller.signal);record.state='fulfilled'}catch(error){record.error=error;record.state='rejected'}finally{resolveDone()}})()},20)});return record;
 };
 const brokerAccounted=(lease,returned)=>{
   try{
