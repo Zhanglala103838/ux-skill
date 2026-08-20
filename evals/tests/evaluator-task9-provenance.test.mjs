@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { canonicalize } from 'json-canonicalize';
 import { evaluate } from '../../evaluator/index.mjs';
 import { replayClosure, snapshotClosureDigest } from '../../scripts/capture-snapshot-closure.mjs';
@@ -304,6 +305,220 @@ test('TASK10_TASK9_PROVENANCE_RED binds real closure replay and fails closed', a
       issues.push(label + ':accepted');
     } catch (error) {
       if (error?.code !== 'INVALID_EVALUATION_INPUT') issues.push(label + ':wrong-error');
+    }
+  }
+
+  assert.deepEqual(issues, []);
+});
+
+
+test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized errors', async () => {
+  const issues = [];
+  const [golden, evaluatorManifest, outputSchema] = await Promise.all([
+    readFile(new URL('../golden/high-risk-delete.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../../evaluator/manifest.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../../schemas/evaluator/output.schema.json', import.meta.url), 'utf8').then(JSON.parse),
+  ]);
+
+  const blackBox = clone(golden.bundle);
+  blackBox.target_snapshot = {
+    target_snapshot_id: 'task10-black-box-snapshot',
+    target_kind: 'black_box_site',
+    canonical_locator: 'public-sites/task10-example',
+    snapshot_digest: '0'.repeat(64),
+  };
+  blackBox.research_state = {
+    research_state_id: 'task10-black-box-research',
+    status: 'authorized',
+    authorization_ref: 'task10-read-only',
+  };
+  blackBox.adapter_evidence = [];
+  const complete = await buildCompleteTask9Result(blackBox);
+  const completeBundle = clone(blackBox);
+  completeBundle.snapshot_closure_result = clone(complete);
+
+  const expectedSource = {
+    source_authority_id: 'task10-example-source-v1',
+    target_snapshot_id: 'task10-black-box-snapshot',
+    target_kind: 'black_box_site',
+    canonical_locator: 'public-sites/task10-example',
+    entry_url: 'https://example.test/task10',
+    task_script_digest: '0ec48f7f3851c7e948824663e9d0f787dd74b40587eaf424663db483b63f0d4b',
+    capture_environment_digest: '478b2ce5472830245aca689bc2880dab4398aeb8656c69f6c6b99c7bf18dc24c',
+    allowed_snapshot_digests: ['5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b'],
+  };
+  if (complete.closure.manifest_digest !== expectedSource.allowed_snapshot_digests[0]) {
+    issues.push('fixture:closure-digest-drift');
+  }
+  if (complete.closure.task_script_digest !== expectedSource.task_script_digest) {
+    issues.push('fixture:task-script-digest-drift');
+  }
+  if (complete.closure.capture_environment_digest !== expectedSource.capture_environment_digest) {
+    issues.push('fixture:capture-environment-digest-drift');
+  }
+
+  const registryRef = evaluatorManifest.snapshot_source_registry;
+  if (
+    registryRef?.path !== 'evaluator/snapshot-source-registry.json'
+    || !/^[0-9a-f]{64}$/.test(registryRef?.file_digest ?? '')
+  ) {
+    issues.push('authority:manifest-registry-ref');
+  } else {
+    try {
+      const registryBytes = await readFile(new URL('../../' + registryRef.path, import.meta.url));
+      if (sha(registryBytes) !== registryRef.file_digest) issues.push('authority:registry-raw-digest');
+      const registry = JSON.parse(registryBytes.toString('utf8'));
+      if (registry.registry_version !== 'snapshot-source-registry-v1') {
+        issues.push('authority:registry-version');
+      }
+      const registered = registry.sources?.find((row) =>
+        row.source_authority_id === expectedSource.source_authority_id
+      );
+      if (!registered || !jcs(registered).equals(jcs(expectedSource))) {
+        issues.push('authority:registered-source-row');
+      }
+    } catch (error) {
+      issues.push('authority:registry-unreadable:' + (error?.code ?? error?.name ?? 'unknown'));
+    }
+  }
+
+  try {
+    const evaluated = await evaluate(clone(completeBundle));
+    const projection = evaluated.semantic_projection;
+    if (projection.release_recommendation?.status === 'no_release') issues.push('authority:valid-no-release');
+    if (projection.run_issues?.some((row) => row.instance_pointer === '/snapshot_closure')) {
+      issues.push('authority:valid-run-issue');
+    }
+    if (projection.evaluator_digest !== domainSha('ux-skill:evaluator:v1', evaluatorManifest)) {
+      issues.push('authority:evaluator-digest');
+    }
+  } catch (error) {
+    issues.push('authority:valid-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
+  }
+
+  const relabeled = clone(completeBundle);
+  relabeled.target_snapshot.target_snapshot_id = 'different-target';
+  relabeled.target_snapshot.canonical_locator = 'public-sites/different-target';
+  relabeled.snapshot_closure_result.source_identity.target_snapshot_id = 'different-target';
+  relabeled.snapshot_closure_result.source_identity.canonical_locator = 'public-sites/different-target';
+  try {
+    assertNoRelease((await evaluate(relabeled)).semantic_projection, 'authority:coordinated-relabel', issues);
+  } catch (error) {
+    issues.push('authority:coordinated-relabel-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
+  }
+
+  const unregistered = clone(completeBundle);
+  const unregisteredUrl = 'https://unregistered.example.test/task10';
+  unregistered.snapshot_closure_result.closure.entry_url = unregisteredUrl;
+  unregistered.snapshot_closure_result.closure.network_records[0].request_url = unregisteredUrl;
+  unregistered.snapshot_closure_result.closure.network_records[0].final_url = unregisteredUrl;
+  unregistered.snapshot_closure_result.closure.manifest_digest =
+    snapshotClosureDigest(unregistered.snapshot_closure_result.closure);
+  unregistered.snapshot_closure_result.closure_bytes_base64 =
+    jcs(unregistered.snapshot_closure_result.closure).toString('base64');
+  unregistered.snapshot_closure_result.source_identity.entry_url = unregisteredUrl;
+  unregistered.snapshot_closure_result.source_identity.snapshot_digest =
+    unregistered.snapshot_closure_result.closure.manifest_digest;
+  unregistered.target_snapshot.snapshot_digest =
+    unregistered.snapshot_closure_result.closure.manifest_digest;
+  unregistered.snapshot_closure_result.replay_evidence.responses[0].request_url = unregisteredUrl;
+  unregistered.snapshot_closure_result.replay_evidence.responses[0].final_url = unregisteredUrl;
+  try {
+    assertNoRelease((await evaluate(unregistered)).semantic_projection, 'authority:unregistered-source', issues);
+  } catch (error) {
+    issues.push('authority:unregistered-source-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
+  }
+
+  const mixed = clone(golden.bundle);
+  mixed.snapshot_closure_result = clone(complete);
+  const mixedError = [{
+    stage: 'collections',
+    code: 'INVARIANT_SNAPSHOT_CLOSURE_TARGET_KIND',
+    instance_pointer: '/snapshot_closure_result',
+    invariant_or_schema_id: 'SnapshotClosureTargetBinding-v1',
+    params_jcs: '{"target_kind":"hulianui_contract"}',
+  }];
+  try {
+    await evaluate(mixed);
+    issues.push('errors:mixed-target-accepted');
+  } catch (error) {
+    if (
+      error?.code !== 'INVALID_EVALUATION_INPUT'
+      || !jcs(error.errors).equals(jcs(mixedError))
+    ) {
+      issues.push('errors:mixed-target-row:' + JSON.stringify(error?.errors ?? null));
+    }
+  }
+
+  const policyMismatch = clone(golden.bundle);
+  policyMismatch.policy_digests.decision_policy_digest = '0'.repeat(64);
+  const policyError = [{
+    stage: 'policy',
+    code: 'INVARIANT_POLICY_DIGEST_MISMATCH',
+    instance_pointer: '/policy_digests',
+    invariant_or_schema_id: 'Task10PolicyDigest-v1',
+    params_jcs: jcs({ expected: golden.bundle.policy_digests }).toString('utf8'),
+  }];
+  try {
+    await evaluate(policyMismatch);
+    issues.push('errors:policy-digest-accepted');
+  } catch (error) {
+    if (
+      error?.code !== 'INVALID_EVALUATION_INPUT'
+      || !jcs(error.errors).equals(jcs(policyError))
+    ) {
+      issues.push('errors:policy-digest-row:' + JSON.stringify(error?.errors ?? null));
+    }
+  }
+
+  const normalizedError = outputSchema.$defs?.NormalizedError;
+  let validateNormalizedError;
+  try {
+    validateNormalizedError = new Ajv2020({
+      allErrors: true,
+      strict: true,
+      allowUnionTypes: true,
+    }).compile(normalizedError);
+  } catch (error) {
+    issues.push('errors:schema-uncompilable:' + (error?.message ?? error?.name ?? 'unknown'));
+  }
+  if (validateNormalizedError) {
+    const row = (code, stage = 'semantic') => ({
+      stage,
+      code,
+      instance_pointer: '/probe',
+      invariant_or_schema_id: 'Task10NormalizedErrorDomain-v1',
+      params_jcs: '{}',
+    });
+    const exactCodes = [
+      'PARSE_ERROR',
+      'UNICODE_NOT_NFC',
+      'REQUIRED_MISSING',
+      'ADDITIONAL_PROPERTY',
+      'TYPE_MISMATCH',
+      'ENUM_MISMATCH',
+      'FORMAT_INVALID',
+      'PATH_INVALID',
+      'AST_OP_REQUIRED',
+      'AST_OP_UNKNOWN',
+      'DUPLICATE_ID_CONFLICT',
+      'REF_MISSING',
+      'SUPPRESSED_BY_STAGE',
+    ];
+    for (const code of [...exactCodes, 'IJSON_NON_JSON_VALUE', 'INVARIANT_PROBE']) {
+      if (!validateNormalizedError(row(code))) issues.push('errors:normative-code-rejected:' + code);
+    }
+    if (!validateNormalizedError(row('INVARIANT_POLICY_DIGEST_MISMATCH', 'policy'))) {
+      issues.push('errors:policy-stage-rejected');
+    }
+    for (const code of [
+      'TARGET_KIND_MISMATCH',
+      'POLICY_DIGEST_MISMATCH',
+      'UNREGISTERED_CODE',
+      'IJSON',
+      'INVARIANT',
+    ]) {
+      if (validateNormalizedError(row(code))) issues.push('errors:off-domain-code-accepted:' + code);
     }
   }
 
