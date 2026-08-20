@@ -3,9 +3,6 @@ import {createHash} from 'node:crypto';
 import {constants as fsConstants} from 'node:fs';
 import {open,readFile} from 'node:fs/promises';
 import {TextDecoder} from 'node:util';
-import Ajv2020 from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
-import {parseKnowledgeJson,responseSchemaManifestDigest} from './strict-json.mjs';
 
 const ROOT=new URL('../',import.meta.url);
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
@@ -57,7 +54,7 @@ const readPath=async(path)=>{
   if(total>MAX_BYTES)throw inputFailure('INPUT_TOO_LARGE');
   const after=await handle.stat({bigint:true});
   if(!after.isFile())throw inputFailure('INPUT_UNREADABLE');
-  if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size)throw inputFailure('INPUT_UNREADABLE');
+  if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.mtimeNs!==after.mtimeNs||before.ctimeNs!==after.ctimeNs)throw inputFailure('INPUT_UNREADABLE');
   if(after.size>MAX_BYTES_BIGINT)throw inputFailure('INPUT_TOO_LARGE');
   if(before.size!==BigInt(total))throw inputFailure('INPUT_UNREADABLE');
   return bytes.subarray(0,total);
@@ -70,10 +67,13 @@ const hasLeadingBom=(bytes)=>bytes.length>=UTF8_BOM.length&&bytes.subarray(0,UTF
 const writeJson=(value)=>process.stdout.write(JSON.stringify(value)+'\n');
 const diagnostic=(code)=>process.stderr.write(code+'\n');
 const sha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
+let parseKnowledgeJson=null;
 const loadResponseValidator=async()=>{
- const [responseRaw,semanticRaw,manifestRaw,evaluatorManifestRaw]=await Promise.all([
+ const [{default:Ajv2020},{default:addFormats},strictJson,responseRaw,semanticRaw,manifestRaw,evaluatorManifestRaw]=await Promise.all([
+  import('ajv/dist/2020.js'),import('ajv-formats'),import('./strict-json.mjs'),
   readFile(new URL(RESPONSE_PATH,ROOT)),readFile(new URL('schemas/evaluator/semantic-projection.schema.json',ROOT)),readFile(new URL('schemas/manifest.json',ROOT)),readFile(new URL('evaluator/manifest.json',ROOT))
  ]);
+ parseKnowledgeJson=strictJson.parseKnowledgeJson;const responseSchemaManifestDigest=strictJson.responseSchemaManifestDigest;
  const responseSchema=JSON.parse(responseRaw),semanticSchema=JSON.parse(semanticRaw),manifest=JSON.parse(manifestRaw),evaluatorManifest=JSON.parse(evaluatorManifestRaw);
  const rows=manifest.filter((row)=>row.path===RESPONSE_PATH);
  if(rows.length!==1||rows[0].file_digest!==sha(responseRaw))throw new TypeError('RESPONSE_SCHEMA_MANIFEST_INVALID');
