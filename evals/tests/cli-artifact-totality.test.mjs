@@ -14,11 +14,13 @@ import {canonicalize} from 'json-canonicalize';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const CLI=join(ROOT,'scripts/ux-evaluate.mjs');
 const RACE_PRELOAD=fileURLToPath(new URL('../helpers/task11-path-race.cjs',import.meta.url));
+const TELEMETRY_PRELOAD=fileURLToPath(new URL('../helpers/task11-artifact-io-telemetry.cjs',import.meta.url));
 const RESPONSE_PATH='schemas/adapters/ux-evaluate-response-v1.schema.json';
 const SEMANTIC_PATH='schemas/evaluator/semantic-projection.schema.json';
 const SCHEMA_MANIFEST_PATH='schemas/manifest.json';
 const EVALUATOR_MANIFEST_PATH='evaluator/manifest.json';
 const ARTIFACT_RESOURCE_LIMIT=1_048_576;
+const BOOTSTRAP_SPARSE_BYTES=67_108_864;
 const LARGE_SPARSE_ARTIFACT_BYTES=3_221_225_472;
 const SNAPSHOT_REGISTRY_UNAVAILABLE_EVALUATOR_DIGEST='2736eb367eed0496a1aca8d7702f5cc1abd73344a2789c91d2c7ef8aca65b267';
 const RESPONSE_SCHEMA_CLOSURE=Object.freeze([
@@ -44,7 +46,7 @@ const DIRECT_EVALUATOR_SOURCE="import{readFile}from'node:fs/promises';const bund
 const spawnCli=(isolated,options={})=>new Promise((resolve,reject)=>{
  const inputKind=options.inputKind??'stdin',inputPath=join(isolated,'runtime-input.json');
  const cli=join(isolated,'scripts/ux-evaluate.mjs'),args=options.args??['--mode','scan','--input',inputKind==='path'?inputPath:'-','--output','json'];
- const child=spawn(process.execPath,[cli,...args],{cwd:isolated,env:{LANG:'C',LC_ALL:'C',TZ:'UTC',UX_REQUEST_ID:'task11-artifact-totality'},stdio:['pipe','pipe','pipe']});
+ const child=spawn(process.execPath,[...(options.nodeArgs??[]),cli,...args],{cwd:isolated,env:{LANG:'C',LC_ALL:'C',TZ:'UTC',UX_REQUEST_ID:'task11-artifact-totality',...(options.env??{})},stdio:['pipe','pipe','pipe']});
  const stdout=[];const stderr=[];let timedOut=false;let forceTimer=null;
  child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));child.on('error',reject);
  const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');forceTimer=setTimeout(()=>child.kill('SIGKILL'),250);},options.timeoutMs??15_000);
@@ -64,6 +66,22 @@ const isolatedRun=async(mutate,options={})=>{
   await writeFile(join(isolated,'runtime-input.json'),options.pathBytes??JSON.stringify(bundle));
   await mutate(isolated);
   return await spawnCli(isolated,options);
+ }finally{await rm(isolated,{recursive:true,force:true});}
+};
+const readTelemetry=async(path)=>{
+ let source='';try{source=await readFile(path,'utf8');}catch(error){if(error?.code!=='ENOENT')throw error;}
+ return source.split('\n').filter(Boolean).map((line)=>JSON.parse(line));
+};
+const isolatedTelemetryRun=async(path,size=null,options={})=>{
+ const isolated=await mkdtemp(join(ROOT,'.task11-artifact-telemetry-'));
+ try{
+  for(const name of ['scripts','evaluator','schemas','knowledge','references'])await cp(join(ROOT,name),join(isolated,name),{recursive:true});
+  await cp(join(ROOT,'package.json'),join(isolated,'package.json'));
+  await writeFile(join(isolated,'runtime-input.json'),JSON.stringify(bundle));
+  const target=join(isolated,path),telemetryPath=join(isolated,'artifact-telemetry.ndjson');
+  if(size!==null)await makeSparseArtifact(isolated,path,size);
+  const row=await spawnCli(isolated,{...options,nodeArgs:['--require',TELEMETRY_PRELOAD],env:{TASK11_ARTIFACT_TARGET:target,TASK11_ARTIFACT_TELEMETRY:telemetryPath,...(options.env??{})}});
+  return{...row,telemetry:await readTelemetry(telemetryPath)};
  }finally{await rm(isolated,{recursive:true,force:true});}
 };
 const isolatedTrustRootRuns=async(mutate)=>{
@@ -109,6 +127,15 @@ const expectResponseSchemaBoundary=(row,label)=>{
 const expectSuccess=(row,label)=>{
  assert.equal(row.status,0,label+':exit');assert.equal(row.signal,null,label+':signal');assert.equal(row.stderr,'',label+':stderr');assert.equal(validateResponse(row.json),true,label+':schema:'+JSON.stringify(validateResponse.errors));assert.equal(row.stdout,JSON.stringify(row.json)+'\n',label+':stdout');
 };
+const expectBoundedBeforeAllocation=(row,label)=>{
+ const wholeFileReads=row.telemetry.filter((event)=>event.op==='readFile');
+ assert.deepEqual(wholeFileReads,[],label+':whole-file readFile forbidden');
+ const opens=row.telemetry.filter((event)=>event.op==='open');assert.ok(opens.length>=1,label+':bounded open required');
+ const reads=row.telemetry.filter((event)=>event.op==='read');
+ const requested=reads.reduce((total,event)=>total+event.requested,0),actual=reads.reduce((total,event)=>total+event.actual,0);
+ assert.ok(requested<=ARTIFACT_RESOURCE_LIMIT+1,label+':requested read budget '+requested);
+ assert.ok(actual<=ARTIFACT_RESOURCE_LIMIT+1,label+':actual read budget '+actual);
+};
 const expectSnapshotRegistryFallback=(row,label)=>{
  expectSuccess(row,label);assert.equal(row.timedOut,false,label+':timeout');
  assert.equal(row.json.assurance?.release_status,'no_release',label+':assurance release');
@@ -127,7 +154,7 @@ const capture=async(failures,label,operation)=>{try{await operation();}catch(err
 const makeSparseArtifact=async(root,path,size)=>{
  const target=join(root,path);await truncate(target,size);
  const snapshot=await stat(target,{bigint:true});assert.equal(snapshot.size,BigInt(size),path+':sparse size');
- if(size===LARGE_SPARSE_ARTIFACT_BYTES&&typeof snapshot.blocks==='bigint')assert.ok(snapshot.blocks*512n<snapshot.size,path+':sparse allocation');
+ if(size>=BOOTSTRAP_SPARSE_BYTES&&typeof snapshot.blocks==='bigint')assert.ok(snapshot.blocks*512n<snapshot.size,path+':sparse allocation');
 };
 const rawSha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
 const schemaManifestDigest=(manifest)=>createHash('sha256').update('ux-skill:manifest:v1','utf8').update(canonicalize(manifest),'utf8').digest('hex');
@@ -231,8 +258,33 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
     if(expectation==='fallback')expectSnapshotRegistryFallback(row,label);
     else expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);
    });
-  }
  }
+}
+ const bootstrapTrustCases=[
+  ['response schema bootstrap',RESPONSE_PATH,'response'],
+  ['semantic schema bootstrap',SEMANTIC_PATH,'response'],
+  ['schema manifest bootstrap',SCHEMA_MANIFEST_PATH,'response'],
+  ['evaluator manifest bootstrap',EVALUATOR_MANIFEST_PATH,'artifact']
+ ];
+ for(const [label,path,classification] of bootstrapTrustCases){
+  await capture(failures,label+' 64 MiB preallocation boundary',async()=>{
+   const row=await isolatedTelemetryRun(path,BOOTSTRAP_SPARSE_BYTES,{timeoutMs:20_000});
+   if(classification==='response')expectResponseSchemaBoundary(row,label);
+   else expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);
+   expectBoundedBeforeAllocation(row,label);
+  });
+ }
+ for(const [sizeLabel,size] of [['64 MiB sparse',BOOTSTRAP_SPARSE_BYTES],['three GiB sparse',LARGE_SPARSE_ARTIFACT_BYTES]]){
+  await capture(failures,'claims module '+sizeLabel+' pre-import boundary',async()=>{
+   const label='claims module '+sizeLabel,row=await isolatedTelemetryRun('evaluator/claims.mjs',size,{timeoutMs:20_000});
+   expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);expectBoundedBeforeAllocation(row,label);
+   assert.equal(row.telemetry.some((event)=>event.op==='module_resolve'),false,label+':must reject before Node module resolution');
+  });
+ }
+ await capture(failures,'normal claims module telemetry acceptance',async()=>{
+  const row=await isolatedTelemetryRun('evaluator/claims.mjs');expectSuccess(row,'normal claims module');
+  assert.equal(row.telemetry.some((event)=>event.op==='module_resolve'),true,'normal claims module:telemetry resolve positive');
+ });
  const precedenceCases=[
   ['argument precedence','MODE_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{args:['--mode','audit','--input','-','--output','json']}],
   ['input precedence','INPUT_JSON_INVALID',async(root)=>rm(join(root,'schemas/core/evaluation-input.schema.json')),{stdinBytes:'{'}],
@@ -295,5 +347,5 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   assert.equal(row.timedOut,false,'timeout');expectInvalid(row,'INPUT_UNREADABLE','torn snapshot');
   for(const forbidden of ['audit_sidecar','assurance','inquiry','semantic_projection','semantic_digest'])assert.equal(Object.hasOwn(row.json,forbidden),false,'torn snapshot:'+forbidden);
  });
- if(failures.length>0)assert.fail('TASK11_ARTIFACT_RESOURCE_BOUNDARY_RED\n'+failures.join('\n'));
+ if(failures.length>0)assert.fail('TASK11_BOOTSTRAP_PREFLIGHT_RED\n'+failures.join('\n'));
 });
