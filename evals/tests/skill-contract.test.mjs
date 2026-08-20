@@ -639,4 +639,64 @@ if(entryFailure){
 
   if(failures.length>0)assert.fail('TASK12_ACTIVE_BODY_SEMANTICS_RED:'+failures.join('|'));
  });
+
+ test('TASK12_COMMONMARK_CONTAINER_TABS_RED follows CommonMark tab stops across blockquote and list containers',async()=>{
+  const failures=[];
+  const manifestLink='[knowledge manifest](knowledge/manifest.json)';
+  const cliLink='[CLI](scripts/ux-evaluate.mjs)';
+  const expectedLinks=['knowledge/manifest.json','scripts/ux-evaluate.mjs'];
+  const splitSkill=(source)=>{
+   const match=/^---\n([\s\S]*?)\n---\n/u.exec(source);
+   assert.ok(match,'Skill frontmatter fixture');
+   return{frontmatter:match[1],body:source.slice(match[0].length)};
+  };
+  const joinSkill=({frontmatter,body})=>'---\n'+frontmatter+'\n---\n'+body;
+  const removeActiveLinks=(body)=>{
+   assert.equal(body.split(manifestLink).length-1,1,'one manifest link fixture');
+   assert.equal(body.split(cliLink).length-1,1,'one CLI link fixture');
+   return body.replace(manifestLink,'knowledge manifest').replace(cliLink,'CLI');
+  };
+  const expectCode=async(label,expectedCode,transform)=>{
+   await withRepository(async(root)=>{
+    const path=join(root,'SKILL.md');
+    await writeFile(path,joinSkill(transform(splitSkill(await read('SKILL.md',root)))),'utf8');
+    try{await validateSkill({repositoryRoot:root});failures.push(label+':accepted');}
+    catch(error){if(error?.code!==expectedCode)failures.push(label+':expected '+expectedCode+' got '+(error?.code??error?.name));}
+   });
+  };
+  const expectLinks=async(label,suffix)=>{
+   await withRepository(async(root)=>{
+    const path=join(root,'SKILL.md');
+    const parts=splitSkill(await read('SKILL.md',root));
+    parts.body=removeActiveLinks(parts.body)+suffix;
+    await writeFile(path,joinSkill(parts),'utf8');
+    try{
+     const result=await validateSkill({repositoryRoot:root});
+     assert.deepEqual(result.links,expectedLinks,label+' returned links');
+    }catch(error){failures.push(label+':unexpected '+(error?.code??error?.name));}
+   });
+  };
+
+  await expectCode('whole body is blockquote code after tab stop','SKILL_CLI_CONTRACT_INVALID',({frontmatter,body})=>({
+   frontmatter,
+   body:body.split('\n').map((line)=>'>\t  '+line.trimStart()).join('\n')
+  }));
+
+  const inertLinkCases=[
+   ['blockquote tab plus two spaces','\n>\t  '+manifestLink+'\n>\t  '+cliLink+'\n'],
+   ['blockquote space-tab plus two spaces','\n> \t  '+manifestLink+'\n> \t  '+cliLink+'\n'],
+   ['nested blockquotes with partial tabs','\n>\t>\t  '+manifestLink+'\n>\t>\t  '+cliLink+'\n'],
+   ['nested blockquotes with full tab continuation','\n> >\t\t  '+manifestLink+'\n> >\t\t  '+cliLink+'\n'],
+   ['ordered list tab continuation','\n> 1.\t '+manifestLink+'\n> 1.\t '+cliLink+'\n'],
+   ['bullet list mixed space-tab continuation','\n> - \t '+manifestLink+'\n> - \t '+cliLink+'\n']
+  ];
+  for(const [label,suffix] of inertLinkCases){
+   await expectCode(label,'SKILL_LINK_INVALID',({frontmatter,body})=>({frontmatter,body:removeActiveLinks(body)+suffix}));
+  }
+
+  await expectLinks('tab-stop active blockquote paragraph','\n>\t '+manifestLink+'\n>\t '+cliLink+'\n');
+  await expectLinks('tab-stop active bullet list item','\n> -\t  '+manifestLink+'\n> -\t  '+cliLink+'\n');
+
+  if(failures.length>0)assert.fail('TASK12_COMMONMARK_CONTAINER_TABS_RED:'+failures.join('|'));
+ });
 }
