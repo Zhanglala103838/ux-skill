@@ -30,6 +30,21 @@ const EXPECTED_METADATA=Object.freeze({
  }),
  policy:Object.freeze({allow_implicit_invocation:true})
 });
+const YAML_STRING=Object.freeze({kind:'string',quoted:false});
+const YAML_QUOTED_STRING=Object.freeze({kind:'string',quoted:true});
+const YAML_BOOLEAN=Object.freeze({kind:'boolean'});
+const YAML_SKILL_SCHEMA=Object.freeze({kind:'map',entries:Object.freeze({
+ name:YAML_STRING,
+ description:YAML_STRING
+})});
+const YAML_METADATA_SCHEMA=Object.freeze({kind:'map',entries:Object.freeze({
+ interface:Object.freeze({kind:'map',entries:Object.freeze({
+  display_name:YAML_QUOTED_STRING,
+  short_description:YAML_QUOTED_STRING,
+  default_prompt:YAML_QUOTED_STRING
+ })}),
+ policy:Object.freeze({kind:'map',entries:Object.freeze({allow_implicit_invocation:YAML_BOOLEAN})})
+})});
 
 const fail=(code)=>{const error=new TypeError(code);error.code=code;throw error;};
 const isRecord=(value)=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -78,10 +93,59 @@ function decodeText(bytes,{utf8Code,bomCode,unicodeCode}){
  return source;
 }
 
-function parseYaml(source,code){
+function yamlNodeIsUnadorned(node){
+ return YAML.isNode(node)&&node.tag===undefined&&node.anchor===undefined&&!YAML.isAlias(node);
+}
+
+function validateYamlScalar(node,schema,code){
+ if(!yamlNodeIsUnadorned(node)||!YAML.isScalar(node))fail(code);
+ if(schema.kind==='boolean'){
+  if(typeof node.value!=='boolean'||node.type!=='PLAIN')fail(code);
+  return;
+ }
+ if(schema.kind!=='string'||typeof node.value!=='string'||!['PLAIN','QUOTE_SINGLE','QUOTE_DOUBLE'].includes(node.type))fail(code);
+ if(schema.quoted&&!['QUOTE_SINGLE','QUOTE_DOUBLE'].includes(node.type))fail(code);
+}
+
+function validateYamlNode(node,schema,code){
+ if(schema.kind==='string'||schema.kind==='boolean'){
+  validateYamlScalar(node,schema,code);
+  return;
+ }
+ if(schema.kind==='seq'){
+  if(!yamlNodeIsUnadorned(node)||!YAML.isSeq(node)||node.flow===true)fail(code);
+  for(const item of node.items)validateYamlNode(item,schema.items,code);
+  return;
+ }
+ if(schema.kind!=='map'||!yamlNodeIsUnadorned(node)||!YAML.isMap(node)||node.flow===true)fail(code);
+ const seen=new Set();
+ for(const pair of node.items){
+  if(!YAML.isPair(pair)||pair.srcToken?.explicitKey===true)fail(code);
+  const key=pair.key;
+  if(!yamlNodeIsUnadorned(key)||!YAML.isScalar(key)||typeof key.value!=='string'||!['PLAIN','QUOTE_SINGLE','QUOTE_DOUBLE'].includes(key.type))fail(code);
+  if(key.value.normalize('NFC')!==key.value||key.value==='<<'||seen.has(key.value))fail(code);
+  seen.add(key.value);
+  const childSchema=schema.entries[key.value];
+  if(childSchema===undefined){
+   validateYamlScalar(pair.value,YAML_STRING,code);
+   continue;
+  }
+  validateYamlNode(pair.value,childSchema,code);
+ }
+}
+
+function validateYamlDirectives(document,code){
+ const directives=document.directives;
+ const tagHandles=Object.keys(directives?.tags??{});
+ if(directives===undefined||directives.docStart!==null||directives.docEnd!==false||directives.yaml?.explicit!==false||directives.yaml?.version!=='1.2'||!sameData(tagHandles,['!!'])||directives.tags['!!']!=='tag:yaml.org,2002:')fail(code);
+}
+
+function parseYaml(source,code,schema){
  let document;
- try{document=YAML.parseDocument(source,{strict:true,uniqueKeys:true,maxAliasCount:0});}catch{fail(code);}
- if(document.errors.length>0)fail(code);
+ try{document=YAML.parseDocument(source,{version:'1.2',schema:'core',strict:true,uniqueKeys:true,stringKeys:true,merge:false,customTags:[],maxAliasCount:0,keepSourceTokens:true});}catch{fail(code);}
+ if(document.errors.length>0||document.warnings.length>0)fail(code);
+ validateYamlDirectives(document,code);
+ validateYamlNode(document.contents,schema,code);
  let value;
  try{value=document.toJS({maxAliasCount:0});}catch{fail(code);}
  return value;
@@ -200,7 +264,7 @@ function validateSkillSource(source){
  if(source.includes('\r'))fail('SKILL_TEXT_INVALID');
  const frontmatter=/^---\n([\s\S]*?)\n---\n/.exec(source);
  if(frontmatter===null)fail('SKILL_FRONTMATTER_INVALID');
- const value=parseYaml(frontmatter[1],'SKILL_FRONTMATTER_INVALID');
+ const value=parseYaml(frontmatter[1],'SKILL_FRONTMATTER_INVALID',YAML_SKILL_SCHEMA);
  if(!sameKeys(value,['name','description']))fail('SKILL_FRONTMATTER_FIELDS_INVALID');
  if(value.name!==SKILL_NAME)fail('SKILL_NAME_INVALID');
  if(typeof value.description!=='string'||value.description.length===0||value.description.length>1024)fail('SKILL_DESCRIPTION_INVALID');
@@ -228,7 +292,7 @@ function validateMetadataSource(source){
   '  default_prompt: "Use $improving-product-ux to guide, scan, refactor, or verify this product experience."'
  ];
  if(quotedLines.some((line)=>!lines.has(line)))fail('SKILL_METADATA_STRING_UNQUOTED');
- const value=parseYaml(source,'SKILL_METADATA_INVALID');
+ const value=parseYaml(source,'SKILL_METADATA_INVALID',YAML_METADATA_SCHEMA);
  if(!sameKeys(value,['interface','policy'])||!sameKeys(value.interface,['display_name','short_description','default_prompt'])||!sameKeys(value.policy,['allow_implicit_invocation']))fail('SKILL_METADATA_FIELDS_INVALID');
  if(!sameData(value,EXPECTED_METADATA))fail('SKILL_METADATA_INVALID');
  const length=value.interface.short_description.length;
