@@ -20,7 +20,7 @@ const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateF
 const validateResponse=ajv.compile(responseSchema);
 
 const replaceOnce=(source,needle,replacement,label)=>{const at=source.indexOf(needle);assert.notEqual(at,-1,label);assert.equal(source.indexOf(needle,at+needle.length),-1,label+':unique-anchor');return source.slice(0,at)+replacement+source.slice(at+needle.length);};
-const prependRoot=(member)=>replaceOnce(fixtureText,'{','{'+member+',','root');
+const prependRoot=(member)=>{assert.equal(fixtureText.startsWith('{'),true,'root');return'{'+member+','+fixtureText.slice(1);};
 const invokeBoth=async(bytes)=>{
  const stdin=await runCli(['--mode','scan','--input','-','--output','json'],bytes);
  const directory=await mkdtemp(join(tmpdir(),'ux-skill-task11-duplicate-'));
