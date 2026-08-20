@@ -269,6 +269,7 @@ test('TASK10_TASK9_PROVENANCE_RED binds real closure replay and fails closed', a
   }
 
   const absentChannel = clone(blackBox);
+  delete absentChannel.snapshot_closure_result;
   try {
     await evaluate(absentChannel);
     issues.push('black-box:absent-channel-accepted');
