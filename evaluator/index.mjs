@@ -1,7 +1,7 @@
 import{createHash}from'node:crypto';
 import{readFile}from'node:fs/promises';
 import'./authority.mjs';
-import{canonicalSet,assertIJson,jcsBytes}from'./canonical.mjs';
+import{canonicalSet,assertCanonicalRelativePath,assertIJson,jcsBytes}from'./canonical.mjs';
 import{digestJcs}from'./digests.mjs';
 import{validateInput,validateBySchema}from'./validation.mjs';
 import{evaluateRule,deriveFindingContext,emitFinding,reduceRunStatus}from'./rules-runtime.mjs';
@@ -25,6 +25,7 @@ const validateSnapshotSourceRegistry=(value)=>{
  const rows=canonicalSet(value.sources,(row)=>row.source_authority_id);if(!jcsBytes(rows).equals(jcsBytes(value.sources)))artifactFailure('SNAPSHOT_SOURCE_REGISTRY_ORDER');
  const ids=new Set(),targets=new Set(),locators=new Set();
  for(const row of rows){if(!exact(row,SOURCE_KEYS)||!nonempty(row.source_authority_id)||!nonempty(row.target_snapshot_id)||row.target_kind!=='black_box_site'||!nonempty(row.canonical_locator)||!nonempty(row.entry_url)||!lowerHex64(row.task_script_digest)||!lowerHex64(row.capture_environment_digest)||!Array.isArray(row.allowed_snapshot_digests)||row.allowed_snapshot_digests.length===0||!row.allowed_snapshot_digests.every(lowerHex64))artifactFailure('SNAPSHOT_SOURCE_REGISTRY_ROW');
+  try{assertCanonicalRelativePath(row.canonical_locator);}catch{artifactFailure('SNAPSHOT_SOURCE_REGISTRY_CANONICAL_LOCATOR');}
   try{if(!['http:','https:'].includes(new URL(row.entry_url).protocol))artifactFailure('SNAPSHOT_SOURCE_REGISTRY_ENTRY_URL');}catch(error){if(error?.code==='ARTIFACT_VERIFICATION_FAILED')throw error;artifactFailure('SNAPSHOT_SOURCE_REGISTRY_ENTRY_URL');}
   const allowed=canonicalSet(row.allowed_snapshot_digests,(digest)=>digest);if(!jcsBytes(allowed).equals(jcsBytes(row.allowed_snapshot_digests))||ids.has(row.source_authority_id)||targets.has(row.target_snapshot_id)||locators.has(row.canonical_locator))artifactFailure('SNAPSHOT_SOURCE_REGISTRY_UNIQUE');
   ids.add(row.source_authority_id);targets.add(row.target_snapshot_id);locators.add(row.canonical_locator);
@@ -35,14 +36,14 @@ const verifyArtifacts=async()=>{
  const[evaluator,schema,knowledge,policy,rules,decision]=await Promise.all(['evaluator/manifest.json','schemas/manifest.json','knowledge/manifest.json','knowledge/policy-manifest.json','knowledge/rules.json','knowledge/decision-policies.json'].map(loadRaw));
  if(!exact(evaluator.value,['behavior_version','evaluator_files','snapshot_source_registry','schema_manifest_digest','knowledge_manifest_digest','policy_manifest_digest']))artifactFailure('EVALUATOR_MANIFEST_SHAPE');
  if(!Array.isArray(schema.value)||!exact(knowledge.value,['manifest_version','files','dependency_graph','routes'])||!exact(policy.value,['policy_files']))artifactFailure('MANIFEST_SHAPE');
- const registryRef=evaluator.value.snapshot_source_registry;if(!exact(registryRef,['path','file_digest'])||registryRef.path!==SOURCE_REGISTRY_PATH||!lowerHex64(registryRef.file_digest))artifactFailure('SNAPSHOT_SOURCE_REGISTRY_REF');
- await Promise.all([verifyRows(evaluator.value.evaluator_files,'EVALUATOR'),verifyRows([registryRef],'SNAPSHOT_SOURCE_REGISTRY'),verifyRows(schema.value,'SCHEMA'),verifyRows(knowledge.value.files,'KNOWLEDGE'),verifyRows(policy.value.policy_files,'POLICY')]);
+ await Promise.all([verifyRows(evaluator.value.evaluator_files,'EVALUATOR'),verifyRows(schema.value,'SCHEMA'),verifyRows(knowledge.value.files,'KNOWLEDGE'),verifyRows(policy.value.policy_files,'POLICY')]);
  if(!jcsBytes(evaluator.value.evaluator_files.map((row)=>row.path)).equals(jcsBytes(EXPECTED)))artifactFailure('EVALUATOR_CLOSURE_MISMATCH');
- const registry=await loadRaw(registryRef.path),snapshotSources=validateSnapshotSourceRegistry(registry.value);
  const schemaDigest=digestJcs('ux-skill:manifest:v1',schema.value),knowledgeDigest=digestJcs('ux-skill:knowledge:v1',knowledge.value.files),policyDigest=digestJcs('ux-skill:manifest:v1',policy.value);
  if(evaluator.value.schema_manifest_digest!==schemaDigest||evaluator.value.knowledge_manifest_digest!==knowledgeDigest||evaluator.value.policy_manifest_digest!==policyDigest)artifactFailure('MANIFEST_PREIMAGE_MISMATCH');
  if(evaluator.value.behavior_version!==rules.value.behavior_version)artifactFailure('BEHAVIOR_VERSION_MISMATCH');
- return{evaluator:evaluator.value,evaluatorDigest:digestJcs('ux-skill:evaluator:v1',evaluator.value),schemaDigest,knowledgeDigest,policyDigest,rules:rules.value,decisionDigest:sha(decision.bytes),rulesDigest:sha(rules.bytes),snapshotSources};
+ let snapshotSources=[],snapshotRegistryAvailable=false;
+ try{const registryRef=evaluator.value.snapshot_source_registry;if(!exact(registryRef,['path','file_digest'])||registryRef.path!==SOURCE_REGISTRY_PATH||!lowerHex64(registryRef.file_digest))artifactFailure('SNAPSHOT_SOURCE_REGISTRY_REF');await verifyRows([registryRef],'SNAPSHOT_SOURCE_REGISTRY');const registry=await loadRaw(registryRef.path);snapshotSources=validateSnapshotSourceRegistry(registry.value);snapshotRegistryAvailable=true;}catch{}
+ return{evaluator:evaluator.value,evaluatorDigest:digestJcs('ux-skill:evaluator:v1',evaluator.value),schemaDigest,knowledgeDigest,policyDigest,rules:rules.value,decisionDigest:sha(decision.bytes),rulesDigest:sha(rules.bytes),snapshotSources,snapshotRegistryAvailable};
 };
 
 const SNAPSHOT_RESULT_KEYS=['closure','closure_bytes_base64','cas_artifacts','source_identity','completeness_status','run_status','release_gate','run_issues','replay_evidence'];
@@ -55,14 +56,18 @@ const base64Bytes=(value)=>{snapshotRequire(typeof value==='string'&&/^(?:[A-Za-
 const canonicalRows=(rows,keyOf)=>{const normalized=canonicalSet(rows,keyOf);snapshotRequire(jcsBytes(normalized).equals(jcsBytes(rows)));return normalized;};
 const snapshotUrl=(value)=>{if(typeof value!=='string'||Buffer.byteLength(value)>SNAPSHOT_LIMITS.maxUrlBytes)return false;try{return['http:','https:'].includes(new URL(value).protocol);}catch{return false;}};
 const verifiedHeaders=(bytes)=>{let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{snapshotRequire(false);}snapshotRequire(bytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&jcsBytes(value).equals(bytes)&&exact(value,['headers'])&&Array.isArray(value.headers)&&value.headers.length<=SNAPSHOT_LIMITS.maxHeaders);value.headers.forEach((row,index)=>snapshotRequire(exact(row,['sequence','name_lower_ascii','value_bytes_base64'])&&row.sequence===index&&/^[a-z0-9!#$%&'*+.^_`|~-]+$/.test(row.name_lower_ascii)&&base64Bytes(row.value_bytes_base64)));return value;};
-const verifySnapshotClosureResult=(normalized,snapshotSources)=>{
+const verifySnapshotClosureResult=(normalized,snapshotSources,snapshotRegistryAvailable)=>{
  if(normalized.target_snapshot.target_kind!=='black_box_site')return{incomplete:false,source:null,authority:null};
+ if(!snapshotRegistryAvailable)return snapshotUnavailable();
  const result=normalized.snapshot_closure_result;if(result===null)return snapshotUnavailable();
  try{
-  snapshotRequire(exact(result,SNAPSHOT_RESULT_KEYS)&&result.completeness_status==='complete'&&result.run_status==='completed'&&result.release_gate==='no_release'&&Array.isArray(result.run_issues)&&result.run_issues.length===0&&result.closure!==null&&result.replay_evidence!==null);
+  snapshotRequire(exact(result,SNAPSHOT_RESULT_KEYS)&&Array.isArray(result.run_issues)&&Array.isArray(result.cas_artifacts)&&result.closure!==null);
   const closure=result.closure,closureBytes=base64Bytes(result.closure_bytes_base64);snapshotRequire(closureBytes.equals(jcsBytes(closure))&&snapshotUrl(closure.entry_url)&&closure.replay_profiles.length>0&&closure.replay_profiles.length<=SNAPSHOT_LIMITS.maxProfiles&&closure.network_records.length<=SNAPSHOT_LIMITS.maxNetworkRecords&&closure.observation_records.length<=SNAPSHOT_LIMITS.maxObservationRecords);
-  const closureBody=canonicalCopy(closure);delete closureBody.manifest_digest;snapshotRequire(digestJcs('ux-skill:snapshot-closure:v1',closureBody)===closure.manifest_digest&&closure.completeness_status==='complete'&&closure.authenticated===false);
+  const closureBody=canonicalCopy(closure);delete closureBody.manifest_digest;snapshotRequire(digestJcs('ux-skill:snapshot-closure:v1',closureBody)===closure.manifest_digest&&['complete','incomplete'].includes(closure.completeness_status)&&closure.authenticated===false);
   const identity=result.source_identity;snapshotRequire(exact(identity,['target_snapshot_id','target_kind','canonical_locator','entry_url','snapshot_digest'])&&identity.target_kind==='black_box_site'&&identity.target_snapshot_id===normalized.target_snapshot.target_snapshot_id&&identity.canonical_locator===normalized.target_snapshot.canonical_locator&&identity.entry_url===closure.entry_url&&identity.snapshot_digest===closure.manifest_digest&&normalized.target_snapshot.snapshot_digest===closure.manifest_digest);
+  const authorities=snapshotSources.filter((row)=>row.target_snapshot_id===normalized.target_snapshot.target_snapshot_id&&row.target_kind===normalized.target_snapshot.target_kind&&row.canonical_locator===normalized.target_snapshot.canonical_locator&&row.entry_url===closure.entry_url&&row.task_script_digest===closure.task_script_digest&&row.capture_environment_digest===closure.capture_environment_digest&&row.allowed_snapshot_digests.includes(closure.manifest_digest));snapshotRequire(authorities.length===1);const authority=authorities[0];
+  if(result.completeness_status==='incomplete'){snapshotRequire(closure.completeness_status==='incomplete'&&result.run_status==='target_unavailable'&&result.release_gate==='no_release'&&jcsBytes(result.run_issues).equals(jcsBytes([SNAPSHOT_ISSUE]))&&result.replay_evidence===null&&result.cas_artifacts.length===0);return{incomplete:true,source:null,authority};}
+  snapshotRequire(result.completeness_status==='complete'&&closure.completeness_status==='complete'&&result.run_status==='completed'&&result.release_gate==='no_release'&&result.run_issues.length===0&&result.replay_evidence!==null);
   snapshotRequire(closure.outbound_effect_ledger_digest===sha(jcsBytes([])));
   const artifacts=canonicalRows(result.cas_artifacts,(row)=>row.locator),cas=new Map();let artifactBytes=0;
   for(const row of artifacts){const bytes=base64Bytes(row.bytes_base64);artifactBytes+=bytes.length;snapshotRequire(bytes.length<=SNAPSHOT_LIMITS.maxArtifactBytes&&artifactBytes<=SNAPSHOT_LIMITS.maxTotalArtifactBytes&&row.digest===sha(bytes)&&row.locator==='cas/'+row.digest&&!cas.has(row.locator));cas.set(row.locator,bytes);}
@@ -79,9 +84,7 @@ const verifySnapshotClosureResult=(normalized,snapshotSources)=>{
   const expectedLocators=canonicalSet(['cas/'+closure.task_script_digest,...networks.flatMap((row)=>[...row.redirect_chain.map((hop)=>hop.content_addressed_header_artifact_locator),...(row.disposition==='captured'?[row.content_addressed_header_artifact_locator,row.content_addressed_body_artifact_locator]:[])]),...closure.observation_records.map((row)=>row.content_addressed_artifact_locator)],(locator)=>locator);
   snapshotRequire(jcsBytes(expectedLocators).equals(jcsBytes(artifacts.map((row)=>row.locator))));
   const replay={run_status:'completed',run_issues:[],release_gate:'eligible',live_network_events:0,responses,observations};snapshotRequire(jcsBytes(replay).equals(jcsBytes(result.replay_evidence)));
-  const authorities=snapshotSources.filter((row)=>row.target_snapshot_id===normalized.target_snapshot.target_snapshot_id&&row.target_kind===normalized.target_snapshot.target_kind&&row.canonical_locator===normalized.target_snapshot.canonical_locator&&row.entry_url===closure.entry_url&&row.task_script_digest===closure.task_script_digest&&row.capture_environment_digest===closure.capture_environment_digest&&row.allowed_snapshot_digests.includes(closure.manifest_digest));
-  snapshotRequire(authorities.length===1);
-  return{incomplete:false,source:result,authority:authorities[0]};
+  return{incomplete:false,source:result,authority};
  }catch{return snapshotUnavailable();}
 };
 
@@ -119,14 +122,14 @@ const evaluateCore=(normalized,artifacts,snapshotState)=>{
  const relSource=releaseSource(incomplete,riskAssessments),releaseRecommendation=materializeReleaseRecommendation(relSource);
  const inquiryValidation={authoritative:false,gap_ids:incomplete?['snapshot-closure-unavailable']:[],status:incomplete?'incomplete':(normalized.inquiry_draft?.authoritative?'invalid':'valid')};
  const coverageGaps=incomplete?[{coverage_gap_id:'snapshot-closure-unavailable',reason_code:'SNAPSHOT_CLOSURE_UNAVAILABLE',release_critical:true}]:[];
- const snapshotMaterializationSource=snapshotState.source?{result:snapshotState.source,authority:snapshotState.authority}:null;
+ const snapshotMaterializationSource=snapshotState.source?{result:snapshotState.source,authority:snapshotState.authority}:null;const snapshotAuthorityDigest=snapshotState.authority?digestJcs('ux-skill:snapshot-source-authority:v1',snapshotState.authority):null;
  const snapshotVerification=snapshotMaterializationSource?materializeSnapshotClosureVerification(snapshotMaterializationSource):null;
  const output={schema_version:'evaluation-output-v1',behavior_version:normalized.behavior_version,input_digest:digestJcs('ux-skill:input:v1',normalized),evaluator_digest:artifacts.evaluatorDigest,run_status:runStatus,validation_errors:[],rule_evaluations:canonicalSet(ruleEvaluations,(row)=>row.rule_id),findings,run_issues:canonicalSet(runIssues,(row)=>[row.code,row.instance_pointer,row.dependency_id]),claim_assessments:claimAssessments,risk_assessments:riskAssessments,recommendation_assessments:recommendationAssessments,release_recommendation:releaseRecommendation,resolution_traces:[],inquiry_validation:inquiryValidation,coverage_gaps:canonicalSet(coverageGaps,(row)=>row.coverage_gap_id),snapshot_closure_verification:snapshotVerification};
  const validated=validateBySchema('EvaluationOutput',output);if(!validated.ok)artifactFailure('OUTPUT_SCHEMA_INVALID',validated.errors);
  const replayChecks=[...claimSources.map((source)=>{const id=materializeClaimAssessment(source).claim_assessment_id;return verifyPublicMaterialization('claim',source,validated.value.claim_assessments.find((row)=>row.claim_assessment_id===id));}),...riskSources.map((source)=>{const id=materializeRiskAssessment(source,findingOwner).risk_assessment_id;return verifyPublicMaterialization('risk',source,validated.value.risk_assessments.find((row)=>row.risk_assessment_id===id),findingOwner);}),...recSources.map((source)=>{const id=materializeRecommendationAssessment(source).recommendation_assessment_id;return verifyPublicMaterialization('recommendation',source,validated.value.recommendation_assessments.find((row)=>row.recommendation_assessment_id===id));}),verifyPublicMaterialization('release',relSource,validated.value.release_recommendation),...(snapshotMaterializationSource?[verifyPublicMaterialization('snapshot',snapshotMaterializationSource,validated.value.snapshot_closure_verification)]:[])];
  if(replayChecks.some((ok)=>!ok))artifactFailure('PUBLIC_MATERIALIZATION_REPLAY_MISMATCH');
  const semantic=createSemanticProjection(validated.value),semanticValid=validateBySchema('SemanticProjection',semantic);if(!semanticValid.ok)artifactFailure('SEMANTIC_SCHEMA_INVALID',semanticValid.errors);
- return{semantic:semanticValid.value,audit:{rule_sources:[rule.rule_id+'@'+rule.rule_version],claim_source_digests:claimAssessments.map((row)=>row.source_material_digest),risk_source_digests:riskAssessments.map((row)=>row.source_material_digest),recommendation_source_digests:recommendationAssessments.map((row)=>row.source_material_digest),release_source_digest:releaseRecommendation.source_material_digest,snapshot_source_digest:snapshotVerification?.source_material_digest??null,snapshot_source_authority_digest:snapshotVerification?.source_authority_digest??null,replay_verification:'byte_equal',materialization_verification:'byte_equal'}};
+ return{semantic:semanticValid.value,audit:{rule_sources:[rule.rule_id+'@'+rule.rule_version],claim_source_digests:claimAssessments.map((row)=>row.source_material_digest),risk_source_digests:riskAssessments.map((row)=>row.source_material_digest),recommendation_source_digests:recommendationAssessments.map((row)=>row.source_material_digest),release_source_digest:releaseRecommendation.source_material_digest,snapshot_source_digest:snapshotVerification?.source_material_digest??null,snapshot_source_authority_digest:snapshotAuthorityDigest,replay_verification:'byte_equal',materialization_verification:'byte_equal'}};
 };
 
 export async function evaluate(bundle){
@@ -135,6 +138,6 @@ export async function evaluate(bundle){
  const artifacts=await verifyArtifacts(),normalized=input.value;
  const expected={decision_policy_digest:artifacts.decisionDigest,claim_policy_digest:artifacts.policyDigest,rule_registry_digest:artifacts.rulesDigest};
  if(!jcsBytes(normalized.policy_digests).equals(jcsBytes(expected)))inputFailure([{stage:'policy',code:'INVARIANT_POLICY_DIGEST_MISMATCH',instance_pointer:'/policy_digests',invariant_or_schema_id:'Task10PolicyDigest-v1',params_jcs:jcsBytes({expected}).toString('utf8')}]);
- const snapshotState=verifySnapshotClosureResult(normalized,artifacts.snapshotSources);const {semantic,audit}=evaluateCore(normalized,artifacts,snapshotState);
+ const snapshotState=verifySnapshotClosureResult(normalized,artifacts.snapshotSources,artifacts.snapshotRegistryAvailable);const {semantic,audit}=evaluateCore(normalized,artifacts,snapshotState);
  return{assurance:{warning:'Zero findings does not mean UX is good, compliant, successful, or satisfying.',run_status:semantic.run_status,release_status:semantic.release_recommendation?.status??'no_release'},inquiry:{authoritative:false,status:semantic.inquiry_validation?.status??'incomplete',gap_ids:semantic.inquiry_validation?.gap_ids??[],scaffold:[]},semantic_projection:semantic,semantic_digest:semantic.semantic_digest,audit_sidecar:{manifest_verification:'verified',input_normalization:'verified',policy_manifest_digest:artifacts.policyDigest,knowledge_manifest_digest:artifacts.knowledgeDigest,schema_manifest_digest:artifacts.schemaDigest,...audit,localized_messages:[],mcp_text:null}};
 }

@@ -3,7 +3,8 @@
   "scenario_profile_id": "retail-commerce-discovery",
   "request_mode": "verify",
   "target_kind": "black_box_site",
-  "canonical_locator": "https://www.ikea.cn/cn/zh/",
+  "canonical_locator": "public-sites/rw-website-ikea-001",
+  "entry_url": "https://www.ikea.cn/cn/zh/",
   "immutable_ref": null,
   "snapshot_closure_digest": "52f514488d50c2865fa1a82cf312446c910df8223cfe0eea5fcdcf0e88bab5ed",
   "task_script": {

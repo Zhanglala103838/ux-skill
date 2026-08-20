@@ -71,6 +71,10 @@
         }
       ]
     },
+    "entry_url": {
+      "type": "string",
+      "format": "uri"
+    },
     "immutable_ref": {
       "anyOf": [
         {
@@ -554,6 +558,10 @@
             }
           ]
         },
+        "entry_url": {
+          "type": "string",
+          "format": "uri"
+        },
         "immutable_ref": {
           "anyOf": [
             {
@@ -698,10 +706,19 @@
               "snapshot_closure_digest": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$"
+              },
+              "canonical_locator": {
+                "type": "string",
+                "format": "canonical-relative-path"
+              },
+              "entry_url": {
+                "type": "string",
+                "format": "uri"
               }
             },
             "required": [
-              "snapshot_closure_digest"
+              "snapshot_closure_digest",
+              "entry_url"
             ]
           }
         },
@@ -881,10 +898,19 @@
           "snapshot_closure_digest": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          },
+          "canonical_locator": {
+            "type": "string",
+            "format": "canonical-relative-path"
+          },
+          "entry_url": {
+            "type": "string",
+            "format": "uri"
           }
         },
         "required": [
-          "snapshot_closure_digest"
+          "snapshot_closure_digest",
+          "entry_url"
         ]
       }
     },

@@ -3,7 +3,8 @@
   "scenario_profile_id": "brand-marketing-website",
   "request_mode": "verify",
   "target_kind": "black_box_site",
-  "canonical_locator": "https://www.apple.com.cn/",
+  "canonical_locator": "public-sites/rw-website-apple-001",
+  "entry_url": "https://www.apple.com.cn/",
   "immutable_ref": null,
   "snapshot_closure_digest": "a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0",
   "task_script": {

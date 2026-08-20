@@ -66,6 +66,7 @@ const cmp=(a,b)=>Buffer.compare(jb(a),jb(b));
 const exact=(v,ks)=>plain(v)&&Object.keys(v).sort().join('\0')===[...ks].sort().join('\0');
 const dg=v=>typeof v==='string'&&HX.test(v);
 const url=v=>{if(typeof v!=='string'||Buffer.byteLength(v)>L.maxUrlBytes)return false;try{return['http:','https:'].includes(new URL(v).protocol)}catch{return false}};
+const canonicalPath=v=>{if(typeof v!=='string'||v.normalize('NFC')!==v||Buffer.byteLength(v)<1||Buffer.byteLength(v)>100||/[\u0000-\u001f\u007f-\u009f]/u.test(v)||v.includes('\\\\')||/%2f|%5c/iu.test(v)||v.startsWith('/')||v.endsWith('/')||v.includes('//'))return false;for(let i=0;i<v.length;i++){const u=v.charCodeAt(i);if(u>=0xd800&&u<=0xdbff){const n=v.charCodeAt(++i);if(!(n>=0xdc00&&n<=0xdfff))return false}else if(u>=0xdc00&&u<=0xdfff)return false}return v.split('/').every(segment=>segment!=='.'&&segment!=='..'&&Buffer.byteLength(segment)>0&&Buffer.byteLength(segment)<=100)};
 const executedUrl=v=>{if(!url(v))return null;try{const target=new URL(v);target.hash='';return target.href}catch{return null}};
 const responseBodyValid=(method,value)=>method!=='HEAD'||value.length===0;
 const cb64=v=>typeof v==='string'&&v.length<=Math.ceil(L.maxArtifactBytes/3)*4+4&&B64.test(v)&&Buffer.from(v,'base64').toString('base64')===v;
@@ -105,7 +106,7 @@ export const snapshotClosureDigest=m=>{const v=snap(m);delete v.manifest_digest;
 
 export async function captureClosure(caseManifest,browser){
   if(!browser||typeof browser.capture!=='function'||!browser.cas||typeof browser.cas.put!=='function'||typeof browser.cas.get!=='function')throw E('CAPTURE_DRIVER_INVALID');
-  const c=snap(caseManifest);if(!plain(c)||!c.case_id||!url(c.canonical_locator)||!plain(c.task_script))bad();const ts=task(snap(c.task_script));
+  const c=snap(caseManifest);if(!plain(c)||!c.case_id||!canonicalPath(c.canonical_locator)||!url(c.entry_url)||!plain(c.task_script))bad();const ts=task(snap(c.task_script));
   let captured;try{captured=await browser.capture(snap(c))}catch(cause){throw Object.assign(E('CAPTURE_DRIVER_FAILED'),{cause})}const raw=snap(captured)
   if(!plain(raw)||!dg(raw.capture_environment_digest)||typeof raw.captured_at!=='string'||!Number.isFinite(Date.parse(raw.captured_at))||typeof raw.authenticated!=='boolean'||!Array.isArray(raw.replay_profiles)||raw.replay_profiles.length<1||raw.replay_profiles.length>L.maxProfiles||!Array.isArray(raw.network_events)||raw.network_events.length>L.maxNetworkRecords||!Array.isArray(raw.observation_events)||raw.observation_events.length>L.maxObservationRecords||!Array.isArray(raw.outbound_effects)||!Array.isArray(raw.transport_events)||typeof raw.live_replay!=='boolean')bad();
   const state={incomplete:raw.authenticated||raw.live_replay||raw.outbound_effects.length>0,total:0},inc=()=>{state.incomplete=true},forbidden=new Set(['beacon','sse','websocket','download','login','cart','key_creation','api_effect']);
@@ -135,7 +136,7 @@ export async function captureClosure(caseManifest,browser){
   for(const p of ps){const seq=nr.filter(x=>x.replay_profile_id===p.replay_profile_id).map(x=>x.sequence);if(seq.length<1||seq.some((x,i)=>x!==i))inc()}
   const observationOwners=new Map();for(const row of or){const key=`${row.replay_profile_id}\0${row.artifact_digest}`,owner=observationOwners.get(key);if(owner!==undefined&&owner!==row.task_step_id)inc();observationOwners.set(key,row.task_step_id)}
   for(const s of ts.steps)for(const id of s.required_replay_profile_ids){if(!nr.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))inc();if(!or.some(x=>x.task_step_id===s.step_id&&x.replay_profile_id===id))inc()}
-  const m={closure_version:'snapshot-closure-v1',entry_url:c.canonical_locator,task_script_digest:td,capture_environment_digest:raw.capture_environment_digest,captured_at:raw.captured_at,authenticated:false,replay_profiles:ps,network_records:nr,observation_records:or,outbound_effect_ledger_digest:sha(jb(raw.outbound_effects)),completeness_status:state.incomplete?'incomplete':'complete',manifest_digest:''};m.manifest_digest=snapshotClosureDigest(m);
+  const m={closure_version:'snapshot-closure-v1',entry_url:c.entry_url,task_script_digest:td,capture_environment_digest:raw.capture_environment_digest,captured_at:raw.captured_at,authenticated:false,replay_profiles:ps,network_records:nr,observation_records:or,outbound_effect_ledger_digest:sha(jb(raw.outbound_effects)),completeness_status:state.incomplete?'incomplete':'complete',manifest_digest:''};m.manifest_digest=snapshotClosureDigest(m);
   if(!state.incomplete){try{const replay=await replayClosure(m,browser.cas);if(replay.run_status!=='completed'||replay.release_gate!=='eligible'||replay.live_network_events!==0)inc()}catch{inc()}if(state.incomplete){m.completeness_status='incomplete';m.manifest_digest=snapshotClosureDigest(m)}}return m;
 }
 const ordered=(rows,key)=>{const copy=[...rows].sort((a,b)=>cmp(key(a),key(b)));if(!jb(rows).equals(jb(copy)))unavailable();for(let i=1;i<rows.length;i++)if(jb(key(rows[i-1])).equals(jb(key(rows[i]))))unavailable()};

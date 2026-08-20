@@ -3,7 +3,8 @@
   "scenario_profile_id": "public-service-information",
   "request_mode": "verify",
   "target_kind": "black_box_site",
-  "canonical_locator": "https://www.gov.uk/register-to-vote",
+  "canonical_locator": "public-sites/rw-website-govuk-001",
+  "entry_url": "https://www.gov.uk/register-to-vote",
   "immutable_ref": null,
   "snapshot_closure_digest": "fadf34d60ba3888b7038b18f0bc1da5011d507b1cbf8b9f166f1b54a047e006c",
   "task_script": {

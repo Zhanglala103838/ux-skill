@@ -3,7 +3,8 @@
   "scenario_profile_id": "developer-documentation",
   "request_mode": "verify",
   "target_kind": "black_box_site",
-  "canonical_locator": "https://docs.stripe.com/",
+  "canonical_locator": "public-sites/rw-docs-stripe-001",
+  "entry_url": "https://docs.stripe.com/",
   "immutable_ref": null,
   "snapshot_closure_digest": "a8e80babac6648b6a92ce01648cb64e4936d903ed47358b622aeadf576844052",
   "task_script": {

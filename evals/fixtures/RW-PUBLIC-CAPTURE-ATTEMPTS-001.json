@@ -15,6 +15,7 @@
   "attempts": [
     {
       "case_id": "RW-WEBSITE-GOVUK-001",
+      "canonical_locator": "public-sites/rw-website-govuk-001",
       "entry_url": "https://www.gov.uk/register-to-vote",
       "final_url_sanitized": "https://www.gov.uk/register-to-vote",
       "capture_started_at": "2026-08-19T17:51:53.607Z",
@@ -46,6 +47,7 @@
     },
     {
       "case_id": "RW-WEBSITE-APPLE-001",
+      "canonical_locator": "public-sites/rw-website-apple-001",
       "entry_url": "https://www.apple.com.cn/",
       "final_url_sanitized": "https://www.apple.com.cn/",
       "capture_started_at": "2026-08-19T17:52:04.521Z",
@@ -81,6 +83,7 @@
     },
     {
       "case_id": "RW-WEBSITE-IKEA-001",
+      "canonical_locator": "public-sites/rw-website-ikea-001",
       "entry_url": "https://www.ikea.cn/cn/zh/",
       "final_url_sanitized": "https://www.ikea.cn/cn/zh/",
       "capture_started_at": "2026-08-19T17:52:07.855Z",
@@ -117,6 +120,7 @@
     },
     {
       "case_id": "RW-DOCS-STRIPE-001",
+      "canonical_locator": "public-sites/rw-docs-stripe-001",
       "entry_url": "https://docs.stripe.com/",
       "final_url_sanitized": "https://docs.stripe.com/",
       "capture_started_at": "2026-08-19T17:52:12.394Z",

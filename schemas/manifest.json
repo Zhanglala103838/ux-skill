@@ -25,7 +25,7 @@
   },
   {
     "path": "schemas/core/real-world-case.schema.json",
-    "file_digest": "654401dd468ffb3d0f4358195a754a20097dfbfbfb7dfd5ea86a924e36529492"
+    "file_digest": "df901e0f0e996b870a146b8a6e3aa820f81ac055b9a87ddfb3a8258ee1f47094"
   },
   {
     "path": "schemas/core/snapshot-closure.schema.json",
