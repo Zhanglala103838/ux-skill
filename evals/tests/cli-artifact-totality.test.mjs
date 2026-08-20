@@ -25,11 +25,12 @@ const RESPONSE_SCHEMA_CLOSURE=Object.freeze([
  Object.freeze({path:RESPONSE_PATH,id:'https://ux-skill.invalid/schemas/adapters/ux-evaluate-response-v1.schema.json'}),
  Object.freeze({path:SEMANTIC_PATH,id:'https://ux-skill.invalid/schemas/evaluator/semantic-projection.schema.json'})
 ]);
-const [responseSchema,semanticSchema,bundle,fixtureBytes]=await Promise.all([
+const [responseSchema,semanticSchema,bundle,fixtureBytes,snapshotFallbackBundle]=await Promise.all([
  readFile(new URL('../../'+RESPONSE_PATH,import.meta.url),'utf8').then(JSON.parse),
  readFile(new URL('../../schemas/evaluator/semantic-projection.schema.json',import.meta.url),'utf8').then(JSON.parse),
  readFile(new URL('../parity/scan.json',import.meta.url),'utf8').then(JSON.parse),
- readFile(new URL('../parity/scan.json',import.meta.url))
+ readFile(new URL('../parity/scan.json',import.meta.url)),
+ readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8').then(JSON.parse).then((value)=>value.bundle)
 ]);
 await init;
 const ajv=new Ajv2020({allErrors:true,strict:true,allowUnionTypes:true,validateFormats:true,unicodeRegExp:true});addFormats(ajv);ajv.addSchema(semanticSchema);
@@ -220,7 +221,8 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   for(const [artifactLabel,path,expectation] of artifactResourcePaths){
    const label=artifactLabel+' '+sizeLabel;
    await capture(failures,label,async()=>{
-    const row=await isolatedRun((root)=>makeSparseArtifact(root,path,size),{timeoutMs:15_000});
+    const options=expectation==='fallback'?{timeoutMs:15_000,args:['--mode',snapshotFallbackBundle.request_mode,'--input','-','--output','json'],stdinBytes:JSON.stringify(snapshotFallbackBundle)}:{timeoutMs:15_000};
+    const row=await isolatedRun((root)=>makeSparseArtifact(root,path,size),options);
     if(expectation==='fallback')expectSnapshotRegistryFallback(row,label);
     else expectFailed(row,'ARTIFACT_VERIFICATION_FAILED',label);
    });
