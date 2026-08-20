@@ -709,7 +709,7 @@ test('TASK10_PUBLIC_AUTHORITY_TAMPER_RED reaches every real source and isolates 
   const evaluateIsolated = async (label, mutate, bundle) => {
     const root = await mkdtemp(new URL('.task10-tamper-', import.meta.url));
     try {
-      await Promise.all(['evaluator', 'schemas', 'knowledge'].map((directory) =>
+      await Promise.all(['evaluator', 'schemas', 'knowledge', 'references'].map((directory) =>
         cp(
           new URL('../../' + directory + '/', import.meta.url),
           join(root, directory),
