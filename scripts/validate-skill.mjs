@@ -3,12 +3,16 @@ import {constants as fsConstants} from 'node:fs';
 import {lstat,open,realpath} from 'node:fs/promises';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {TextDecoder} from 'node:util';
 import YAML from 'yaml';
 import {loadKnowledgeManifest,parseKnowledgeJson} from './check-knowledge.mjs';
 
 const MODULE_PATH=fileURLToPath(import.meta.url);
 const DEFAULT_ROOT=resolve(dirname(MODULE_PATH),'..');
 const MAX_TEXT_BYTES=262_144;
+const MAX_REFERENCE_BYTES=1_048_576;
+const UTF8_BOM=Buffer.from([0xef,0xbb,0xbf]);
+const UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
 const OPEN_FLAGS=fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW;
 const SKILL_NAME='improving-product-ux';
 const COMMAND='pnpm ux:evaluate -- --mode <mode> --input - --output json';
@@ -62,6 +66,14 @@ async function readSecure(root,path,missingCode,limit=MAX_TEXT_BYTES){
  }finally{await handle.close().catch(()=>{});}
 }
 
+function decodeText(bytes,{utf8Code,bomCode,unicodeCode}){
+ if(bytes.length>=UTF8_BOM.length&&bytes.subarray(0,UTF8_BOM.length).equals(UTF8_BOM))fail(bomCode);
+ let source;
+ try{source=UTF8_DECODER.decode(bytes);}catch{fail(utf8Code);}
+ if(source.normalize('NFC')!==source)fail(unicodeCode);
+ return source;
+}
+
 function parseYaml(source,code){
  let document;
  try{document=YAML.parseDocument(source,{strict:true,uniqueKeys:true,maxAliasCount:0});}catch{fail(code);}
@@ -72,7 +84,7 @@ function parseYaml(source,code){
 }
 
 function validateSkillSource(source){
- if(source.startsWith('\uFEFF')||source.includes('\r')||source.normalize('NFC')!==source)fail('SKILL_TEXT_INVALID');
+ if(source.includes('\r'))fail('SKILL_TEXT_INVALID');
  const frontmatter=/^---\n([\s\S]*?)\n---\n/.exec(source);
  if(frontmatter===null)fail('SKILL_FRONTMATTER_INVALID');
  const value=parseYaml(frontmatter[1],'SKILL_FRONTMATTER_INVALID');
@@ -95,7 +107,7 @@ function validateSkillSource(source){
 }
 
 function validateMetadataSource(source){
- if(source.startsWith('\uFEFF')||source.includes('\r')||source.normalize('NFC')!==source)fail('SKILL_METADATA_INVALID');
+ if(source.includes('\r'))fail('SKILL_METADATA_INVALID');
  const lines=new Set(source.split('\n'));
  const quotedLines=[
   '  display_name: "Evidence-aware Product UX"',
@@ -126,12 +138,19 @@ export async function validateSkill(options){
   readSecure(root,'scripts/ux-evaluate.mjs','SKILL_CLI_MISSING')
  ]);
  if((Number(cliFile.status.mode)&0o111)===0)fail('SKILL_CLI_NOT_EXECUTABLE');
- const skill=validateSkillSource(skillFile.bytes.toString('utf8'));
- validateMetadataSource(metadataFile.bytes.toString('utf8'));
+ const skillSource=decodeText(skillFile.bytes,{utf8Code:'SKILL_TEXT_UTF8_INVALID',bomCode:'SKILL_TEXT_BOM_FORBIDDEN',unicodeCode:'SKILL_TEXT_INVALID'});
+ const metadataSource=decodeText(metadataFile.bytes,{utf8Code:'SKILL_METADATA_UTF8_INVALID',bomCode:'SKILL_METADATA_BOM_FORBIDDEN',unicodeCode:'SKILL_METADATA_INVALID'});
+ const skill=validateSkillSource(skillSource);
+ validateMetadataSource(metadataSource);
  await validatePackage(root);
  let manifest;
  try{manifest=await loadKnowledgeManifest({repositoryRoot:root});}catch{fail('SKILL_ROUTE_INVALID');}
  if(!sameData(Object.keys(manifest.routes),MODES)||MODES.some((mode)=>!isRecord(manifest.routes[mode])||!Array.isArray(manifest.routes[mode].paths)))fail('SKILL_ROUTE_INVALID');
+ const referencePaths=new Set(MODES.flatMap((mode)=>manifest.routes[mode].paths));
+ for(const path of referencePaths){
+  const reference=await readSecure(root,path,'SKILL_REFERENCE_MISSING',MAX_REFERENCE_BYTES);
+  decodeText(reference.bytes,{utf8Code:'SKILL_REFERENCE_UTF8_INVALID',bomCode:'SKILL_REFERENCE_BOM_FORBIDDEN',unicodeCode:'SKILL_REFERENCE_UNICODE_INVALID'});
+ }
  return Object.freeze({name:skill.name,modes:Object.freeze([...MODES]),links:Object.freeze([...LINKS])});
 }
 

@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {access,cp,mkdir,mkdtemp,readFile,realpath,rm,symlink,writeFile} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
+import {TextDecoder} from 'node:util';
 import {spawn} from 'node:child_process';
 import YAML from 'yaml';
 
@@ -30,7 +31,9 @@ if(entryFailure){
   },
   policy:{allow_implicit_invocation:true}
  };
- const read=(path,root=process.cwd())=>readFile(join(root,path),'utf8');
+ const FIXTURE_UTF8_DECODER=new TextDecoder('utf-8',{fatal:true,ignoreBOM:false});
+ const decodeFixture=(bytes)=>FIXTURE_UTF8_DECODER.decode(bytes);
+ const read=async(path,root=process.cwd())=>decodeFixture(await readFile(join(root,path)));
  const run=(file,args=[])=>new Promise((resolve)=>{
   const child=spawn(process.execPath,[file,...args],{cwd:process.cwd(),stdio:['ignore','pipe','pipe']});
   let stdout='';let stderr='';
@@ -178,7 +181,7 @@ if(entryFailure){
    };
    const rebindReference=async(bytes)=>{
     await writeFile(join(root,referencePath),bytes);
-    const manifest=JSON.parse(originalManifest.toString('utf8'));
+    const manifest=JSON.parse(decodeFixture(originalManifest));
     manifest.files.find((row)=>row.path===referencePath).file_digest=createHash('sha256').update(bytes).digest('hex');
     await writeFile(manifestPath,JSON.stringify(manifest)+'\n','utf8');
    };
@@ -219,10 +222,10 @@ if(entryFailure){
    await expectCode('reference non-NFC','SKILL_REFERENCE_UNICODE_INVALID',()=>validateSkill({repositoryRoot:root}));
 
    await reset();
-   await writeFile(skillPath,originalSkill.toString('utf8').replace('name: improving-product-ux\n','name: improving-product-ux\nname: improving-product-ux\n'),'utf8');
+   await writeFile(skillPath,decodeFixture(originalSkill).replace('name: improving-product-ux\n','name: improving-product-ux\nname: improving-product-ux\n'),'utf8');
    await expectCode('duplicate Skill frontmatter key','SKILL_FRONTMATTER_INVALID',()=>validateSkill({repositoryRoot:root}));
    await reset();
-   await writeFile(metadataPath,originalMetadata.toString('utf8').replace('  display_name: "Evidence-aware Product UX"\n','  display_name: "Evidence-aware Product UX"\n  display_name: "Evidence-aware Product UX"\n'),'utf8');
+   await writeFile(metadataPath,decodeFixture(originalMetadata).replace('  display_name: "Evidence-aware Product UX"\n','  display_name: "Evidence-aware Product UX"\n  display_name: "Evidence-aware Product UX"\n'),'utf8');
    await expectCode('duplicate metadata key','SKILL_METADATA_INVALID',()=>validateSkill({repositoryRoot:root}));
    await reset();
   });
