@@ -89,12 +89,12 @@ if(packer===null){
   child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));
   child.on('close',(status,signal)=>done({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
  });
- const runProcess=(command,args,cwd,stdin='')=>new Promise((done,reject)=>{
-  const child=spawn(command,args,{cwd,env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['pipe','pipe','pipe']});
+ const runProcess=(command,args,cwd,stdin=undefined)=>new Promise((done,reject)=>{
+  const child=spawn(command,args,{cwd,env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:[stdin===undefined?'ignore':'pipe','pipe','pipe']});
   const stdout=[],stderr=[];
   child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));child.on('error',reject);
   child.on('close',(status,signal)=>done({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
-  child.stdin.end(stdin);
+  if(stdin!==undefined)child.stdin.end(stdin);
  });
  const tempRoot=async()=>mkdtemp(join(tmpdir(),'ux-skill-artifact-'));
  const manifestPath=(root)=>join(root,'knowledge','artifact-manifest.json');
