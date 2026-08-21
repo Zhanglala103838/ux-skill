@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {constants as fsConstants} from 'node:fs';
-import {mkdtemp,mkdir,writeFile,readFile,open,symlink,link,stat,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,open,symlink,link,stat,chmod,rm} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {dirname,join,relative as pathRelative,resolve} from 'node:path';
@@ -89,6 +89,13 @@ if(packer===null){
   child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));
   child.on('close',(status,signal)=>done({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
  });
+ const runProcess=(command,args,cwd,stdin='')=>new Promise((done,reject)=>{
+  const child=spawn(command,args,{cwd,env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['pipe','pipe','pipe']});
+  const stdout=[],stderr=[];
+  child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));child.on('error',reject);
+  child.on('close',(status,signal)=>done({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
+  child.stdin.end(stdin);
+ });
  const tempRoot=async()=>mkdtemp(join(tmpdir(),'ux-skill-artifact-'));
  const manifestPath=(root)=>join(root,'knowledge','artifact-manifest.json');
  const putManifest=async(root,source)=>{await mkdir(join(root,'knowledge'),{recursive:true});await writeFile(manifestPath(root),source);return manifestPath(root);};
@@ -101,10 +108,12 @@ if(packer===null){
    assert.equal(zeroBlocks,0);
    const nameEnd=header.indexOf(0);assert.ok(nameEnd>0);
    const name=header.subarray(0,nameEnd).toString('utf8');
+   const modeField=Buffer.from(header.subarray(100,108));
+   const mode=Number.parseInt(modeField.subarray(0,7).toString('ascii'),8);assert.ok(Number.isSafeInteger(mode));
    const sizeText=header.subarray(124,135).toString('ascii');
    const size=Number.parseInt(sizeText,8);assert.ok(Number.isSafeInteger(size));
    const content=bytes.subarray(offset+512,offset+512+size);
-   rows.push({path:name,content:Buffer.from(content)});
+   rows.push({path:name,mode,modeField,content:Buffer.from(content)});
    offset+=512+Math.ceil(size/512)*512;
   }
   assert.equal(zeroBlocks,2);return rows;
@@ -234,4 +243,58 @@ if(packer===null){
   for(const path of roots)await visit(path);for(const path of visited)assert.equal(included.has(path),true,path);
   assert.equal(artifact.paths.some((path)=>/capture-(?:registry|runner|transport)/u.test(path)),false);
  });
+ test('canonical 0644 archive is a runnable Skill closure after fresh production install',async(t)=>{
+  const failures=[];
+  const sourceCli=join(ROOT,'scripts','ux-evaluate.mjs');
+  const sourceStatus=await stat(sourceCli);
+  assert.notEqual(sourceStatus.mode&0o111,0,'source checkout CLI must remain executable');
+  const gitMode=await runProcess('git',['ls-files','--stage','--','scripts/ux-evaluate.mjs'],ROOT);
+  assert.equal(gitMode.status,0,gitMode.stderr);
+  assert.match(gitMode.stdout,/^100755 [0-9a-f]{40} 0\tscripts\/ux-evaluate\.mjs\n$/u,'source Git CLI mode must remain exactly 100755');
+
+  const root=await tempRoot();t.after(()=>rm(root,{recursive:true,force:true}));
+  const archive=join(root,'artifact.tar');
+  const packed=await runCli(ROOT,join(ROOT,'knowledge','artifact-manifest.json'),archive);
+  assert.equal(packed.signal,null);assert.equal(packed.status,0,packed.stderr);assert.equal(packed.stdout,'');assert.equal(packed.stderr,'');
+  const rows=archiveEntries(await readFile(archive));
+  assert.equal(rows.length,56,'the distributable archive must contain the exact 56-path closure');
+  for(const row of rows){
+   assert.deepEqual(row.modeField,Buffer.from('0000644\0','ascii'),row.path);
+   assert.equal(row.mode,0o644,row.path);
+  }
+
+  const extracted=join(root,'extracted');await mkdir(extracted);
+  for(const row of rows){
+   const target=join(extracted,...row.path.split('/'));
+   await mkdir(dirname(target),{recursive:true});
+   await writeFile(target,row.content,{mode:row.mode});
+   await chmod(target,row.mode);
+  }
+  for(const row of rows){
+   const extractedStatus=await stat(join(extracted,...row.path.split('/')));
+   assert.equal(extractedStatus.mode&0o777,0o644,row.path);
+  }
+  const pkg=JSON.parse(await readFile(join(extracted,'package.json'),'utf8'));
+  assert.equal(pkg.bin['ux-evaluate'],'scripts/ux-evaluate.mjs');
+  assert.equal(pkg.scripts['ux:evaluate'],'node scripts/ux-evaluate.mjs');
+  assert.equal(pkg.scripts['skill:check'],'node scripts/validate-skill.mjs');
+
+  const installed=await runProcess('pnpm',['install','--offline','--prod','--frozen-lockfile','--ignore-scripts'],extracted);
+  if(installed.signal!==null||installed.status!==0)failures.push('production install:status '+installed.status+' stderr '+installed.stderr.trim());
+  const extractedCliStatus=await stat(join(extracted,'scripts','ux-evaluate.mjs'));
+  if((extractedCliStatus.mode&0o777)!==0o644)failures.push('production install changed canonical CLI mode to '+(extractedCliStatus.mode&0o777).toString(8));
+
+  const skill=await runProcess('pnpm',['--silent','skill:check'],extracted);
+  if(skill.signal!==null||skill.status!==0||skill.stderr!==''||!/^skill=ok name=improving-product-ux modes=4\n$/u.test(skill.stdout)){
+   failures.push('skill:check:status '+skill.status+' stdout '+JSON.stringify(skill.stdout)+' stderr '+JSON.stringify(skill.stderr));
+  }
+  for(const mode of ['guide','scan','refactor','verify']){
+   const input=await readFile(join(ROOT,'evals','parity',mode+'.json'));
+   const result=await runProcess('pnpm',['--silent','ux:evaluate','--mode',mode,'--input','-','--output','json'],extracted,input);
+   let output;try{output=JSON.parse(result.stdout);}catch{}
+   if(result.signal!==null||result.status!==0||result.stderr!==''||output===undefined||result.stdout!==JSON.stringify(output)+'\n')failures.push('documented '+mode+':status '+result.status+' stderr '+JSON.stringify(result.stderr));
+  }
+  if(failures.length>0)assert.fail('TASK13_CANONICAL_0644_RUNTIME_RED:'+failures.join('|'));
+ });
+
 }
