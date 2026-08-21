@@ -253,7 +253,8 @@ if(packer===null){
   assert.match(gitMode.stdout,/^100755 [0-9a-f]{40} 0\tscripts\/ux-evaluate\.mjs\n$/u,'source Git CLI mode must remain exactly 100755');
 
   const root=await tempRoot();t.after(()=>rm(root,{recursive:true,force:true}));
-  const archive=join(root,'artifact.tar');
+  const archive=join(ROOT,'.task13-runtime-'+process.pid+'-'+Date.now()+'.tar');
+  t.after(()=>rm(archive,{force:true}));
   const packed=await runCli(ROOT,join(ROOT,'knowledge','artifact-manifest.json'),archive);
   assert.equal(packed.signal,null);assert.equal(packed.status,0,packed.stderr);assert.equal(packed.stdout,'');assert.equal(packed.stderr,'');
   const rows=archiveEntries(await readFile(archive));
