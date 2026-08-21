@@ -294,7 +294,7 @@ function validateMetadataSource(source){
 async function validatePackage(root){
  const loaded=await readSecure(root,'package.json','SKILL_PACKAGE_MISSING');let value;
  try{value=parseKnowledgeJson(loaded.bytes,'package.json','SKILL_PACKAGE_INVALID',{allowDangerousKeys:true});}catch{fail('SKILL_PACKAGE_INVALID');}
- if(!isRecord(value)||!isRecord(value.scripts)||value.scripts['skill:check']!=='node scripts/validate-skill.mjs'||value.scripts['ux:evaluate']!=='node scripts/ux-evaluate.mjs')fail('SKILL_PACKAGE_INVALID');
+ if(!isRecord(value)||!isRecord(value.scripts)||!sameKeys(value.bin,['ux-evaluate'])||value.bin['ux-evaluate']!=='scripts/ux-evaluate.mjs'||value.scripts['skill:check']!=='node scripts/validate-skill.mjs'||value.scripts['ux:evaluate']!=='node scripts/ux-evaluate.mjs')fail('SKILL_PACKAGE_INVALID');
 }
 
 export async function validateSkill(options){
@@ -305,7 +305,7 @@ export async function validateSkill(options){
   readSecure(root,'agents/openai.yaml','SKILL_METADATA_MISSING'),
   readSecure(root,'scripts/ux-evaluate.mjs','SKILL_CLI_MISSING')
  ]);
- if((Number(cliFile.status.mode)&0o111)===0)fail('SKILL_CLI_NOT_EXECUTABLE');
+ if(!cliFile.status.isFile())fail('SKILL_CLI_INVALID');
  const skillSource=decodeText(skillFile.bytes,{utf8Code:'SKILL_TEXT_UTF8_INVALID',bomCode:'SKILL_TEXT_BOM_FORBIDDEN',unicodeCode:'SKILL_TEXT_INVALID'});
  const metadataSource=decodeText(metadataFile.bytes,{utf8Code:'SKILL_METADATA_UTF8_INVALID',bomCode:'SKILL_METADATA_BOM_FORBIDDEN',unicodeCode:'SKILL_METADATA_INVALID'});
  const skill=validateSkillSource(skillSource);
