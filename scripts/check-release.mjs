@@ -168,9 +168,14 @@ function holdoutReasons(holdout,current,reasons){
  if(status==='contaminated'){reasons.push('HOLDOUT_CONTAMINATED');return;}
  if(status!=='pass'){reasons.push('HOLDOUT_FAILED');return;}
  if(current===undefined){reasons.push('HOLDOUT_NOT_CURRENT');return;}
- const currentGeneration=ownData(current,'generation_id',true);
- const currentBehavior=ownData(current,'behavior_version',true);
- if(ownData(holdout,'generation_id',true)!==currentGeneration||ownData(holdout,'behavior_version',true)!==currentBehavior)reasons.push('HOLDOUT_NOT_CURRENT');
+ const currentGeneration=ownData(current,'generation_id');
+ const currentBehavior=ownData(current,'behavior_version');
+ const holdoutGeneration=ownData(holdout,'generation_id');
+ const holdoutBehavior=ownData(holdout,'behavior_version');
+ if(typeof currentGeneration!=='string'||currentGeneration.length===0
+  ||currentBehavior!==CURRENT_BEHAVIOR_VERSION
+  ||holdoutGeneration!==currentGeneration
+  ||holdoutBehavior!==CURRENT_BEHAVIOR_VERSION)reasons.push('HOLDOUT_NOT_CURRENT');
 }
 
 function completeCase(row,id,kind,role){
