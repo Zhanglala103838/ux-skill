@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {constants as fsConstants} from 'node:fs';
+import {constants as fsConstants,readFileSync} from 'node:fs';
 import {lstat,open,readFile,realpath,rename,unlink} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {dirname,join,resolve} from 'node:path';
@@ -16,6 +16,8 @@ const ROOT=await realpath(resolve(dirname(MODULE_PATH),'..'));
 const REPORT_PATH=join(ROOT,'release-gate-report.json');
 const MODES=Object.freeze(['guide','scan','refactor','verify']);
 const HOLDOUT_PATH='evals/holdout-commitments.json';
+const VECTOR_CATALOG_PATH='evals/vector-catalog.json';
+const CURRENT_BEHAVIOR_VERSION='0.1.0';
 const PUBLIC_CASE_PATHS=Object.freeze([
  'evals/public-cases/apple.json',
  'evals/public-cases/govuk.json',
@@ -24,6 +26,14 @@ const PUBLIC_CASE_PATHS=Object.freeze([
 ]);
 const REQUIRED_ROTATION_IDS=new Set(['RW-DOCS-STRIPE-001','RW-WEBSITE-IKEA-001']);
 const fail=(code)=>{const error=new TypeError(code);error.code=code;throw error;};
+const committedCatalog=parseKnowledgeJson(readFileSync(join(ROOT,...VECTOR_CATALOG_PATH.split('/'))),VECTOR_CATALOG_PATH,'RELEASE_INPUT_INVALID',{allowDangerousKeys:true});
+if(!Array.isArray(committedCatalog)||committedCatalog.length!==100)fail('RELEASE_INPUT_INVALID');
+const IMMUTABLE_VECTOR_IDS=Object.freeze(committedCatalog.map((row)=>{
+ if(row===null||typeof row!=='object'||Array.isArray(row)||typeof row.vector_id!=='string'||row.vector_id.length===0)return fail('RELEASE_INPUT_INVALID');
+ return row.vector_id;
+}));
+if(new Set(IMMUTABLE_VECTOR_IDS).size!==IMMUTABLE_VECTOR_IDS.length)fail('RELEASE_INPUT_INVALID');
+const IMMUTABLE_VECTOR_ID_SET=new Set(IMMUTABLE_VECTOR_IDS);
 const isRecord=(value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&!utilTypes.isProxy(value)&&(Reflect.getPrototypeOf(value)===Object.prototype||Reflect.getPrototypeOf(value)===null);
 
 function ownData(record,key,required=false){
@@ -118,31 +128,29 @@ export function checkParity(transports){
  let rows;
  try{rows=transportRows(transports);}catch(error){if(error?.code==='PARITY_INPUT_INVALID')throw error;fail('PARITY_INPUT_INVALID');}
  const context=transportParityContext(transports);
- const semanticRows=context===null?rows:[...rows,strippedResponse(context.oracle)];
+ if(context===null)fail('PARITY_PROVENANCE_REQUIRED');
+ const semanticRows=[...rows,strippedResponse(context.oracle)];
  const semanticBytes=semanticRows.map((row)=>jcsBytes(row));
  const semanticParity=semanticBytes.every((bytes)=>Buffer.compare(bytes,semanticBytes[0])===0)?1:0;
- let adapterParity;
- if(context!==null){
-  const evidence=Object.values(context.adapterEvidence).map((value)=>jcsBytes(safeJson(value,new Set(),0)));
-  adapterParity=evidence.every((bytes)=>Buffer.compare(bytes,evidence[0])===0)?1:0;
- }else{
-  const digests=rows.map(inputDigestOf);
-  adapterParity=digests.every((digest)=>digest===digests[0])?1:0;
- }
+ const evidence=Object.values(context.adapterEvidence).map((value)=>jcsBytes(safeJson(value,new Set(),0)));
+ const adapterParity=evidence.every((bytes)=>Buffer.compare(bytes,evidence[0])===0)?1:0;
  return{semantic_parity:semanticParity,adapter_evidence_parity:adapterParity};
 }
 
 function vectorReasons(catalog,reasons){
  const rows=arrayData(catalog);
- if(rows.length===0)reasons.push('VECTOR_RED');
- const ids=new Set();
+ const ids=new Set();let duplicate=false;let allGreenCurrent=true;
  for(const row of rows){
   const id=ownData(row,'vector_id',true);
   const outcome=ownData(row,'outcome',true);
-  if(typeof id!=='string'||id.length===0||ids.has(id))reasons.push('VECTOR_CATALOG_INVALID');
+  if(typeof id!=='string'||id.length===0)fail('RELEASE_INPUT_INVALID');
+  if(ids.has(id))duplicate=true;
   ids.add(id);
-  if(outcome!=='green')reasons.push('VECTOR_RED');
+  if(outcome!=='green'||ownData(row,'behavior_version')!==CURRENT_BEHAVIOR_VERSION)allGreenCurrent=false;
  }
+ if(duplicate){reasons.push('VECTOR_CATALOG_INVALID');return;}
+ const exactIdentity=rows.length===IMMUTABLE_VECTOR_IDS.length&&ids.size===IMMUTABLE_VECTOR_IDS.length&&[...ids].every((id)=>IMMUTABLE_VECTOR_ID_SET.has(id));
+ if(!exactIdentity||!allGreenCurrent)reasons.push('VECTOR_RED');
 }
 
 function holdoutReasons(holdout,current,reasons){
@@ -158,7 +166,7 @@ function holdoutReasons(holdout,current,reasons){
 }
 
 function completeCase(row,id,kind){
- return ownData(row,'case_id',true)===id&&ownData(row,'target_kind',true)===kind&&ownData(row,'baseline_status',true)==='pass'&&ownData(row,'verify_status',true)==='pass';
+ return ownData(row,'case_id')===id&&ownData(row,'target_kind')===kind&&ownData(row,'baseline_status')==='pass'&&ownData(row,'verify_status')==='pass';
 }
 
 function realWorldComplete(publicCases,rotation,current){
@@ -166,7 +174,7 @@ function realWorldComplete(publicCases,rotation,current){
  const hulian=rows.some((row)=>completeCase(row,'RW-HULIAN-DELETE-001','hulianui_contract'));
  const apple=rows.some((row)=>completeCase(row,'RW-WEBSITE-APPLE-001','black_box_site'));
  const govuk=rows.some((row)=>completeCase(row,'RW-WEBSITE-GOVUK-001','black_box_site'));
- const repository=rows.some((row)=>ownData(row,'target_kind',true)==='pinned_repository'&&ownData(row,'baseline_status',true)==='pass'&&ownData(row,'verify_status',true)==='pass');
+ const repository=rows.some((row)=>ownData(row,'target_kind')==='pinned_repository'&&ownData(row,'baseline_status')==='pass'&&ownData(row,'verify_status')==='pass');
  if(rotation===undefined||current===undefined)return false;
  const selected=ownData(rotation,'selected_case_id',true);
  const generation=ownData(rotation,'generation_id',true);
@@ -257,7 +265,6 @@ if(await isDirect()){
   catch{report={status:'no_release',reason_codes:['RELEASE_GATE_INTERNAL_ERROR']};status=2;}
   try{
    await writeReport(report);
-   process.stdout.write(JSON.stringify(report)+'\n');
    process.exitCode=status;
   }catch{
    process.stderr.write('RELEASE_REPORT_WRITE_FAILED\n');

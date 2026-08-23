@@ -68,16 +68,19 @@ function runSkill(mode,input){
    env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC',UX_REQUEST_ID:'task14-skill'},
    stdio:['pipe','pipe','pipe']
   });
-  const stdout=[];const stderr=[];
+  const stdout=[];const stderr=[];let settled=false;
+  const rejectOnce=(error)=>{if(settled)return;settled=true;reject(error);};
   child.stdout.on('data',(chunk)=>stdout.push(chunk));
   child.stderr.on('data',(chunk)=>stderr.push(chunk));
-  child.on('error',reject);
-  child.on('close',(status,signal)=>{
+  child.once('error',rejectOnce);
+  child.once('close',(status,signal)=>{
+   if(settled)return;
    const stdoutText=Buffer.concat(stdout).toString('utf8');
    const stderrText=Buffer.concat(stderr).toString('utf8');
    let json;
-   try{json=JSON.parse(stdoutText);}catch{fail('PARITY_SKILL_OUTPUT_INVALID');}
-   resolve({status,signal,stdout:stdoutText,stderr:stderrText,json});
+   try{json=JSON.parse(stdoutText);}
+   catch{const error=new TypeError('PARITY_SKILL_OUTPUT_INVALID');error.code='PARITY_SKILL_OUTPUT_INVALID';rejectOnce(error);return;}
+   settled=true;resolve({status,signal,stdout:stdoutText,stderr:stderrText,json});
   });
   child.stdin.end(input);
  });
@@ -85,6 +88,12 @@ function runSkill(mode,input){
 
 const sha=(bytes)=>createHash('sha256').update(bytes).digest('hex');
 const sameBytes=(left,right)=>Buffer.compare(jcsBytes(left),jcsBytes(right))===0;
+const deepFreeze=(value)=>{
+ if(value===null||typeof value!=='object'||Object.isFrozen(value))return value;
+ for(const child of Object.values(value))deepFreeze(child);
+ return Object.freeze(value);
+};
+const frozenSnapshot=(value)=>deepFreeze(structuredClone(value));
 
 export async function evaluateThreeTransports(path){
  if(typeof path!=='string'||!ALLOWED_PATHS.has(path))fail('PARITY_PATH_INVALID');
@@ -123,18 +132,19 @@ export async function evaluateThreeTransports(path){
  const mcp=await evaluateHulianMcpResult(base,toolCopy);
  if(Buffer.compare(bundleBefore,jcsBytes(bundle))!==0||Buffer.compare(baseBefore,jcsBytes(base))!==0||Buffer.compare(toolBefore,jcsBytes(toolCopy))!==0)fail('PARITY_INPUT_MUTATED');
 
- const result=Object.freeze({skill:skill.json,cli:cli.json,mcp});
- CONTEXT.set(result,Object.freeze({
+ const result=frozenSnapshot({skill:skill.json,cli:cli.json,mcp});
+ CONTEXT.set(result,frozenSnapshot({
   oracle:direct,
-  adapterEvidence:Object.freeze({
-   skill:structuredClone(bundle.adapter_evidence),
-   cli:structuredClone(bundle.adapter_evidence),
-   mcp:Object.freeze([mappedMember])
-  })
+  adapterEvidence:{
+   skill:bundle.adapter_evidence,
+   cli:bundle.adapter_evidence,
+   mcp:[mappedMember]
+  }
  }));
  return result;
 }
 
 export function transportParityContext(transports){
- return CONTEXT.get(transports)??null;
+ const context=CONTEXT.get(transports);
+ return context===undefined?null:structuredClone(context);
 }
