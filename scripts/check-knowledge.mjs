@@ -185,7 +185,7 @@ function normalizeKnowledgeOptions(options) {
     const descriptor = Reflect.getOwnPropertyDescriptor(options, 'repositoryRoot');
     if (descriptor === undefined || descriptor.enumerable !== true
       || !Object.hasOwn(descriptor, 'value') || Object.hasOwn(descriptor, 'get')
-      || Object.hasOwn(descriptor, 'set') || typeof descriptor.value !== 'string') {
+      || Object.hasOwn(descriptor, 'set')) {
       throw new TypeError();
     }
     return descriptor.value;
@@ -212,7 +212,7 @@ async function normalizeDarwinSystemAlias(repositoryRoot) {
 
 async function resolveRepositoryRoot(options) {
   const supplied = normalizeKnowledgeOptions(options);
-  if (supplied.length === 0 || supplied.includes('\0')
+  if (typeof supplied !== 'string' || supplied.length === 0 || supplied.includes('\0')
     || supplied.normalize('NFC') !== supplied || !isAbsolute(supplied)
     || resolve(supplied) !== supplied) {
     fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');

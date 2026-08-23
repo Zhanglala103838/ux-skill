@@ -382,8 +382,10 @@ async function packFromManifest(manifestArgument,outputArgument){
 }
 
 async function main(){
-  if(process.argv.length!==4)fail('ARTIFACT_ARGUMENT_INVALID');
-  await packFromManifest(process.argv[2],process.argv[3]);
+  let argumentsList=process.argv.slice(2);
+  if(argumentsList[0]==='--')argumentsList=argumentsList.slice(1);
+  if(argumentsList.length!==2||argumentsList.includes('--'))fail('ARTIFACT_ARGUMENT_INVALID');
+  await packFromManifest(argumentsList[0],argumentsList[1]);
 }
 
 async function isDirectEntry(argument){

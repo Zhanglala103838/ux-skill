@@ -14,7 +14,7 @@ import {validateSkill} from '../../scripts/validate-skill.mjs';
 import {captureRegistryDigest,createCaptureRegistry,runCaptureCli} from '../../scripts/capture-snapshot-closure.mjs';
 import {recordBaseline} from '../../scripts/run-red-baseline.mjs';
 
-const ROOT=fileURLToPath(new URL('../../',import.meta.url));
+const ROOT=resolve(fileURLToPath(new URL('../../',import.meta.url)));
 const WORKFLOWS=join(ROOT,'.github','workflows');
 const ACTIONS=Object.freeze({
  'actions/checkout':'11d5960a326750d5838078e36cf38b85af677262',
