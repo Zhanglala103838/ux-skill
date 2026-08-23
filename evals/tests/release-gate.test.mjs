@@ -170,6 +170,44 @@ if(releaseModule===undefined){
   assert.throws(()=>releaseModule.checkRelease(proxy),(error)=>error?.code==='RELEASE_INPUT_INVALID');
  });
 
+ test('TASK14_CURRENT_BEHAVIOR_RED binds holdout currentness to repository behavior',()=>{
+  const failures=[];
+  const capture=(label,operation)=>{try{operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
+  const notCurrent={status:'no_release',reason_codes:['HOLDOUT_NOT_CURRENT']};
+
+  capture('the fixed current behavior can release',()=>{
+   assert.deepEqual(releaseModule.checkRelease(releasable()),{status:'release',reason_codes:[]});
+  });
+  capture('coordinated old current and holdout behavior cannot release',()=>{
+   const input=releasable();
+   input.currentGeneration={...input.currentGeneration,behavior_version:'0.0.9'};
+   input.holdout.behavior_version='0.0.9';
+   assert.deepEqual(releaseModule.checkRelease(input),notCurrent);
+  });
+  capture('missing current behavior is a stable not-current result',()=>{
+   const input=releasable();
+   delete input.currentGeneration.behavior_version;
+   assert.deepEqual(releaseModule.checkRelease(input),notCurrent);
+  });
+  capture('missing holdout behavior is a stable not-current result',()=>{
+   const input=releasable();
+   delete input.holdout.behavior_version;
+   assert.deepEqual(releaseModule.checkRelease(input),notCurrent);
+  });
+  capture('old current cannot match a fixed-version holdout',()=>{
+   const input=releasable();
+   input.currentGeneration={...input.currentGeneration,behavior_version:'0.0.9'};
+   assert.deepEqual(releaseModule.checkRelease(input),notCurrent);
+  });
+  capture('fixed current cannot match an old holdout',()=>{
+   const input=releasable();
+   input.holdout.behavior_version='0.0.9';
+   assert.deepEqual(releaseModule.checkRelease(input),notCurrent);
+  });
+
+  if(failures.length>0)assert.fail('TASK14_CURRENT_BEHAVIOR_RED\n'+failures.join('\n'));
+ });
+
  test('TASK14_RELEASE_CLOSURE_RED closes real-world identity manifests and required summaries',async()=>{
   const failures=[];
   const capture=async(label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
