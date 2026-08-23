@@ -32,6 +32,10 @@ const ROTATION_MANIFEST_KEYS=Object.freeze([
  'portfolio_version','generation_id','generation_sequence','generation_commitment',
  'sorted_candidate_case_ids','selected_case_id','manifest_digest'
 ]);
+const ROTATION_VERIFICATION_KEYS=Object.freeze([
+ 'status','generation_id','behavior_version','manifest_digest','generation_commitment',
+ 'generation_sequence','portfolio_version','sorted_candidate_case_ids','selected_case_id'
+]);
 const PINNED_REPOSITORY_IDS=new Set(['RW-ADMIN-APPSMITH-001','RW-TRANSACTION-CAL-001']);
 const fail=(code)=>{const error=new TypeError(code);error.code=code;throw error;};
 const committedCatalog=parseKnowledgeJson(readFileSync(join(ROOT,...VECTOR_CATALOG_PATH.split('/'))),VECTOR_CATALOG_PATH,'RELEASE_INPUT_INVALID',{allowDangerousKeys:true});
@@ -195,7 +199,18 @@ function exactDataKeys(record,expected){
   &&expected.every((key)=>keys.includes(key));
 }
 
-function rotationComplete(rotation,current){
+function rotationVerificationComplete(holdout,expected){
+ if(!isRecord(holdout))return false;
+ let descriptor;
+ try{descriptor=Reflect.getOwnPropertyDescriptor(holdout,'rotation_verification');}catch{return false;}
+ if(descriptor===undefined||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value')||Object.hasOwn(descriptor,'get')||Object.hasOwn(descriptor,'set'))return false;
+ const verification=descriptor.value;
+ if(!exactDataKeys(verification,ROTATION_VERIFICATION_KEYS))return false;
+ try{return Buffer.compare(jcsBytes(safeJson(verification,new Set(),0)),jcsBytes(expected))===0;}
+ catch{return false;}
+}
+
+function rotationComplete(rotation,current,holdout){
  if(rotation===undefined||current===undefined||!exactDataKeys(rotation,ROTATION_MANIFEST_KEYS))return false;
  const portfolio=ownData(rotation,'portfolio_version');
  const generation=ownData(rotation,'generation_id');
@@ -223,10 +238,21 @@ function rotationComplete(rotation,current){
   selected_case_id:selected,
   sorted_candidate_case_ids:candidates
  };
- return manifestDigest===digestJcs(ROTATION_DOMAIN,preimage);
+ if(manifestDigest!==digestJcs(ROTATION_DOMAIN,preimage))return false;
+ return rotationVerificationComplete(holdout,{
+  status:'pass',
+  generation_id:generation,
+  behavior_version:CURRENT_BEHAVIOR_VERSION,
+  manifest_digest:manifestDigest,
+  generation_commitment:commitment,
+  generation_sequence:sequence,
+  portfolio_version:portfolio,
+  sorted_candidate_case_ids:candidates,
+  selected_case_id:selected
+ });
 }
 
-function realWorldComplete(publicCases,rotation,current){
+function realWorldComplete(publicCases,rotation,current,holdout){
  const rows=arrayData(publicCases);
  const hulian=rows.some((row)=>completeCase(row,'RW-HULIAN-DELETE-001','hulianui_contract','fixed_anchor'));
  const apple=rows.some((row)=>completeCase(row,'RW-WEBSITE-APPLE-001','black_box_site','fixed_anchor'));
@@ -235,7 +261,7 @@ function realWorldComplete(publicCases,rotation,current){
   const id=ownData(row,'case_id');
   return PINNED_REPOSITORY_IDS.has(id)&&completeCase(row,id,'pinned_repository','fixed_anchor');
  });
- if(!rotationComplete(rotation,current))return false;
+ if(!rotationComplete(rotation,current,holdout))return false;
  const selected=ownData(rotation,'selected_case_id');
  const rotationCase=rows.some((row)=>completeCase(row,selected,'black_box_site','rotation_candidate'));
  return hulian&&apple&&govuk&&repository&&rotationCase;
@@ -247,8 +273,9 @@ export function checkRelease(inputs){
   const reasons=[];
   vectorReasons(ownData(inputs,'catalog',true),reasons);
   const current=ownData(inputs,'currentGeneration');
-  holdoutReasons(ownData(inputs,'holdout',true),current,reasons);
-  if(!realWorldComplete(ownData(inputs,'publicCases',true),ownData(inputs,'rotationSelection'),current))reasons.push('REAL_WORLD_REQUIRED');
+  const holdout=ownData(inputs,'holdout',true);
+  holdoutReasons(holdout,current,reasons);
+  if(!realWorldComplete(ownData(inputs,'publicCases',true),ownData(inputs,'rotationSelection'),current,holdout))reasons.push('REAL_WORLD_REQUIRED');
   const foundationalComplete=reasons.length===0;
   const parity=ownData(inputs,'parity');
   if(parity===undefined){
