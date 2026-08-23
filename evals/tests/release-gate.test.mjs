@@ -64,18 +64,33 @@ if(releaseModule===undefined){
   const manifest=rotationPreimage(overrides);
   return{...manifest,manifest_digest:rotationDigest(manifest)};
  };
- const resignRotation=(manifest)=>{manifest.manifest_digest=rotationDigest(manifest);};
- const releasable=()=>({
-  catalog:greenCatalog(),
-  holdout:{status:'pass',generation_id:'gen-001',behavior_version:'0.1.0'},
-  currentGeneration:{...currentGeneration},
-  publicCases:completeCases(),
-  rotationSelection:rotationSelection(),
-  parity:{semantic_parity:1,adapter_evidence_parity:1},
-  golden:{matched:true},
-  prohibitedClaims:{count:0},
-  releaseCritical:{false_passes:0}
+ const rotationVerification=(manifest,overrides={})=>({
+  status:'pass',
+  generation_id:manifest.generation_id,
+  behavior_version:'0.1.0',
+  manifest_digest:manifest.manifest_digest,
+  generation_commitment:manifest.generation_commitment,
+  generation_sequence:manifest.generation_sequence,
+  portfolio_version:manifest.portfolio_version,
+  sorted_candidate_case_ids:[...manifest.sorted_candidate_case_ids],
+  selected_case_id:manifest.selected_case_id,
+  ...overrides
  });
+ const resignRotation=(manifest)=>{manifest.manifest_digest=rotationDigest(manifest);};
+ const releasable=()=>{
+  const rotation=rotationSelection();
+  return{
+   catalog:greenCatalog(),
+   holdout:{status:'pass',generation_id:'gen-001',behavior_version:'0.1.0',rotation_verification:rotationVerification(rotation)},
+   currentGeneration:{...currentGeneration},
+   publicCases:completeCases(),
+   rotationSelection:rotation,
+   parity:{semantic_parity:1,adapter_evidence_parity:1},
+   golden:{matched:true},
+   prohibitedClaims:{count:0},
+   releaseCritical:{false_passes:0}
+  };
+ };
  const run=(args)=>new Promise((resolve,reject)=>{
   const child=spawn(process.execPath,args,{cwd:ROOT,env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['ignore','pipe','pipe']});
   const stdout=[];const stderr=[];
@@ -208,6 +223,84 @@ if(releaseModule===undefined){
   if(failures.length>0)assert.fail('TASK14_CURRENT_BEHAVIOR_RED\n'+failures.join('\n'));
  });
 
+ test('TASK14_ROTATION_CUSTODIAN_RED binds rotation selection to the trusted holdout verification',()=>{
+  const failures=[];
+  const capture=(label,operation)=>{try{operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
+  const noRelease={status:'no_release',reason_codes:['REAL_WORLD_REQUIRED']};
+  const expectBlocked=(input)=>assert.deepEqual(releaseModule.checkRelease(input),noRelease);
+
+  capture('an exact current custodian verification can release',()=>{
+   assert.deepEqual(releaseModule.checkRelease(releasable()),{status:'release',reason_codes:[]});
+  });
+  capture('missing custodian verification cannot release',()=>{
+   const input=releasable();delete input.holdout.rotation_verification;expectBlocked(input);
+  });
+  capture('a non-pass custodian verification cannot release',()=>{
+   const input=releasable();input.holdout.rotation_verification.status='failed';expectBlocked(input);
+  });
+  capture('a holdout-level verification accessor is rejected without execution',()=>{
+   const input=releasable();let getterCalls=0;
+   Object.defineProperty(input.holdout,'rotation_verification',{enumerable:true,get(){getterCalls+=1;throw new Error('GETTER_EXECUTED');}});
+   expectBlocked(input);assert.equal(getterCalls,0);
+  });
+  capture('a proxied verification is rejected without invoking traps',()=>{
+   const input=releasable();let trapCalls=0;
+   input.holdout.rotation_verification=new Proxy(input.holdout.rotation_verification,{ownKeys(){trapCalls+=1;throw new Error('PROXY_EXECUTED');}});
+   expectBlocked(input);assert.equal(trapCalls,0);
+  });
+  capture('a nested verification accessor is rejected without execution',()=>{
+   const input=releasable();let getterCalls=0;
+   Object.defineProperty(input.holdout.rotation_verification,'manifest_digest',{enumerable:true,get(){getterCalls+=1;throw new Error('GETTER_EXECUTED');}});
+   expectBlocked(input);assert.equal(getterCalls,0);
+  });
+  capture('an extra verification field cannot release',()=>{
+   const input=releasable();input.holdout.rotation_verification.private_case_id='must-not-be-inspected';expectBlocked(input);
+  });
+
+  const keys=['status','generation_id','behavior_version','manifest_digest','generation_commitment','generation_sequence','portfolio_version','sorted_candidate_case_ids','selected_case_id'];
+  for(const key of keys){
+   capture('missing verification field '+key+' cannot release',()=>{
+    const input=releasable();delete input.holdout.rotation_verification[key];expectBlocked(input);
+   });
+  }
+
+  const mismatches={
+   generation_id:'gen-other',
+   behavior_version:'0.0.9',
+   manifest_digest:'f'.repeat(64),
+   generation_commitment:'1'.repeat(64),
+   generation_sequence:1,
+   portfolio_version:'invented-portfolio',
+   sorted_candidate_case_ids:['RW-WEBSITE-IKEA-001','RW-DOCS-STRIPE-001'],
+   selected_case_id:'RW-WEBSITE-IKEA-001'
+  };
+  for(const [key,value] of Object.entries(mismatches)){
+   capture('mismatched verification field '+key+' cannot release',()=>{
+    const input=releasable();input.holdout.rotation_verification[key]=value;expectBlocked(input);
+   });
+  }
+
+  capture('an invented self-resigned generation and arbitrary commitment need trusted verification',()=>{
+   const input=releasable();
+   input.currentGeneration.generation_id='invented-generation';
+   input.holdout.generation_id='invented-generation';
+   input.holdout.commitments=[];
+   input.rotationSelection=rotationSelection({generation_id:'invented-generation',generation_commitment:'a'.repeat(64)});
+   delete input.holdout.rotation_verification;
+   expectBlocked(input);
+  });
+
+  capture('a self-resigned sequence and selection change cannot outrun stale custodian verification',()=>{
+   const input=releasable();
+   input.publicCases=input.publicCases.filter((row)=>row.portfolio_role!=='rotation_candidate');
+   input.publicCases.push(completeCase('RW-WEBSITE-IKEA-001','black_box_site','rotation_candidate'));
+   input.rotationSelection=rotationSelection({generation_sequence:1,selected_case_id:'RW-WEBSITE-IKEA-001'});
+   expectBlocked(input);
+  });
+
+  if(failures.length>0)assert.fail('TASK14_ROTATION_CUSTODIAN_RED\n'+failures.join('\n'));
+ });
+
  test('TASK14_RELEASE_CLOSURE_RED closes real-world identity manifests and required summaries',async()=>{
   const failures=[];
   const capture=async(label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
@@ -226,6 +319,7 @@ if(releaseModule===undefined){
    input.publicCases=input.publicCases.filter((row)=>row.portfolio_role!=='rotation_candidate');
    input.publicCases.push(completeCase('RW-WEBSITE-IKEA-001','black_box_site','rotation_candidate'));
    input.rotationSelection=rotationSelection({generation_sequence:1,selected_case_id:'RW-WEBSITE-IKEA-001'});
+   input.holdout.rotation_verification=rotationVerification(input.rotationSelection);
    assert.deepEqual(releaseModule.checkRelease(input),{status:'release',reason_codes:[]});
   });
 
