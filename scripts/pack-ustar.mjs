@@ -1,8 +1,8 @@
 import {createHash} from 'node:crypto';
 import {constants as fsConstants} from 'node:fs';
 import {lstat,open,realpath,unlink} from 'node:fs/promises';
-import {basename,dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {basename,dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {types as utilTypes} from 'node:util';
 import {assertCanonicalRelativePath} from '../evaluator/canonical.mjs';
 import {parseKnowledgeJson} from './strict-json.mjs';
@@ -16,6 +16,10 @@ const MANIFEST_MAX_BYTES=1_048_576;
 const MANIFEST_RELATIVE_PATH='knowledge/artifact-manifest.json';
 const OPEN_READ_FLAGS=fsConstants.O_RDONLY|fsConstants.O_NONBLOCK|fsConstants.O_NOFOLLOW;
 const PROHIBITED_ROOTS=new Set(['.git','.github','.artifacts','coverage','docs','evals','node_modules']);
+const TRUSTED_SYSTEM_DIRECTORY_ALIASES=Object.freeze([
+  Object.freeze(['/tmp','/private/tmp']),
+  Object.freeze(['/var','/private/var'])
+]);
 
 function fail(code){
   const error=new Error(code);
@@ -137,6 +141,34 @@ function sameSnapshot(before,after,byteLength){
     &&before.size===BigInt(byteLength);
 }
 
+async function normalizeSystemDirectoryAlias(path){
+  for(const [alias,physical] of TRUSTED_SYSTEM_DIRECTORY_ALIASES){
+    if(path!==alias&&!path.startsWith(alias+sep))continue;
+    let status;let actual;
+    try{[status,actual]=await Promise.all([lstat(alias),realpath(alias)]);}catch{return path;}
+    if(status.isSymbolicLink()&&actual===physical)return resolve(physical,relative(alias,path));
+  }
+  return path;
+}
+
+async function requireAuthenticDirectory(path,code){
+  const normalized=await normalizeSystemDirectoryAlias(path);
+  const volume=parse(normalized).root;
+  if(volume==='')fail(code);
+  const tail=relative(volume,normalized);
+  const segments=tail===''?[]:tail.split(sep);
+  let current=volume;
+  for(const segment of segments){
+    current=join(current,segment);
+    const status=await safeLstat(current,code);
+    if(status.isSymbolicLink()||!status.isDirectory())fail(code);
+  }
+  let physical;
+  try{physical=await realpath(normalized);}catch{fail(code);}
+  if(physical!==normalized)fail(code);
+  return physical;
+}
+
 async function safeLstat(path,code){
   try{return await lstat(path,{bigint:true});}catch{fail(code);}
 }
@@ -210,8 +242,7 @@ async function openManifest(manifestArgument,retained){
   const requested=resolve(manifestArgument);
   if(basename(requested)!=='artifact-manifest.json'||basename(dirname(requested))!=='knowledge')fail('ARTIFACT_MANIFEST_INVALID');
   const lexicalRoot=dirname(dirname(requested));
-  let root;
-  try{root=await realpath(lexicalRoot);}catch{fail('ARTIFACT_MANIFEST_INVALID');}
+  const root=await requireAuthenticDirectory(lexicalRoot,'ARTIFACT_MANIFEST_INVALID');
   await requireDirectoryComponents(root,'knowledge','ARTIFACT_MANIFEST_INVALID');
   const physical=join(root,'knowledge','artifact-manifest.json');
   let handle;
@@ -355,7 +386,18 @@ async function main(){
   await packFromManifest(process.argv[2],process.argv[3]);
 }
 
-if(process.argv[1]!==undefined&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
+async function isDirectEntry(argument){
+  if(argument===undefined)return false;
+  try{
+    const [requested,module]=await Promise.all([
+      realpath(resolve(argument)),
+      realpath(fileURLToPath(import.meta.url))
+    ]);
+    return requested===module;
+  }catch{return false;}
+}
+
+if(await isDirectEntry(process.argv[1])){
   try{await main();}
   catch(error){
     const code=typeof error?.code==='string'&&error.code.startsWith('ARTIFACT_')?error.code:'ARTIFACT_PACK_FAILED';
