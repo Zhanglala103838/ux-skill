@@ -200,12 +200,13 @@ const expectWorkflows=async(issues)=>{
   if(JSON.stringify(Object.keys(jobs).sort())!==JSON.stringify(REQUIRED_JOBS))issues.push('ci:job-set');
   for(const name of REQUIRED_JOBS){
    const steps=Array.isArray(jobs[name]?.steps)?jobs[name].steps:[],runs=steps.map((step)=>step?.run).filter((value)=>typeof value==='string'),uses=steps.map((step)=>step?.uses).filter((value)=>typeof value==='string');
+   const checkoutIndexes=steps.map((step,index)=>step?.uses?.startsWith('actions/checkout@')?index:-1).filter((index)=>index>=0);
    const pnpmIndex=steps.findIndex((step)=>step?.uses?.startsWith('pnpm/action-setup@'));
    const nodeIndex=steps.findIndex((step)=>step?.uses?.startsWith('actions/setup-node@'));
-   if(!uses.some((value)=>value.startsWith('actions/checkout@'))||pnpmIndex<0||nodeIndex<=pnpmIndex)issues.push('ci:setup-order:'+name);
+   if(checkoutIndexes.length<1||pnpmIndex<0||nodeIndex<=pnpmIndex||checkoutIndexes.some((index)=>index>=pnpmIndex))issues.push('ci:setup-order:'+name);
    if(name!=='pack-repro'&&!runs.includes('pnpm install --frozen-lockfile'))issues.push('ci:frozen:'+name);
    const node=steps[nodeIndex],pnpm=steps[pnpmIndex];
-   if(node?.with?.['node-version']!=='22.22.2'||node?.with?.cache!=='pnpm')issues.push('ci:node-config:'+name);
+   if(node?.with?.['node-version']!=='22.22.2'||node?.with?.cache!=='pnpm'||(name==='pack-repro'&&node?.with?.['cache-dependency-path']!=='source-a/pnpm-lock.yaml'))issues.push('ci:node-config:'+name);
    if(String(pnpm?.with?.version)!=='8.15.5'||pnpm?.with?.run_install!==false)issues.push('ci:pnpm-config:'+name);
   }
   const unitSteps=Array.isArray(jobs.unit?.steps)?jobs.unit.steps:[],unitRuns=unitSteps.map((step)=>step?.run).filter(Boolean);
