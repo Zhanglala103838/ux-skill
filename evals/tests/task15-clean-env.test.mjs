@@ -60,8 +60,7 @@ const prepareBundles=async()=>{
  const golden=JSON.parse(await readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8')).bundle;
  return[deleteBundle(),hulianDeleteBundle()].map((fixture)=>{
   const bundle=structuredClone(fixture);
-  bundle.policy_digests=structuredClone(golden.policy_digests);
-  for(const claim of bundle.claims)claim.relation_kind=claim.claim_kind;
+  for(const field of ['source_registry_refs','evidence','claims','policy_digests'])bundle[field]=structuredClone(golden[field]);
   return bundle;
  });
 };

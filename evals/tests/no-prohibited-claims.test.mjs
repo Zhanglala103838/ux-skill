@@ -5,11 +5,10 @@ import {evaluate} from '../../evaluator/index.mjs';
 import {deleteBundle,hulianDeleteBundle} from '../helpers/fixtures.mjs';
 
 const WARNING='Zero findings does not mean UX is good, compliant, successful, or satisfying.';
-const currentPolicyDigests=JSON.parse(await readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8')).bundle.policy_digests;
+const currentSourceMaterial=JSON.parse(await readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8')).bundle;
 const prepared=(factory)=>{
  const bundle=structuredClone(factory());
- bundle.policy_digests=structuredClone(currentPolicyDigests);
- for(const claim of bundle.claims)claim.relation_kind=claim.claim_kind;
+ for(const field of ['source_registry_refs','evidence','claims','policy_digests'])bundle[field]=structuredClone(currentSourceMaterial[field]);
  return bundle;
 };
 
