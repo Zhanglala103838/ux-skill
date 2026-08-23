@@ -208,7 +208,7 @@ if(releaseModule===undefined){
    assert.equal(child.status,0,child.stderr);
    assert.equal(child.signal,null);
    assert.equal(child.stderr,'');
-   assert.equal(child.stdout,JSON.stringify({caught:true,code:'ENOENT'})+'\\n');
+   assert.equal(child.stdout,JSON.stringify({caught:true,code:'ENOENT'})+'\n');
   });
 
   await capture('direct release command writes only the exact current report and exits one',async()=>{
@@ -221,7 +221,7 @@ if(releaseModule===undefined){
    assert.equal(direct.signal,null);
    assert.equal(direct.stdout,'');
    assert.equal(direct.stderr,'');
-   assert.equal(await readFile(REPORT,'utf8'),JSON.stringify(expectedCurrent)+'\\n');
+   assert.equal(await readFile(REPORT,'utf8'),JSON.stringify(expectedCurrent)+'\n');
   });
   t.after(()=>rm(REPORT,{force:true}));
 
