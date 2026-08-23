@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {canonicalize} from 'json-canonicalize';
 import {link,readFile,rm,symlink,writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
@@ -35,12 +37,40 @@ if(releaseModule===undefined){
   completeCase('RW-ADMIN-APPSMITH-001','pinned_repository'),
   completeCase('RW-DOCS-STRIPE-001','black_box_site','rotation_candidate')
  ];
+ const rotationPreimage=(overrides={})=>({
+  generation_commitment:'0'.repeat(64),
+  generation_id:'gen-001',
+  generation_sequence:0,
+  portfolio_version:'real-world-portfolio-v1',
+  selected_case_id:'RW-DOCS-STRIPE-001',
+  sorted_candidate_case_ids:['RW-DOCS-STRIPE-001','RW-WEBSITE-IKEA-001'],
+  ...overrides
+ });
+ const rotationDigest=(manifest)=>{
+  const preimage={
+   generation_commitment:manifest.generation_commitment,
+   generation_id:manifest.generation_id,
+   generation_sequence:manifest.generation_sequence,
+   portfolio_version:manifest.portfolio_version,
+   selected_case_id:manifest.selected_case_id,
+   sorted_candidate_case_ids:manifest.sorted_candidate_case_ids
+  };
+  return createHash('sha256')
+   .update(Buffer.from('ux-skill:rotation-selection:v1','utf8'))
+   .update(Buffer.from(canonicalize(preimage),'utf8'))
+   .digest('hex');
+ };
+ const rotationSelection=(overrides={})=>{
+  const manifest=rotationPreimage(overrides);
+  return{...manifest,manifest_digest:rotationDigest(manifest)};
+ };
+ const resignRotation=(manifest)=>{manifest.manifest_digest=rotationDigest(manifest);};
  const releasable=()=>({
   catalog:greenCatalog(),
   holdout:{status:'pass',generation_id:'gen-001',behavior_version:'0.1.0'},
   currentGeneration,
   publicCases:completeCases(),
-  rotationSelection:{generation_id:'gen-001',selected_case_id:'RW-DOCS-STRIPE-001'},
+  rotationSelection:rotationSelection(),
   parity:{semantic_parity:1,adapter_evidence_parity:1},
   golden:{matched:true},
   prohibitedClaims:{count:0},
@@ -138,6 +168,108 @@ if(releaseModule===undefined){
   assert.equal(getterCalls,0);
   const proxy=new Proxy({catalog:[],holdout:{status:'missing'},publicCases:[]},{ownKeys(){throw new Error('PROXY_EXECUTED');}});
   assert.throws(()=>releaseModule.checkRelease(proxy),(error)=>error?.code==='RELEASE_INPUT_INVALID');
+ });
+
+ test('TASK14_RELEASE_CLOSURE_RED closes real-world identity manifests and required summaries',async()=>{
+  const failures=[];
+  const capture=async(label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
+  const expectRealWorldRequired=(input)=>assert.deepEqual(releaseModule.checkRelease(input),{status:'no_release',reason_codes:['REAL_WORLD_REQUIRED']});
+
+  await capture('the exact Appsmith fixed anchor can release',()=>{
+   assert.deepEqual(releaseModule.checkRelease(releasable()),{status:'release',reason_codes:[]});
+  });
+  await capture('the exact Cal fixed anchor can substitute for Appsmith',()=>{
+   const input=releasable();
+   input.publicCases.find((row)=>row.target_kind==='pinned_repository').case_id='RW-TRANSACTION-CAL-001';
+   assert.deepEqual(releaseModule.checkRelease(input),{status:'release',reason_codes:[]});
+  });
+  await capture('the selected IKEA candidate for sequence one can release',()=>{
+   const input=releasable();
+   input.publicCases=input.publicCases.filter((row)=>row.portfolio_role!=='rotation_candidate');
+   input.publicCases.push(completeCase('RW-WEBSITE-IKEA-001','black_box_site','rotation_candidate'));
+   input.rotationSelection=rotationSelection({generation_sequence:1,selected_case_id:'RW-WEBSITE-IKEA-001'});
+   assert.deepEqual(releaseModule.checkRelease(input),{status:'release',reason_codes:[]});
+  });
+
+  await capture('an invented repository identity cannot substitute',()=>{
+   const input=releasable();
+   input.publicCases.find((row)=>row.target_kind==='pinned_repository').case_id='INVENTED-REPOSITORY-001';
+   expectRealWorldRequired(input);
+  });
+
+  for(const id of ['RW-HULIAN-DELETE-001','RW-WEBSITE-APPLE-001','RW-WEBSITE-GOVUK-001','RW-ADMIN-APPSMITH-001','RW-DOCS-STRIPE-001']){
+   await capture(id+' rejects a wrong portfolio role',()=>{
+    const input=releasable();
+    input.publicCases.find((row)=>row.case_id===id).portfolio_role=id==='RW-DOCS-STRIPE-001'?'fixed_anchor':'rotation_candidate';
+    expectRealWorldRequired(input);
+   });
+   await capture(id+' rejects a wrong target kind',()=>{
+    const input=releasable();
+    const row=input.publicCases.find((value)=>value.case_id===id);
+    row.target_kind=row.target_kind==='black_box_site'?'pinned_repository':'black_box_site';
+    expectRealWorldRequired(input);
+   });
+   for(const status of ['baseline_status','verify_status']){
+    await capture(id+' rejects missing '+status,()=>{
+     const input=releasable();
+     delete input.publicCases.find((row)=>row.case_id===id)[status];
+     expectRealWorldRequired(input);
+    });
+   }
+  }
+
+  const rotationTamperCases=[
+   ['missing portfolio_version',(manifest)=>{delete manifest.portfolio_version;}],
+   ['wrong portfolio_version',(manifest)=>{manifest.portfolio_version='invented-portfolio';resignRotation(manifest);}],
+   ['missing generation_id',(manifest)=>{delete manifest.generation_id;}],
+   ['wrong generation_id',(manifest)=>{manifest.generation_id='gen-old';resignRotation(manifest);}],
+   ['missing generation_sequence',(manifest)=>{delete manifest.generation_sequence;}],
+   ['negative generation_sequence',(manifest)=>{manifest.generation_sequence=-1;resignRotation(manifest);}],
+   ['fractional generation_sequence',(manifest)=>{manifest.generation_sequence=0.5;resignRotation(manifest);}],
+   ['missing generation_commitment',(manifest)=>{delete manifest.generation_commitment;}],
+   ['malformed generation_commitment',(manifest)=>{manifest.generation_commitment='not-a-digest';resignRotation(manifest);}],
+   ['missing candidate list',(manifest)=>{delete manifest.sorted_candidate_case_ids;}],
+   ['candidate list wrong order',(manifest)=>{manifest.sorted_candidate_case_ids=['RW-WEBSITE-IKEA-001','RW-DOCS-STRIPE-001'];resignRotation(manifest);}],
+   ['candidate list duplicate',(manifest)=>{manifest.sorted_candidate_case_ids=['RW-DOCS-STRIPE-001','RW-DOCS-STRIPE-001'];resignRotation(manifest);}],
+   ['candidate list extra identity',(manifest)=>{manifest.sorted_candidate_case_ids.push('RW-INVENTED-001');resignRotation(manifest);}],
+   ['missing selected_case_id',(manifest)=>{delete manifest.selected_case_id;}],
+   ['selection inconsistent with sequence',(manifest,input)=>{
+    input.publicCases.push(completeCase('RW-WEBSITE-IKEA-001','black_box_site','rotation_candidate'));
+    manifest.selected_case_id='RW-WEBSITE-IKEA-001';resignRotation(manifest);
+   }],
+   ['invented selected identity',(manifest)=>{manifest.selected_case_id='RW-INVENTED-001';resignRotation(manifest);}],
+   ['missing manifest_digest',(manifest)=>{delete manifest.manifest_digest;}],
+   ['wrong manifest_digest',(manifest)=>{manifest.manifest_digest='f'.repeat(64);}],
+   ['extra manifest field',(manifest)=>{manifest.untrusted_note='extra';}]
+  ];
+  for(const [label,mutate] of rotationTamperCases){
+   await capture('rotation manifest rejects '+label,()=>{
+    const input=releasable();mutate(input.rotationSelection,input);expectRealWorldRequired(input);
+   });
+  }
+
+  const requiredSummaries=[
+   ['parity','PARITY_REQUIRED'],
+   ['golden','GOLDEN_REQUIRED'],
+   ['prohibitedClaims','PROHIBITED_CLAIM_CHECK_REQUIRED'],
+   ['releaseCritical','RELEASE_CRITICAL_CHECK_REQUIRED']
+  ];
+  for(const [field,reason] of requiredSummaries){
+   await capture('release requires '+field,()=>{
+    const input=releasable();delete input[field];
+    assert.deepEqual(releaseModule.checkRelease(input),{status:'no_release',reason_codes:[reason]});
+   });
+  }
+  await capture('release requires all four summaries with canonical reasons',()=>{
+   const input=releasable();
+   for(const [field] of requiredSummaries)delete input[field];
+   assert.deepEqual(releaseModule.checkRelease(input),{
+    status:'no_release',
+    reason_codes:['GOLDEN_REQUIRED','PARITY_REQUIRED','PROHIBITED_CLAIM_CHECK_REQUIRED','RELEASE_CRITICAL_CHECK_REQUIRED']
+   });
+  });
+
+  if(failures.length>0)assert.fail('TASK14_RELEASE_CLOSURE_RED\n'+failures.join('\n'));
  });
 
  test('TASK14_REMEDIATION_RED exercises release identity provenance process and current-report regressions',async(t)=>{
