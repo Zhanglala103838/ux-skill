@@ -68,7 +68,7 @@ if(releaseModule===undefined){
  const releasable=()=>({
   catalog:greenCatalog(),
   holdout:{status:'pass',generation_id:'gen-001',behavior_version:'0.1.0'},
-  currentGeneration,
+  currentGeneration:{...currentGeneration},
   publicCases:completeCases(),
   rotationSelection:rotationSelection(),
   parity:{semantic_parity:1,adapter_evidence_parity:1},
