@@ -151,14 +151,53 @@ if(releaseModule===undefined){
   });
  });
 
- test('duplicate catalog identities and query-budget exhaustion cannot pass',()=>{
-  const input=releasable();
-  input.catalog=[{vector_id:'A',outcome:'green'},{vector_id:'A',outcome:'green'}];
-  input.holdout={status:'QUERY_BUDGET_EXHAUSTED',generation_id:'gen-001',behavior_version:'0.1.0'};
-  assert.deepEqual(releaseModule.checkRelease(input),{
-   status:'no_release',
-   reason_codes:['HOLDOUT_QUERY_BUDGET_EXHAUSTED','VECTOR_CATALOG_INVALID']
+ test('TASK14_HOLDOUT_NOISE_RED keeps custodian absence out of non-current holdout reasons',()=>{
+  const failures=[];
+  const capture=(label,operation)=>{try{operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
+  const expectReasons=(input,reason_codes)=>assert.deepEqual(releaseModule.checkRelease(input),{status:'no_release',reason_codes});
+
+  capture('duplicate catalog plus query budget has only its independent blockers',()=>{
+   const input=releasable();
+   input.catalog=[{vector_id:'A',outcome:'green'},{vector_id:'A',outcome:'green'}];
+   input.holdout={status:'QUERY_BUDGET_EXHAUSTED',generation_id:'gen-001',behavior_version:'0.1.0'};
+   expectReasons(input,['HOLDOUT_QUERY_BUDGET_EXHAUSTED','VECTOR_CATALOG_INVALID']);
   });
+
+  const nonCurrent=[
+   ['missing',{status:'missing'},['HOLDOUT_MISSING']],
+   ['failed',{status:'failed',generation_id:'gen-001',behavior_version:'0.1.0'},['HOLDOUT_FAILED']],
+   ['contaminated',{status:'contaminated',generation_id:'gen-001',behavior_version:'0.1.0'},['HOLDOUT_CONTAMINATED']],
+   ['query budget exhausted',{status:'QUERY_BUDGET_EXHAUSTED',generation_id:'gen-001',behavior_version:'0.1.0'},['HOLDOUT_QUERY_BUDGET_EXHAUSTED']],
+   ['not current',{status:'pass',generation_id:'gen-old',behavior_version:'0.1.0'},['HOLDOUT_NOT_CURRENT']]
+  ];
+  for(const [label,holdout,reasons] of nonCurrent){
+   capture(label+' holdout does not invent a custodian-derived real-world failure',()=>{
+    const input=releasable();input.holdout=holdout;expectReasons(input,reasons);
+   });
+  }
+
+  capture('current pass still requires the custodian verification',()=>{
+   const input=releasable();delete input.holdout.rotation_verification;expectReasons(input,['REAL_WORLD_REQUIRED']);
+  });
+  capture('current pass rejects a mismatched custodian verification',()=>{
+   const input=releasable();input.holdout.rotation_verification.manifest_digest='f'.repeat(64);expectReasons(input,['REAL_WORLD_REQUIRED']);
+  });
+
+  const realWorldDefects=[
+   ['missing case',(input)=>{input.publicCases=input.publicCases.filter((row)=>row.case_id!=='RW-WEBSITE-APPLE-001');}],
+   ['wrong role',(input)=>{input.publicCases.find((row)=>row.case_id==='RW-WEBSITE-APPLE-001').portfolio_role='rotation_candidate';}],
+   ['wrong kind',(input)=>{input.publicCases.find((row)=>row.case_id==='RW-WEBSITE-APPLE-001').target_kind='pinned_repository';}],
+   ['missing case status',(input)=>{delete input.publicCases.find((row)=>row.case_id==='RW-WEBSITE-APPLE-001').verify_status;}],
+   ['invalid rotation manifest',(input)=>{input.rotationSelection.manifest_digest='f'.repeat(64);}]
+  ];
+  for(const [label,mutate] of realWorldDefects){
+   capture(label+' remains a real-world failure under a missing holdout',()=>{
+    const input=releasable();input.holdout={status:'missing'};mutate(input);
+    expectReasons(input,['HOLDOUT_MISSING','REAL_WORLD_REQUIRED']);
+   });
+  }
+
+  if(failures.length>0)assert.fail('TASK14_HOLDOUT_NOISE_RED\n'+failures.join('\n'));
  });
 
  test('holdout private details are neither inspected nor exposed',()=>{
