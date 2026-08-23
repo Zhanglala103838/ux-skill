@@ -7,7 +7,13 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 
 let releaseModule;
-try{releaseModule=await import('../../scripts/check-release.mjs');}catch{}
+let transportsModule;
+try{
+ [releaseModule,transportsModule]=await Promise.all([
+  import('../../scripts/check-release.mjs'),
+  import('../helpers/transports.mjs')
+ ]);
+}catch{}
 
 if(releaseModule===undefined){
  test.skip('Task 14 release tests activate after the intentional RED entrypoint exists',()=>{});
@@ -16,10 +22,9 @@ if(releaseModule===undefined){
  const SCRIPT=fileURLToPath(new URL('../../scripts/check-release.mjs',import.meta.url));
  const REPORT=join(ROOT,'release-gate-report.json');
  const currentGeneration={generation_id:'gen-001',behavior_version:'0.1.0'};
- const greenCatalog=()=>[
-  {vector_id:'A',outcome:'green'},
-  {vector_id:'B',outcome:'green'}
- ];
+ const immutableCatalog=JSON.parse(await readFile(new URL('../vector-catalog.json',import.meta.url),'utf8'));
+ const committedPublicCases=await Promise.all(['apple','govuk','ikea','stripe'].map(async(name)=>JSON.parse(await readFile(new URL('../public-cases/'+name+'.json',import.meta.url),'utf8'))));
+ const greenCatalog=()=>immutableCatalog.map((row)=>({vector_id:row.vector_id,behavior_version:'0.1.0',outcome:'green'}));
  const completeCase=(case_id,target_kind,portfolio_role='fixed_anchor')=>({
   case_id,target_kind,portfolio_role,baseline_status:'pass',verify_status:'pass'
  });
@@ -42,7 +47,7 @@ if(releaseModule===undefined){
   releaseCritical:{false_passes:0}
  });
  const run=(args)=>new Promise((resolve,reject)=>{
-  const child=spawn(process.execPath,args,{cwd:ROOT,env:{LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,args,{cwd:ROOT,env:{...process.env,LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['ignore','pipe','pipe']});
   const stdout=[];const stderr=[];
   child.stdout.on('data',(chunk)=>stdout.push(chunk));
   child.stderr.on('data',(chunk)=>stderr.push(chunk));
@@ -77,7 +82,9 @@ if(releaseModule===undefined){
 
  test('release reasons are UTF-8 canonical unique and every supplied semantic gate fails closed',()=>{
   const input=releasable();
-  input.catalog=[{vector_id:'A',outcome:'red'},{vector_id:'B',outcome:'red'}];
+  input.catalog=greenCatalog();
+  input.catalog[0].outcome='red';
+  input.catalog[1].outcome='red';
   input.holdout={status:'contaminated',generation_id:'gen-001',behavior_version:'0.1.0'};
   input.publicCases=[completeCase('RW-WEBSITE-APPLE-001','black_box_site'),completeCase('RW-WEBSITE-APPLE-001','black_box_site')];
   input.parity={semantic_parity:0,adapter_evidence_parity:0};
@@ -133,20 +140,92 @@ if(releaseModule===undefined){
   assert.throws(()=>releaseModule.checkRelease(proxy),(error)=>error?.code==='RELEASE_INPUT_INVALID');
  });
 
- test('import-only is inert and direct entry writes the exact current no_release report with exit one',async(t)=>{
-  t.after(()=>rm(REPORT,{force:true}));
-  await rm(REPORT,{force:true});
-  const imported=await run(['--input-type=module','--eval','await import('+JSON.stringify(pathToFileURL(SCRIPT).href)+')']);
-  assert.deepEqual(imported,{status:0,signal:null,stdout:'',stderr:''});
-  await assert.rejects(readFile(REPORT),(error)=>error?.code==='ENOENT');
+ test('TASK14_REMEDIATION_RED exercises release identity provenance process and current-report regressions',async(t)=>{
+  const failures=[];
+  const capture=async(label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+(error?.message??String(error)));}};
+  const expectedCurrent={status:'no_release',reason_codes:['HOLDOUT_MISSING','REAL_WORLD_REQUIRED','VECTOR_RED']};
 
-  const direct=await run([SCRIPT]);
-  const expected={status:'no_release',reason_codes:['HOLDOUT_MISSING','REAL_WORLD_REQUIRED','VECTOR_RED']};
-  assert.equal(direct.status,1,direct.stderr);
-  assert.equal(direct.signal,null);
-  assert.equal(direct.stdout,JSON.stringify(expected)+'\n');
-  assert.equal(direct.stderr,'');
-  assert.equal(await readFile(REPORT,'utf8'),JSON.stringify(expected)+'\n');
+  await capture('committed public cases remain incomplete instead of becoming internal input errors',()=>{
+   const catalog=greenCatalog();for(const row of catalog){row.outcome='red';row.behavior_version='absent';}
+   assert.deepEqual(releaseModule.checkRelease({catalog,holdout:{status:'missing'},publicCases:committedPublicCases}),expectedCurrent);
+  });
+
+  for(const [label,mutate] of [
+   ['missing vector',(catalog)=>catalog.pop()],
+   ['extra vector',(catalog)=>catalog.push({vector_id:'INVENTED-001',behavior_version:'0.1.0',outcome:'green'})],
+   ['renamed vector',(catalog)=>{catalog[0].vector_id='RENAMED-001';}],
+   ['wrong behavior generation',(catalog)=>{catalog[0].behavior_version='0.0.9';}]
+  ]){
+   await capture(label+' cannot release',()=>{
+    const input=releasable();mutate(input.catalog);
+    assert.equal(releaseModule.checkRelease(input).status,'no_release');
+   });
+  }
+
+  await capture('unproven equal triples cannot forge parity',async()=>{
+   const genuine=await transportsModule.evaluateThreeTransports('evals/parity/guide.json');
+   const forged={skill:structuredClone(genuine.skill),cli:structuredClone(genuine.skill),mcp:structuredClone(genuine.skill)};
+   assert.throws(()=>releaseModule.checkParity(forged),(error)=>error?.code==='PARITY_PROVENANCE_REQUIRED');
+  });
+
+  await capture('transport provenance access is detached and cannot rewrite the trusted oracle',async()=>{
+   const genuine=await transportsModule.evaluateThreeTransports('evals/parity/refactor.json');
+   const first=transportsModule.transportParityContext(genuine);
+   const before=JSON.stringify(first);
+   first.oracle.semantic_projection.run_status='completed_clear';
+   for(const evidence of Object.values(first.adapterEvidence))evidence[0].artifact_digest='0'.repeat(64);
+   const second=transportsModule.transportParityContext(genuine);
+   assert.notStrictEqual(second,first);
+   assert.equal(JSON.stringify(second),before);
+   assert.deepEqual(releaseModule.checkParity(genuine),{semantic_parity:1,adapter_evidence_parity:1});
+  });
+
+  await capture('public and accessor references cannot be combined to forge green parity',async()=>{
+   const genuine=await transportsModule.evaluateThreeTransports('evals/parity/verify.json');
+   const exposed=transportsModule.transportParityContext(genuine);
+   let publicMutation=false;
+   for(const output of [genuine.skill,genuine.cli,genuine.mcp]){
+    const before=output.semantic_projection.input_digest;
+    try{output.semantic_projection.input_digest='0'.repeat(64);}catch{}
+    if(output.semantic_projection.input_digest!==before)publicMutation=true;
+   }
+   try{exposed.oracle.semantic_projection.input_digest='0'.repeat(64);}catch{}
+   for(const evidence of Object.values(exposed.adapterEvidence)){try{evidence[0].artifact_digest='0'.repeat(64);}catch{}}
+   const report=releaseModule.checkParity(genuine);
+   if(publicMutation)assert.notDeepEqual(report,{semantic_parity:1,adapter_evidence_parity:1});
+   else assert.deepEqual(report,{semantic_parity:1,adapter_evidence_parity:1});
+  });
+
+  await capture('missing PATH spawn failure rejects once without an uncaught close-handler exception',async()=>{
+   const helperUrl=pathToFileURL(fileURLToPath(new URL('../helpers/transports.mjs',import.meta.url))).href;
+   const source='const m=await import('+JSON.stringify(helperUrl)+');try{await m.evaluateThreeTransports("evals/parity/scan.json");process.stdout.write("UNEXPECTED_SUCCESS\\n");}catch(error){process.stdout.write(JSON.stringify({caught:true,code:error?.code??error?.name})+"\\n");}await new Promise((resolve)=>setImmediate(resolve));';
+   const child=await new Promise((resolve,reject)=>{
+    const processChild=spawn(process.execPath,['--input-type=module','--eval',source],{cwd:ROOT,env:{...process.env,PATH:'/definitely/missing',LANG:'C',LC_ALL:'C',TZ:'UTC'},stdio:['ignore','pipe','pipe']});
+    const stdout=[];const stderr=[];
+    processChild.stdout.on('data',(chunk)=>stdout.push(chunk));processChild.stderr.on('data',(chunk)=>stderr.push(chunk));processChild.on('error',reject);
+    processChild.on('close',(status,signal)=>resolve({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
+   });
+   assert.equal(child.status,0,child.stderr);
+   assert.equal(child.signal,null);
+   assert.equal(child.stderr,'');
+   assert.equal(child.stdout,JSON.stringify({caught:true,code:'ENOENT'})+'\\n');
+  });
+
+  await capture('direct release command writes only the exact current report and exits one',async()=>{
+   await rm(REPORT,{force:true});
+   const imported=await run(['--input-type=module','--eval','await import('+JSON.stringify(pathToFileURL(SCRIPT).href)+')']);
+   assert.deepEqual(imported,{status:0,signal:null,stdout:'',stderr:''});
+   await assert.rejects(readFile(REPORT),(error)=>error?.code==='ENOENT');
+   const direct=await run([SCRIPT]);
+   assert.equal(direct.status,1,direct.stderr);
+   assert.equal(direct.signal,null);
+   assert.equal(direct.stdout,'');
+   assert.equal(direct.stderr,'');
+   assert.equal(await readFile(REPORT,'utf8'),JSON.stringify(expectedCurrent)+'\\n');
+  });
+  t.after(()=>rm(REPORT,{force:true}));
+
+  if(failures.length>0)assert.fail('TASK14_REMEDIATION_RED\\n'+failures.join('\\n'));
  });
 
  test('direct entry refuses a symlink report target without changing its referent',async(t)=>{
