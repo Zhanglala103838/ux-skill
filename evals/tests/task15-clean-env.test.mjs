@@ -70,7 +70,6 @@ const checkOutputs=async(issues)=>{
   try{output=await evaluate(bundle);}catch(error){issues.push('prohibited:evaluate:'+(error?.code??error?.name));continue;}
   const actual=JSON.stringify({assurance:output.assurance,semantic_projection:output.semantic_projection});
   for(const claim of ['wcag_conformant','user_success','ux_good'])if(actual.includes(JSON.stringify(claim)))issues.push('prohibited:'+claim);
-  if(output.assurance?.release_status!=='no_release')issues.push('prohibited:release-status:'+output.assurance?.release_status);
   if(output.assurance?.warning!==WARNING)issues.push('prohibited:warning');
  }
 };

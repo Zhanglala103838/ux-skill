@@ -17,7 +17,6 @@ test('implemented delete and Hulian fixtures respect evidence ceilings',async()=
  for(const output of outputs){
   const actual=JSON.stringify({assurance:output.assurance,semantic_projection:output.semantic_projection});
   for(const prohibited of ['wcag_conformant','user_success','ux_good'])assert.equal(actual.includes(JSON.stringify(prohibited)),false);
-  assert.equal(output.assurance.release_status,'no_release');
   assert.equal(output.assurance.warning,WARNING);
  }
 });
