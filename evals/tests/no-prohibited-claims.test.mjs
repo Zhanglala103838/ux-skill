@@ -15,7 +15,7 @@ const prepared=(factory)=>{
 test('implemented delete and Hulian fixtures respect evidence ceilings',async()=>{
  const outputs=[await evaluate(prepared(deleteBundle)),await evaluate(prepared(hulianDeleteBundle))];
  for(const output of outputs){
-  const actual=JSON.stringify({assurance:output.assurance,semantic_projection:output.semantic_projection});
+  const actual=JSON.stringify(output);
   for(const prohibited of ['wcag_conformant','user_success','ux_good'])assert.equal(actual.includes(JSON.stringify(prohibited)),false);
   assert.equal(output.assurance.warning,WARNING);
  }
