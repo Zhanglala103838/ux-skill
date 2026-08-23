@@ -10,6 +10,7 @@ import {parse} from 'yaml';
 import {evaluate} from '../../evaluator/index.mjs';
 import {deleteBundle,hulianDeleteBundle} from '../helpers/fixtures.mjs';
 import {assertKnowledgeFileSnapshot,checkKnowledge} from '../../scripts/check-knowledge.mjs';
+import {packCanonicalUstar} from '../../scripts/pack-ustar.mjs';
 import {validateSkill} from '../../scripts/validate-skill.mjs';
 import {captureRegistryDigest,createCaptureRegistry,runCaptureCli} from '../../scripts/capture-snapshot-closure.mjs';
 import {recordBaseline} from '../../scripts/run-red-baseline.mjs';
@@ -133,6 +134,23 @@ const expectKnowledgeOptions=async(issues)=>{
    if(coercionCalls!==0)issues.push('knowledge:stat-'+field+'-'+kind+'-coerced:'+coercionCalls);
   }
  }
+ let pathCoercionCalls=0;
+ const hostilePath={
+  [Symbol.toPrimitive](){pathCoercionCalls+=1;throw new Error('PATH_COERCION_EXECUTED');},
+  valueOf(){pathCoercionCalls+=1;throw new Error('PATH_VALUE_OF_EXECUTED');},
+  toString(){pathCoercionCalls+=1;throw new Error('PATH_TO_STRING_EXECUTED');}
+ };
+ try{assertKnowledgeFileSnapshot({size:1n,dev:1n,ino:1n},{size:2n,dev:1n,ino:1n},1,hostilePath);issues.push('knowledge:stat-hostile-path-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-hostile-path-code:'+(error?.code??error?.name));}
+ if(pathCoercionCalls!==0)issues.push('knowledge:stat-hostile-path-coerced:'+pathCoercionCalls);
+};
+const expectPackBufferBoundaries=(issues)=>{
+ for(const property of ['buffer','byteLength','length']){
+  let getterCalls=0;
+  const hostile=Buffer.from('x');
+  Object.defineProperty(hostile,property,{configurable:true,get(){getterCalls+=1;throw new Error('BUFFER_SHADOW_GETTER_EXECUTED');}});
+  try{packCanonicalUstar([{path:'fixture.txt',content:hostile}]);issues.push('pack:buffer-'+property+'-getter-accepted');}catch(error){if(error?.code!=='USTAR_INPUT_INVALID')issues.push('pack:buffer-'+property+'-getter-code:'+(error?.code??error?.name));}
+  if(getterCalls!==0)issues.push('pack:buffer-'+property+'-getter-executed:'+getterCalls);
+ }
 };
 const expectCaptureBoundaries=async(issues)=>{
  let argvTrapCalls=0;
@@ -255,6 +273,7 @@ test('TASK15_CLEAN_ENV_RED closes CI, claim, path, and exported API contracts',a
  await checkOutputs(issues);
  try{await readFile(join(ROOT,'evals','tests','no-prohibited-claims.test.mjs'),'utf8');}catch{issues.push('prohibited-test:missing');}
  await expectKnowledgeOptions(issues);
+ expectPackBufferBoundaries(issues);
  await expectCaptureBoundaries(issues);
  expectBaselineBoundary(issues);
  await expectRootAndEntrypointBoundaries(issues);
