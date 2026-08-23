@@ -61,6 +61,7 @@ const prepareBundles=async()=>{
  return[deleteBundle(),hulianDeleteBundle()].map((fixture)=>{
   const bundle=structuredClone(fixture);
   bundle.policy_digests=structuredClone(golden.policy_digests);
+  for(const claim of bundle.claims)claim.relation_kind=claim.claim_kind;
   return bundle;
  });
 };

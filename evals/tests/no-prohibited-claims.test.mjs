@@ -9,6 +9,7 @@ const currentPolicyDigests=JSON.parse(await readFile(new URL('../golden/high-ris
 const prepared=(factory)=>{
  const bundle=structuredClone(factory());
  bundle.policy_digests=structuredClone(currentPolicyDigests);
+ for(const claim of bundle.claims)claim.relation_kind=claim.claim_kind;
  return bundle;
 };
 
