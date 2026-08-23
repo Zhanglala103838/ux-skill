@@ -6,6 +6,7 @@ import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {types as utilTypes} from 'node:util';
 import {jcsBytes} from '../evaluator/canonical.mjs';
+import {digestJcs} from '../evaluator/digests.mjs';
 import {parseKnowledgeJson} from './strict-json.mjs';
 import {loadVectorCatalog} from './check-vector-catalog.mjs';
 import {recordBaseline} from './run-red-baseline.mjs';
@@ -24,7 +25,14 @@ const PUBLIC_CASE_PATHS=Object.freeze([
  'evals/public-cases/ikea.json',
  'evals/public-cases/stripe.json'
 ]);
-const REQUIRED_ROTATION_IDS=new Set(['RW-DOCS-STRIPE-001','RW-WEBSITE-IKEA-001']);
+const ROTATION_DOMAIN='ux-skill:rotation-selection:v1';
+const ROTATION_PORTFOLIO_VERSION='real-world-portfolio-v1';
+const ROTATION_CANDIDATE_IDS=Object.freeze(['RW-DOCS-STRIPE-001','RW-WEBSITE-IKEA-001']);
+const ROTATION_MANIFEST_KEYS=Object.freeze([
+ 'portfolio_version','generation_id','generation_sequence','generation_commitment',
+ 'sorted_candidate_case_ids','selected_case_id','manifest_digest'
+]);
+const PINNED_REPOSITORY_IDS=new Set(['RW-ADMIN-APPSMITH-001','RW-TRANSACTION-CAL-001']);
 const fail=(code)=>{const error=new TypeError(code);error.code=code;throw error;};
 const committedCatalog=parseKnowledgeJson(readFileSync(join(ROOT,...VECTOR_CATALOG_PATH.split('/'))),VECTOR_CATALOG_PATH,'RELEASE_INPUT_INVALID',{allowDangerousKeys:true});
 if(!Array.isArray(committedCatalog)||committedCatalog.length!==100)fail('RELEASE_INPUT_INVALID');
@@ -165,21 +173,66 @@ function holdoutReasons(holdout,current,reasons){
  if(ownData(holdout,'generation_id',true)!==currentGeneration||ownData(holdout,'behavior_version',true)!==currentBehavior)reasons.push('HOLDOUT_NOT_CURRENT');
 }
 
-function completeCase(row,id,kind){
- return ownData(row,'case_id')===id&&ownData(row,'target_kind')===kind&&ownData(row,'baseline_status')==='pass'&&ownData(row,'verify_status')==='pass';
+function completeCase(row,id,kind,role){
+ return ownData(row,'case_id')===id
+  &&ownData(row,'target_kind')===kind
+  &&ownData(row,'portfolio_role')===role
+  &&ownData(row,'baseline_status')==='pass'
+  &&ownData(row,'verify_status')==='pass';
+}
+
+function exactDataKeys(record,expected){
+ if(!isRecord(record))return false;
+ let keys;
+ try{keys=Reflect.ownKeys(record);}catch{return false;}
+ return keys.length===expected.length
+  &&keys.every((key)=>typeof key==='string'&&expected.includes(key))
+  &&expected.every((key)=>keys.includes(key));
+}
+
+function rotationComplete(rotation,current){
+ if(rotation===undefined||current===undefined||!exactDataKeys(rotation,ROTATION_MANIFEST_KEYS))return false;
+ const portfolio=ownData(rotation,'portfolio_version');
+ const generation=ownData(rotation,'generation_id');
+ const sequence=ownData(rotation,'generation_sequence');
+ const commitment=ownData(rotation,'generation_commitment');
+ const candidateValue=ownData(rotation,'sorted_candidate_case_ids');
+ const selected=ownData(rotation,'selected_case_id');
+ const manifestDigest=ownData(rotation,'manifest_digest');
+ if(portfolio!==ROTATION_PORTFOLIO_VERSION
+  ||generation!==ownData(current,'generation_id',true)
+  ||!Number.isSafeInteger(sequence)||sequence<0
+  ||typeof commitment!=='string'||!/^[0-9a-f]{64}$/u.test(commitment)
+  ||!Array.isArray(candidateValue)||utilTypes.isProxy(candidateValue)
+  ||typeof selected!=='string'
+  ||typeof manifestDigest!=='string'||!/^[0-9a-f]{64}$/u.test(manifestDigest))return false;
+ const candidates=arrayData(candidateValue);
+ if(candidates.length!==ROTATION_CANDIDATE_IDS.length
+  ||candidates.some((id,index)=>id!==ROTATION_CANDIDATE_IDS[index])
+  ||selected!==candidates[sequence%candidates.length])return false;
+ const preimage={
+  generation_commitment:commitment,
+  generation_id:generation,
+  generation_sequence:sequence,
+  portfolio_version:portfolio,
+  selected_case_id:selected,
+  sorted_candidate_case_ids:candidates
+ };
+ return manifestDigest===digestJcs(ROTATION_DOMAIN,preimage);
 }
 
 function realWorldComplete(publicCases,rotation,current){
  const rows=arrayData(publicCases);
- const hulian=rows.some((row)=>completeCase(row,'RW-HULIAN-DELETE-001','hulianui_contract'));
- const apple=rows.some((row)=>completeCase(row,'RW-WEBSITE-APPLE-001','black_box_site'));
- const govuk=rows.some((row)=>completeCase(row,'RW-WEBSITE-GOVUK-001','black_box_site'));
- const repository=rows.some((row)=>ownData(row,'target_kind')==='pinned_repository'&&ownData(row,'baseline_status')==='pass'&&ownData(row,'verify_status')==='pass');
- if(rotation===undefined||current===undefined)return false;
- const selected=ownData(rotation,'selected_case_id',true);
- const generation=ownData(rotation,'generation_id',true);
- if(!REQUIRED_ROTATION_IDS.has(selected)||generation!==ownData(current,'generation_id',true))return false;
- const rotationCase=rows.some((row)=>completeCase(row,selected,'black_box_site')&&ownData(row,'portfolio_role',true)==='rotation_candidate');
+ const hulian=rows.some((row)=>completeCase(row,'RW-HULIAN-DELETE-001','hulianui_contract','fixed_anchor'));
+ const apple=rows.some((row)=>completeCase(row,'RW-WEBSITE-APPLE-001','black_box_site','fixed_anchor'));
+ const govuk=rows.some((row)=>completeCase(row,'RW-WEBSITE-GOVUK-001','black_box_site','fixed_anchor'));
+ const repository=rows.some((row)=>{
+  const id=ownData(row,'case_id');
+  return PINNED_REPOSITORY_IDS.has(id)&&completeCase(row,id,'pinned_repository','fixed_anchor');
+ });
+ if(!rotationComplete(rotation,current))return false;
+ const selected=ownData(rotation,'selected_case_id');
+ const rotationCase=rows.some((row)=>completeCase(row,selected,'black_box_site','rotation_candidate'));
  return hulian&&apple&&govuk&&repository&&rotationCase;
 }
 
@@ -191,17 +244,26 @@ export function checkRelease(inputs){
   const current=ownData(inputs,'currentGeneration');
   holdoutReasons(ownData(inputs,'holdout',true),current,reasons);
   if(!realWorldComplete(ownData(inputs,'publicCases',true),ownData(inputs,'rotationSelection'),current))reasons.push('REAL_WORLD_REQUIRED');
+  const foundationalComplete=reasons.length===0;
   const parity=ownData(inputs,'parity');
-  if(parity!==undefined){
+  if(parity===undefined){
+   if(foundationalComplete)reasons.push('PARITY_REQUIRED');
+  }else{
    if(ownData(parity,'semantic_parity',true)!==1)reasons.push('PARITY_FAILED');
    if(ownData(parity,'adapter_evidence_parity',true)!==1)reasons.push('ADAPTER_EVIDENCE_PARITY_FAILED');
   }
   const golden=ownData(inputs,'golden');
-  if(golden!==undefined&&ownData(golden,'matched',true)!==true)reasons.push('GOLDEN_MISMATCH');
+  if(golden===undefined){
+   if(foundationalComplete)reasons.push('GOLDEN_REQUIRED');
+  }else if(ownData(golden,'matched',true)!==true)reasons.push('GOLDEN_MISMATCH');
   const prohibited=ownData(inputs,'prohibitedClaims');
-  if(prohibited!==undefined&&ownData(prohibited,'count',true)!==0)reasons.push('PROHIBITED_CLAIM');
+  if(prohibited===undefined){
+   if(foundationalComplete)reasons.push('PROHIBITED_CLAIM_CHECK_REQUIRED');
+  }else if(ownData(prohibited,'count',true)!==0)reasons.push('PROHIBITED_CLAIM');
   const critical=ownData(inputs,'releaseCritical');
-  if(critical!==undefined&&ownData(critical,'false_passes',true)!==0)reasons.push('RELEASE_CRITICAL_FALSE_PASS');
+  if(critical===undefined){
+   if(foundationalComplete)reasons.push('RELEASE_CRITICAL_CHECK_REQUIRED');
+  }else if(ownData(critical,'false_passes',true)!==0)reasons.push('RELEASE_CRITICAL_FALSE_PASS');
   const reasonCodes=canonicalReasons(reasons);
   return{status:reasonCodes.length===0?'release':'no_release',reason_codes:reasonCodes};
  }catch(error){
