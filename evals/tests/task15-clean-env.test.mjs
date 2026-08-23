@@ -115,6 +115,24 @@ const expectKnowledgeOptions=async(issues)=>{
  const getterStat={get size(){statGetterCalls+=1;return 1n;},dev:1n,ino:1n};
  try{assertKnowledgeFileSnapshot(getterStat,{size:1n,dev:1n,ino:1n},1,'fixture');issues.push('knowledge:stat-getter-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-getter-code:'+(error?.code??error?.name));}
  if(statGetterCalls!==0)issues.push('knowledge:stat-getter-executed:'+statGetterCalls);
+ for(const field of ['size','dev','ino']){
+  for(const kind of ['object','function','symbol']){
+   let coercionCalls=0,hostile;
+   if(kind==='object')hostile={
+    [Symbol.toPrimitive](){coercionCalls+=1;return 1n;},
+    valueOf(){coercionCalls+=1;return 1n;},
+    toString(){coercionCalls+=1;return '1';}
+   };
+   if(kind==='function'){
+    hostile=function hostileStatValue(){coercionCalls+=1;};
+    Object.defineProperty(hostile,Symbol.toPrimitive,{value(){coercionCalls+=1;return 1n;}});
+   }
+   if(kind==='symbol')hostile=Symbol('hostile-stat-value');
+   const before={size:1n,dev:1n,ino:1n},after={size:1n,dev:1n,ino:1n};before[field]=hostile;after[field]=hostile;
+   try{assertKnowledgeFileSnapshot(before,after,1,'fixture');issues.push('knowledge:stat-'+field+'-'+kind+'-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-'+field+'-'+kind+'-code:'+(error?.code??error?.name));}
+   if(coercionCalls!==0)issues.push('knowledge:stat-'+field+'-'+kind+'-coerced:'+coercionCalls);
+  }
+ }
 };
 const expectCaptureBoundaries=async(issues)=>{
  let argvTrapCalls=0;
