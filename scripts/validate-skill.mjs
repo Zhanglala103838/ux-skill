@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {constants as fsConstants} from 'node:fs';
 import {lstat,open,realpath} from 'node:fs/promises';
-import {dirname,isAbsolute,join,resolve} from 'node:path';
+import {dirname,isAbsolute,join,parse,relative,resolve,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {TextDecoder,types as utilTypes} from 'node:util';
 import {fromMarkdown} from 'mdast-util-from-markdown';
@@ -10,6 +10,7 @@ import {loadKnowledgeManifest,parseKnowledgeJson} from './check-knowledge.mjs';
 
 const MODULE_PATH=fileURLToPath(import.meta.url);
 const DEFAULT_ROOT=resolve(dirname(MODULE_PATH),'..');
+const DARWIN_SYSTEM_ALIASES=Object.freeze([Object.freeze({lexical:'/tmp',physical:'/private/tmp'}),Object.freeze({lexical:'/var',physical:'/private/var'})]);
 const MAX_TEXT_BYTES=262_144;
 const MAX_REFERENCE_BYTES=1_048_576;
 const UTF8_BOM=Buffer.from([0xef,0xbb,0xbf]);
@@ -68,12 +69,24 @@ function normalizeOptions(options){
  }catch{fail('SKILL_OPTIONS_INVALID');}
 }
 
+async function normalizeDarwinSystemAlias(root){
+ if(process.platform!=='darwin')return root;
+ for(const{lexical,physical}of DARWIN_SYSTEM_ALIASES){
+  if(root!==lexical&&!root.startsWith(lexical+sep))continue;
+  try{const[status,actual]=await Promise.all([lstat(lexical),realpath(lexical)]);if(status.isSymbolicLink()&&actual===physical)return physical+root.slice(lexical.length);}catch{return root;}
+ }
+ return root;
+}
+
 async function resolveRoot(supplied=DEFAULT_ROOT){
  if(supplied.includes('\0')||supplied.normalize('NFC')!==supplied||!isAbsolute(supplied)||resolve(supplied)!==supplied)fail('SKILL_REPOSITORY_ROOT_INVALID');
- let status;let actual;
- try{status=await lstat(supplied);actual=await realpath(supplied);}catch{fail('SKILL_REPOSITORY_ROOT_INVALID');}
- if(status.isSymbolicLink()||!status.isDirectory()||actual!==supplied)fail('SKILL_REPOSITORY_ROOT_INVALID');
- return supplied;
+ const root=await normalizeDarwinSystemAlias(supplied),filesystemRoot=parse(root).root;let current=filesystemRoot;
+ try{
+  const rootStatus=await lstat(current);if(rootStatus.isSymbolicLink()||!rootStatus.isDirectory())fail('SKILL_REPOSITORY_ROOT_INVALID');
+  for(const component of relative(filesystemRoot,root).split(sep).filter(Boolean)){current=join(current,component);const status=await lstat(current);if(status.isSymbolicLink()||!status.isDirectory())fail('SKILL_REPOSITORY_ROOT_INVALID');}
+  if(await realpath(root)!==root)fail('SKILL_REPOSITORY_ROOT_INVALID');
+ }catch(error){if(error?.code?.startsWith?.('SKILL_'))throw error;fail('SKILL_REPOSITORY_ROOT_INVALID');}
+ return root;
 }
 
 async function readSecure(root,path,missingCode,limit=MAX_TEXT_BYTES){
@@ -322,7 +335,12 @@ export async function validateSkill(options){
  return Object.freeze({name:skill.name,modes:Object.freeze([...MODES]),links:skill.links});
 }
 
-if(process.argv[1]&&resolve(process.argv[1])===MODULE_PATH){
+async function isDirectInvocation(){
+ if(!process.argv[1])return false;
+ try{const[invoked,moduleFile]=await Promise.all([realpath(resolve(process.argv[1])),realpath(MODULE_PATH)]);return invoked===moduleFile;}catch{return false;}
+}
+
+if(await isDirectInvocation()){
  try{const result=await validateSkill();process.stdout.write('skill=ok name='+result.name+' modes='+result.modes.length+'\n');}
  catch(error){process.stderr.write((error?.code??'SKILL_VALIDATION_FAILED')+'\n');process.exitCode=1;}
 }

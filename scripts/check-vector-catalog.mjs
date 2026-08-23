@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const modulePath = fileURLToPath(import.meta.url);
+const repositoryRoot = resolve(dirname(modulePath), '..');
 const catalogPath = resolve(repositoryRoot, 'evals/vector-catalog.json');
 const designSpecPath = resolve(repositoryRoot, 'docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md');
 
@@ -74,7 +75,12 @@ export async function loadVectorCatalog() {
   return catalog;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+async function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  try { const [invokedPath, physicalModulePath] = await Promise.all([realpath(resolve(process.argv[1])), realpath(modulePath)]); return invokedPath === physicalModulePath; } catch { return false; }
+}
+
+if (await isDirectInvocation()) {
   const rows = await loadVectorCatalog();
   console.log(`vector_catalog=ok count=${rows.length}`);
 }

@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import { O_NOFOLLOW, O_RDONLY } from 'node:constants';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { types as utilTypes } from 'node:util';
 import {
   assertCanonicalRelativePath,
   assertIJson,
@@ -17,6 +18,10 @@ const modulePath = fileURLToPath(import.meta.url);
 const defaultRepositoryRoot = resolve(dirname(modulePath), '..');
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const GLOB_PATTERN = /[*?\[\]{}]/u;
+const DARWIN_SYSTEM_ALIASES = Object.freeze([
+  Object.freeze({ lexical: '/tmp', physical: '/private/tmp' }),
+  Object.freeze({ lexical: '/var', physical: '/private/var' }),
+]);
 
 
 const KNOWLEDGE_JSON_READ_OPTIONS = Object.freeze({
@@ -167,49 +172,101 @@ function assertUniquePaths(paths, code) {
 }
 
 
-async function resolveRepositoryRoot(options) {
-  if (options === undefined) options = {};
-  if (!isRecord(options) || Object.keys(options).some((key) => key !== 'repositoryRoot')) {
+function normalizeKnowledgeOptions(options) {
+  if (options === undefined) return defaultRepositoryRoot;
+  try {
+    if (options === null || typeof options !== 'object' || Array.isArray(options)
+      || utilTypes.isProxy(options)) throw new TypeError();
+    const prototype = Reflect.getPrototypeOf(options);
+    if (prototype !== Object.prototype && prototype !== null) throw new TypeError();
+    const keys = Reflect.ownKeys(options);
+    if (keys.length === 0) return defaultRepositoryRoot;
+    if (keys.length !== 1 || keys[0] !== 'repositoryRoot') throw new TypeError();
+    const descriptor = Reflect.getOwnPropertyDescriptor(options, 'repositoryRoot');
+    if (descriptor === undefined || descriptor.enumerable !== true
+      || !Object.hasOwn(descriptor, 'value') || Object.hasOwn(descriptor, 'get')
+      || Object.hasOwn(descriptor, 'set') || typeof descriptor.value !== 'string') {
+      throw new TypeError();
+    }
+    return descriptor.value;
+  } catch {
     fail('KNOWLEDGE_OPTIONS_INVALID');
   }
-  const supplied = Object.hasOwn(options, 'repositoryRoot')
-    ? options.repositoryRoot
-    : defaultRepositoryRoot;
-  if (typeof supplied !== 'string' || supplied.length === 0 || !isAbsolute(supplied)) {
-    fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
-  }
+}
 
-  const repositoryRoot = resolve(supplied);
-  let status;
-  try {
-    status = await lstat(repositoryRoot);
-  } catch {
-    fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
-  }
-  if (status.isSymbolicLink()) {
-    fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', 'repository root:symlink path component');
-  }
-  if (!status.isDirectory()) fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
-
-  const actualRoot = await realpath(repositoryRoot);
-  if (actualRoot !== repositoryRoot) {
-    fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', 'repository root:symlink path component');
+async function normalizeDarwinSystemAlias(repositoryRoot) {
+  if (process.platform !== 'darwin') return repositoryRoot;
+  for (const { lexical, physical } of DARWIN_SYSTEM_ALIASES) {
+    if (repositoryRoot !== lexical && !repositoryRoot.startsWith(lexical + sep)) continue;
+    try {
+      const [status, actual] = await Promise.all([lstat(lexical), realpath(lexical)]);
+      if (status.isSymbolicLink() && actual === physical) {
+        return physical + repositoryRoot.slice(lexical.length);
+      }
+    } catch {
+      return repositoryRoot;
+    }
   }
   return repositoryRoot;
 }
 
-export function assertKnowledgeFileSnapshot(before, after, bytesRead, path) {
-  const sizeMatches = before.size === after.size;
-  const identityMatches = before.dev === after.dev && before.ino === after.ino;
-  let completeRead = false;
-  try {
-    completeRead = BigInt(bytesRead) === BigInt(before.size);
-  } catch {
-    completeRead = false;
+async function resolveRepositoryRoot(options) {
+  const supplied = normalizeKnowledgeOptions(options);
+  if (supplied.length === 0 || supplied.includes('\0')
+    || supplied.normalize('NFC') !== supplied || !isAbsolute(supplied)
+    || resolve(supplied) !== supplied) {
+    fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
   }
-  if (!sizeMatches || !identityMatches || !completeRead) {
+  const repositoryRoot = await normalizeDarwinSystemAlias(supplied);
+  const filesystemRoot = parse(repositoryRoot).root;
+  let current = filesystemRoot;
+  try {
+    const rootStatus = await lstat(current);
+    if (rootStatus.isSymbolicLink()) fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', 'repository root:symlink path component');
+    if (!rootStatus.isDirectory()) fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
+    for (const component of relative(filesystemRoot, repositoryRoot).split(sep).filter(Boolean)) {
+      current = join(current, component);
+      const status = await lstat(current);
+      if (status.isSymbolicLink()) fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', 'repository root:symlink path component');
+      if (!status.isDirectory()) fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
+    }
+  } catch (error) {
+    if (error?.code?.startsWith?.('KNOWLEDGE_')) throw error;
+    fail('KNOWLEDGE_REPOSITORY_ROOT_INVALID');
+  }
+  const actualRoot = await realpath(repositoryRoot);
+  if (actualRoot !== repositoryRoot) fail('KNOWLEDGE_SYMLINK_PATH_COMPONENT', 'repository root:symlink path component');
+  return repositoryRoot;
+}
+
+function knowledgeSnapshot(value) {
+  if (value === null || typeof value !== 'object' || utilTypes.isProxy(value)) return null;
+  try {
+    const output = {};
+    for (const key of ['size', 'dev', 'ino']) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')
+        || Object.hasOwn(descriptor, 'get') || Object.hasOwn(descriptor, 'set')) return null;
+      output[key] = descriptor.value;
+    }
+    return output;
+  } catch {
+    return null;
+  }
+}
+
+export function assertKnowledgeFileSnapshot(before, after, bytesRead, path) {
+  const beforeSnapshot = knowledgeSnapshot(before);
+  const afterSnapshot = knowledgeSnapshot(after);
+  if (beforeSnapshot === null || afterSnapshot === null
+    || !Number.isSafeInteger(bytesRead) || bytesRead < 0) {
     fail('KNOWLEDGE_FILE_CHANGED_DURING_READ', path);
   }
+  const sizeMatches = beforeSnapshot.size === afterSnapshot.size;
+  const identityMatches = beforeSnapshot.dev === afterSnapshot.dev && beforeSnapshot.ino === afterSnapshot.ino;
+  let completeRead = false;
+  try { completeRead = BigInt(bytesRead) === BigInt(beforeSnapshot.size); } catch { completeRead = false; }
+  if (!sizeMatches || !identityMatches || !completeRead) fail('KNOWLEDGE_FILE_CHANGED_DURING_READ', path);
 }
 
 async function readSecureRegularFile(repositoryRoot, path, options) {
@@ -535,9 +592,15 @@ export async function checkKnowledge(options) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === modulePath) {
+async function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  try {
+    const [invokedPath, physicalModulePath] = await Promise.all([realpath(resolve(process.argv[1])), realpath(modulePath)]);
+    return invokedPath === physicalModulePath;
+  } catch { return false; }
+}
+
+if (await isDirectInvocation()) {
   const result = await checkKnowledge();
-  console.log(
-    `knowledge_manifest=ok files=${result.knowledgeManifest.files.length} knowledge_manifest_digest=${result.knowledge_manifest_digest} policy_manifest_digest=${result.policy_manifest_digest}`,
-  );
+  console.log(`knowledge_manifest=ok files=${result.knowledgeManifest.files.length} knowledge_manifest_digest=${result.knowledge_manifest_digest} policy_manifest_digest=${result.policy_manifest_digest}`);
 }

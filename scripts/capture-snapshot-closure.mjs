@@ -4,9 +4,9 @@ import { lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm } from 'nod
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, parse, relative, resolve, sep } from 'node:path';
 import { types as utilTypes } from 'node:util';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { init as initModuleLexer, parse as parseModule } from 'es-module-lexer';
 import { canonicalize } from 'json-canonicalize';
@@ -23,6 +23,8 @@ const HX=/^[0-9a-f]{64}$/;
 const B64=/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const HN=/^[a-z0-9!#$%&'*+.^_\x60|~-]+$/;
 const REGISTRY_DOMAIN='ux-skill:capture-registry:v1';
+const MODULE_PATH=fileURLToPath(import.meta.url);
+const DARWIN_SYSTEM_ALIASES=Object.freeze([Object.freeze({lexical:'/tmp',physical:'/private/tmp'}),Object.freeze({lexical:'/var',physical:'/private/var'})]);
 const MODULE_ROW_KEYS=['relative_path','raw_sha256'];
 const registryState=new WeakMap();
 const mediatedHttp=Object.freeze(httpRequest),mediatedHttps=Object.freeze(httpsRequest),NETWORK_TIMEOUT_MS=10000;
@@ -165,9 +167,16 @@ export async function replayClosure(input,cas){
 
 const CLI_ISSUE=Object.freeze({code:'RULE_EVALUATION_ERROR',instance_pointer:'/snapshot_closure',dependency_id:null});
 const cliUnavailable=(closure=null)=>({closure,completeness_status:'incomplete',run_status:'target_unavailable',release_gate:'no_release',run_issues:[CLI_ISSUE]});
-const parseCli=(argv)=>{
-  if(argv[0]==='--')argv=argv.slice(1);
-  const values=new Map();
+const snapshotCliArgv=(input)=>{
+  if(!Array.isArray(input)||utilTypes.isProxy(input)||Reflect.getPrototypeOf(input)!==Array.prototype)throw E('CLI_INPUT_INVALID');
+  const lengthDescriptor=Reflect.getOwnPropertyDescriptor(input,'length');
+  if(!lengthDescriptor||!Object.hasOwn(lengthDescriptor,'value')||!Number.isSafeInteger(lengthDescriptor.value)||lengthDescriptor.value<0)throw E('CLI_INPUT_INVALID');
+  const length=lengthDescriptor.value,keys=Reflect.ownKeys(input);if(keys.length!==length+1||!keys.includes('length'))throw E('CLI_INPUT_INVALID');const output=new Array(length);
+  for(let index=0;index<length;index+=1){const key=String(index),descriptor=Reflect.getOwnPropertyDescriptor(input,key);if(!descriptor||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value')||Object.hasOwn(descriptor,'get')||Object.hasOwn(descriptor,'set'))throw E('CLI_INPUT_INVALID');output[index]=descriptor.value;}
+  return output;
+};
+const parseCli=(input)=>{
+  let argv=snapshotCliArgv(input);if(argv[0]==='--')argv=argv.slice(1);const values=new Map();
   for(let index=0;index<argv.length;index+=2){const flag=argv[index],value=argv[index+1];if(!['--case','--registry','--cas','--output'].includes(flag)||typeof value!=='string'||value.startsWith('--')||values.has(flag))throw E('CLI_INPUT_INVALID');values.set(flag,value)}
   if(!values.has('--case')||!values.has('--cas')||!values.has('--output'))throw E('CLI_INPUT_INVALID');return{casePath:resolve(values.get('--case')),registryPath:values.has('--registry')?resolve(values.get('--registry')):null,casPath:resolve(values.get('--cas')),outputPath:resolve(values.get('--output'))};
 };
@@ -195,6 +204,22 @@ const seedProfiles=async(casePath,c)=>{
   const copy=snap(fixture);if(!Array.isArray(copy.replay_profiles)||copy.replay_profiles.length<1||copy.manifest_digest!==c.snapshot_closure_digest||snapshotClosureDigest(copy)!==copy.manifest_digest)throw E('CAPTURE_PROFILE_FIXTURE_INVALID');return copy.replay_profiles;
 };
 export const captureRegistryDigest=manifest=>{const value=snap(manifest);delete value.registry_digest;return dsha(REGISTRY_DOMAIN,jb(value))};
+const normalizeDarwinSystemAlias=async absolute=>{
+  if(process.platform!=='darwin')return absolute;
+  for(const{lexical,physical}of DARWIN_SYSTEM_ALIASES){if(absolute!==lexical&&!absolute.startsWith(lexical+sep))continue;try{const[status,actual]=await Promise.all([lstat(lexical),realpath(lexical)]);if(status.isSymbolicLink()&&actual===physical)return physical+absolute.slice(lexical.length);}catch{return absolute;}}
+  return absolute;
+};
+const resolveCaptureManifest=async manifestPath=>{
+  try{
+    if(typeof manifestPath!=='string'||manifestPath.length===0||manifestPath.includes('\0')||manifestPath.normalize('NFC')!==manifestPath)throw E('CAPTURE_REGISTRY_INVALID');
+    const absolute=await normalizeDarwinSystemAlias(resolve(manifestPath)),root=dirname(absolute),filesystemRoot=parse(root).root;let current=filesystemRoot;
+    const rootStatus=await lstat(current);if(rootStatus.isSymbolicLink()||!rootStatus.isDirectory())throw E('CAPTURE_REGISTRY_INVALID');
+    for(const component of relative(filesystemRoot,root).split(sep).filter(Boolean)){current=join(current,component);const status=await lstat(current);if(status.isSymbolicLink()||!status.isDirectory())throw E('CAPTURE_REGISTRY_INVALID');}
+    if(await realpath(root)!==root)throw E('CAPTURE_REGISTRY_INVALID');
+    const manifestStat=await lstat(absolute);if(!manifestStat.isFile()||manifestStat.isSymbolicLink()||manifestStat.size>L.maxArtifactBytes||await realpath(absolute)!==absolute)throw E('CAPTURE_REGISTRY_INVALID');
+    return{absolute,root};
+  }catch(error){if(error?.code==='CAPTURE_REGISTRY_INVALID')throw error;throw E('CAPTURE_REGISTRY_INVALID');}
+};
 const registryPath=async(root,relative)=>{
   if(typeof relative!=='string'||relative.length<1||relative.includes('\\')||relative.startsWith('/')||relative.split('/').some(part=>part===''||part==='.'||part==='..'))throw E('CAPTURE_REGISTRY_PATH_INVALID');
   const candidate=resolve(root,relative);if(candidate!==root&&!candidate.startsWith(root+sep))throw E('CAPTURE_REGISTRY_PATH_INVALID');const stat=await lstat(candidate);if(!stat.isFile()||stat.isSymbolicLink())throw E('CAPTURE_REGISTRY_PATH_INVALID');const actual=await realpath(candidate);if(actual!==candidate)throw E('CAPTURE_REGISTRY_PATH_INVALID');return candidate;
@@ -357,7 +382,7 @@ const loadInvocation=async registration=>{
   catch(error){if(client?.worker)await client.worker.terminate().catch(()=>{});await Promise.all([runnerStage.root,transportStage?.root].filter(Boolean).map(stageRoot=>rm(stageRoot,{recursive:true,force:true}).catch(()=>{})));throw error}
 };
 export async function createCaptureRegistry(manifestPath){
-  const absolute=resolve(manifestPath),manifestStat=await lstat(absolute);if(!manifestStat.isFile()||manifestStat.isSymbolicLink()||manifestStat.size>L.maxArtifactBytes)throw E('CAPTURE_REGISTRY_INVALID');const root=await realpath(dirname(absolute)),manifest=snap(JSON.parse(await readFile(absolute,'utf8')));
+  const{absolute,root}=await resolveCaptureManifest(manifestPath),manifest=snap(JSON.parse(await readFile(absolute,'utf8')));
   if(!exact(manifest,['registry_version','entries','registry_digest'])||manifest.registry_version!=='snapshot-capture-registry-v1'||!Array.isArray(manifest.entries)||manifest.entries.length<1||manifest.entries.length>L.maxProfiles||!dg(manifest.registry_digest)||captureRegistryDigest(manifest)!==manifest.registry_digest)throw E('CAPTURE_REGISTRY_INVALID');
   const entries=new Map(),orderedEntries=[...manifest.entries].sort((a,b)=>cmp([a.case_id,a.task_script_digest],[b.case_id,b.task_script_digest]));if(!jb(manifest.entries).equals(jb(orderedEntries)))throw E('CAPTURE_REGISTRY_INVALID');
   for(const entry of manifest.entries){
@@ -397,9 +422,18 @@ const taskRunnerDriver=(cas,profiles,registration)=>{
     return{capture_environment_digest:dsha('ux-skill:capture-environment:v1',jb({registry_digest:registration.registry_digest,runner_digest:registration.runner_closure_digest,transport_digest:registration.transport_closure_digest})),captured_at:new Date().toISOString(),authenticated:false,replay_profiles:snap(profiles),network_events:network,observation_events:observations,outbound_effects:[],transport_events:[],live_replay:false};
   }};
 };
+const captureRegistryDependency=dependencies=>{
+  try{
+    if(dependencies===undefined)return undefined;if(dependencies===null||typeof dependencies!=='object'||Array.isArray(dependencies)||utilTypes.isProxy(dependencies))throw E('TASK_RUNNER_UNAVAILABLE');
+    const prototype=Reflect.getPrototypeOf(dependencies);if(prototype!==Object.prototype&&prototype!==null)throw E('TASK_RUNNER_UNAVAILABLE');
+    const keys=Reflect.ownKeys(dependencies);if(keys.length===0)return undefined;if(keys.length!==1||keys[0]!=='registry')throw E('TASK_RUNNER_UNAVAILABLE');
+    const descriptor=Reflect.getOwnPropertyDescriptor(dependencies,'registry');if(!descriptor||descriptor.enumerable!==true||!Object.hasOwn(descriptor,'value')||Object.hasOwn(descriptor,'get')||Object.hasOwn(descriptor,'set'))throw E('TASK_RUNNER_UNAVAILABLE');return descriptor.value;
+  }catch(error){if(error?.code==='TASK_RUNNER_UNAVAILABLE')throw error;throw E('TASK_RUNNER_UNAVAILABLE');}
+};
 export async function runCaptureCli(argv=process.argv.slice(2),dependencies={}){
   let options;try{options=parseCli(argv)}catch{return 64}let wrapper=cliUnavailable(),invocation;
-  try{const registry=dependencies?.registry??(options.registryPath?await createCaptureRegistry(options.registryPath):null),state=registryState.get(registry);if(!state)throw E('TASK_RUNNER_UNAVAILABLE');const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),registration=state.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');invocation=await loadInvocation(registration);const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,invocation),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}finally{if(invocation)await disposeInvocation(invocation)}
+  try{const dependencyRegistry=captureRegistryDependency(dependencies),registry=dependencyRegistry??(options.registryPath?await createCaptureRegistry(options.registryPath):null),state=registryState.get(registry);if(!state)throw E('TASK_RUNNER_UNAVAILABLE');const c=snap(JSON.parse(await readFile(options.casePath,'utf8'))),profiles=await seedProfiles(options.casePath,c),registration=state.entries.get(c.case_id);if(!registration)throw E('TASK_RUNNER_UNAVAILABLE');invocation=await loadInvocation(registration);const cas=await fileCas(options.casPath),driver=taskRunnerDriver(cas,profiles,invocation),closure=await captureClosure(c,driver);wrapper=closure.completeness_status==='complete'?{closure,completeness_status:'complete',run_status:'completed',release_gate:'no_release',run_issues:[]}:cliUnavailable(closure)}catch{wrapper=cliUnavailable()}finally{if(invocation)await disposeInvocation(invocation)}
   try{await writeJsonAtomic(options.outputPath,wrapper)}catch{return 74}return wrapper.run_status==='completed'?0:2;
 }
-if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)process.exitCode=await runCaptureCli();
+const isDirectInvocation=async()=>{if(!process.argv[1])return false;try{const[invoked,moduleFile]=await Promise.all([realpath(resolve(process.argv[1])),realpath(MODULE_PATH)]);return invoked===moduleFile;}catch{return false;}};
+if(await isDirectInvocation())process.exitCode=await runCaptureCli();
