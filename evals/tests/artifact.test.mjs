@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {constants as fsConstants} from 'node:fs';
-import {mkdtemp,mkdir,writeFile,readFile,open,symlink,link,stat,chmod,rm} from 'node:fs/promises';
+import {cp,mkdtemp,mkdir,writeFile,readFile,open,realpath,symlink,link,stat,chmod,rm} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {dirname,join,relative as pathRelative,resolve} from 'node:path';
@@ -83,8 +83,8 @@ if(packer===null){
 }else{
  const {packCanonicalUstar}=packer;
  const code=(expected)=>({code:expected});
- const runCli=(cwd,manifest,output,{env={}}={})=>new Promise((done)=>{
-  const child=spawn(process.execPath,[PACKER,manifest,output],{cwd,env:{...process.env,...env},stdio:['ignore','pipe','pipe']});
+ const runCli=(cwd,manifest,output,{env={},entry=PACKER}={})=>new Promise((done)=>{
+  const child=spawn(process.execPath,[entry,manifest,output],{cwd,env:{...process.env,...env},stdio:['ignore','pipe','pipe']});
   const stdout=[],stderr=[];
   child.stdout.on('data',(chunk)=>stdout.push(chunk));child.stderr.on('data',(chunk)=>stderr.push(chunk));
   child.on('close',(status,signal)=>done({status,signal,stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8')}));
@@ -142,7 +142,7 @@ if(packer===null){
  });
 
  test('canonical ustar rejects every non-canonical path and duplicate path',()=>{
-  const invalid=['','/a','a/','a//b','.','..','a/../b','a\\b','a%2Fb','a%5Cb','e\u0301','a\u0000b','a'.repeat(101)];
+  const invalid=['','/a','a/','a//b','.','..','a/../b','a\\b','a%2Fb','a%5Cb','e\u0301','a^@b','a'.repeat(101)];
   for(const path of invalid)assert.throws(()=>packCanonicalUstar([{path,content:Buffer.alloc(0)}]),code('USTAR_PATH_INVALID'),path);
   assert.throws(()=>packCanonicalUstar([{path:'a',content:Buffer.alloc(0)},{path:'a',content:Buffer.alloc(0)}]),code('USTAR_DUPLICATE_PATH'));
  });
@@ -243,6 +243,62 @@ if(packer===null){
   for(const path of roots)await visit(path);for(const path of visited)assert.equal(included.has(path),true,path);
   assert.equal(artifact.paths.some((path)=>/capture-(?:registry|runner|transport)/u.test(path)),false);
  });
+ test('CLI path identity distinguishes system aliases, caller symlinks, imports, and direct entrypoints',async(t)=>{
+  const failures=[];
+  const capture=async(label,operation)=>{try{await operation();}catch(error){failures.push(label+': '+error.message);}};
+  const expectMissing=async(path)=>assert.rejects(readFile(path),(error)=>error?.code==='ENOENT');
+  let temporaryAlias=tmpdir();
+  try{await realpath('/tmp');temporaryAlias='/tmp';}catch{}
+  const lexicalSandbox=await mkdtemp(join(temporaryAlias,'ux-skill-task13-path-'));
+  const physicalSandbox=await realpath(lexicalSandbox);
+  t.after(()=>rm(physicalSandbox,{recursive:true,force:true}));
+  const lexicalRunner=join(lexicalSandbox,'runner');
+  for(const path of ['scripts/pack-ustar.mjs','scripts/strict-json.mjs','evaluator/canonical.mjs']){
+   const target=join(lexicalRunner,...path.split('/'));await mkdir(dirname(target),{recursive:true});await writeFile(target,await readFile(join(ROOT,...path.split('/'))));
+  }
+  await cp(join(ROOT,'node_modules','json-canonicalize'),join(lexicalRunner,'node_modules','json-canonicalize'),{recursive:true});
+  const lexicalPacker=join(lexicalRunner,'scripts','pack-ustar.mjs');
+  const physicalPacker=await realpath(lexicalPacker);
+  const lexicalRepository=join(lexicalSandbox,'repository');
+  await mkdir(lexicalRepository);await writeFile(join(lexicalRepository,'a'),Buffer.from('a'));
+  const lexicalManifest=await putManifest(lexicalRepository,goodManifest(['a']));
+  const physicalRepository=await realpath(lexicalRepository);
+  const physicalManifest=join(physicalRepository,'knowledge','artifact-manifest.json');
+
+  const aliasOutput=join(lexicalRepository,'system-alias.tar');
+  const aliasRun=await runCli(lexicalRepository,lexicalManifest,aliasOutput,{entry:lexicalPacker});
+  await capture('canonical system alias direct entry exits zero',async()=>{assert.equal(aliasRun.signal,null);assert.equal(aliasRun.status,0,aliasRun.stderr);assert.equal(aliasRun.stdout,'');assert.equal(aliasRun.stderr,'');});
+  await capture('canonical system alias direct entry produces the archive',async()=>{assert.deepEqual(archiveEntries(await readFile(aliasOutput)).map((row)=>row.path),['a']);});
+
+  const physicalOutput=join(physicalRepository,'physical-entry.tar');
+  const physicalRun=await runCli(physicalRepository,physicalManifest,physicalOutput,{entry:physicalPacker});
+  await capture('physical direct entry exits zero',async()=>{assert.equal(physicalRun.signal,null);assert.equal(physicalRun.status,0,physicalRun.stderr);assert.equal(physicalRun.stdout,'');assert.equal(physicalRun.stderr,'');});
+  await capture('physical direct entry produces the archive',async()=>{assert.deepEqual(archiveEntries(await readFile(physicalOutput)).map((row)=>row.path),['a']);});
+
+  const imported=await runProcess(process.execPath,['--input-type=module','--eval',`await import(${JSON.stringify(pathToFileURL(physicalPacker).href)})`],physicalSandbox);
+  await capture('import-only does not execute main',async()=>{assert.equal(imported.signal,null);assert.equal(imported.status,0,imported.stderr);assert.equal(imported.stdout,'');assert.equal(imported.stderr,'');});
+
+  const userRepositoryAlias=join(physicalSandbox,'caller-created-repository-alias');
+  await symlink(physicalRepository,userRepositoryAlias,'dir');
+  const aliasedManifest=join(userRepositoryAlias,'knowledge','artifact-manifest.json');
+  const aliasedOutput=join(userRepositoryAlias,'caller-alias.tar');
+  const telemetry=join(physicalSandbox,'caller-alias-telemetry.jsonl');
+  const rejected=await runCli(physicalSandbox,aliasedManifest,aliasedOutput,{entry:physicalPacker,env:{NODE_OPTIONS:`--require=${TELEMETRY_HELPER}`,TASK11_ARTIFACT_TARGET:join(physicalRepository,'a'),TASK11_ARTIFACT_TELEMETRY:telemetry}});
+  await capture('caller-created repository symlink exits nonzero',async()=>{assert.equal(rejected.signal,null);assert.notEqual(rejected.status,0);});
+  await capture('caller-created repository symlink has one explicit error',async()=>{assert.equal(rejected.stdout,'');assert.equal(rejected.stderr,'ARTIFACT_MANIFEST_INVALID\n');});
+  await capture('caller-created repository symlink creates no artifact',()=>expectMissing(aliasedOutput));
+  await capture('caller-created repository symlink is rejected before source read',()=>expectMissing(telemetry));
+
+  const linkedPacker=join(physicalSandbox,'caller-created-packer-link.mjs');
+  await symlink(physicalPacker,linkedPacker,'file');
+  const linkedOutput=join(physicalRepository,'linked-entry.tar');
+  const linkedRun=await runCli(physicalRepository,physicalManifest,linkedOutput,{entry:linkedPacker});
+  await capture('symlinked packer direct invocation cannot silently succeed',async()=>{assert.equal(linkedRun.signal,null);assert.equal(linkedRun.status,0,linkedRun.stderr);assert.equal(linkedRun.stdout,'');assert.equal(linkedRun.stderr,'');});
+  await capture('symlinked packer direct invocation produces the archive',async()=>{assert.deepEqual(archiveEntries(await readFile(linkedOutput)).map((row)=>row.path),['a']);});
+
+  if(failures.length>0)assert.fail('TASK13_PATH_IDENTITY_RED\n'+failures.join('\n'));
+ });
+
  test('canonical 0644 archive is a runnable Skill closure after fresh production install',async(t)=>{
   const failures=[];
   const sourceCli=join(ROOT,'scripts','ux-evaluate.mjs');
