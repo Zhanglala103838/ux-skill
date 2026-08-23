@@ -167,19 +167,21 @@ function vectorReasons(catalog,reasons){
 
 function holdoutReasons(holdout,current,reasons){
  const status=ownData(holdout,'status',true);
- if(status==='missing'){reasons.push('HOLDOUT_MISSING');return;}
- if(status==='QUERY_BUDGET_EXHAUSTED'){reasons.push('HOLDOUT_QUERY_BUDGET_EXHAUSTED');return;}
- if(status==='contaminated'){reasons.push('HOLDOUT_CONTAMINATED');return;}
- if(status!=='pass'){reasons.push('HOLDOUT_FAILED');return;}
- if(current===undefined){reasons.push('HOLDOUT_NOT_CURRENT');return;}
+ if(status==='missing'){reasons.push('HOLDOUT_MISSING');return false;}
+ if(status==='QUERY_BUDGET_EXHAUSTED'){reasons.push('HOLDOUT_QUERY_BUDGET_EXHAUSTED');return false;}
+ if(status==='contaminated'){reasons.push('HOLDOUT_CONTAMINATED');return false;}
+ if(status!=='pass'){reasons.push('HOLDOUT_FAILED');return false;}
+ if(current===undefined){reasons.push('HOLDOUT_NOT_CURRENT');return false;}
  const currentGeneration=ownData(current,'generation_id');
  const currentBehavior=ownData(current,'behavior_version');
  const holdoutGeneration=ownData(holdout,'generation_id');
  const holdoutBehavior=ownData(holdout,'behavior_version');
- if(typeof currentGeneration!=='string'||currentGeneration.length===0
-  ||currentBehavior!==CURRENT_BEHAVIOR_VERSION
-  ||holdoutGeneration!==currentGeneration
-  ||holdoutBehavior!==CURRENT_BEHAVIOR_VERSION)reasons.push('HOLDOUT_NOT_CURRENT');
+ const currentPass=typeof currentGeneration==='string'&&currentGeneration.length>0
+  &&currentBehavior===CURRENT_BEHAVIOR_VERSION
+  &&holdoutGeneration===currentGeneration
+  &&holdoutBehavior===CURRENT_BEHAVIOR_VERSION;
+ if(!currentPass)reasons.push('HOLDOUT_NOT_CURRENT');
+ return currentPass;
 }
 
 function completeCase(row,id,kind,role){
@@ -210,7 +212,7 @@ function rotationVerificationComplete(holdout,expected){
  catch{return false;}
 }
 
-function rotationComplete(rotation,current,holdout){
+function rotationComplete(rotation,current,holdout,requireVerification){
  if(rotation===undefined||current===undefined||!exactDataKeys(rotation,ROTATION_MANIFEST_KEYS))return false;
  const portfolio=ownData(rotation,'portfolio_version');
  const generation=ownData(rotation,'generation_id');
@@ -239,6 +241,7 @@ function rotationComplete(rotation,current,holdout){
   sorted_candidate_case_ids:candidates
  };
  if(manifestDigest!==digestJcs(ROTATION_DOMAIN,preimage))return false;
+ if(!requireVerification)return true;
  return rotationVerificationComplete(holdout,{
   status:'pass',
   generation_id:generation,
@@ -252,7 +255,7 @@ function rotationComplete(rotation,current,holdout){
  });
 }
 
-function realWorldComplete(publicCases,rotation,current,holdout){
+function realWorldComplete(publicCases,rotation,current,holdout,requireVerification){
  const rows=arrayData(publicCases);
  const hulian=rows.some((row)=>completeCase(row,'RW-HULIAN-DELETE-001','hulianui_contract','fixed_anchor'));
  const apple=rows.some((row)=>completeCase(row,'RW-WEBSITE-APPLE-001','black_box_site','fixed_anchor'));
@@ -261,7 +264,7 @@ function realWorldComplete(publicCases,rotation,current,holdout){
   const id=ownData(row,'case_id');
   return PINNED_REPOSITORY_IDS.has(id)&&completeCase(row,id,'pinned_repository','fixed_anchor');
  });
- if(!rotationComplete(rotation,current,holdout))return false;
+ if(!rotationComplete(rotation,current,holdout,requireVerification))return false;
  const selected=ownData(rotation,'selected_case_id');
  const rotationCase=rows.some((row)=>completeCase(row,selected,'black_box_site','rotation_candidate'));
  return hulian&&apple&&govuk&&repository&&rotationCase;
@@ -274,8 +277,8 @@ export function checkRelease(inputs){
   vectorReasons(ownData(inputs,'catalog',true),reasons);
   const current=ownData(inputs,'currentGeneration');
   const holdout=ownData(inputs,'holdout',true);
-  holdoutReasons(holdout,current,reasons);
-  if(!realWorldComplete(ownData(inputs,'publicCases',true),ownData(inputs,'rotationSelection'),current,holdout))reasons.push('REAL_WORLD_REQUIRED');
+  const requireVerification=holdoutReasons(holdout,current,reasons);
+  if(!realWorldComplete(ownData(inputs,'publicCases',true),ownData(inputs,'rotationSelection'),current,holdout,requireVerification))reasons.push('REAL_WORLD_REQUIRED');
   const foundationalComplete=reasons.length===0;
   const parity=ownData(inputs,'parity');
   if(parity===undefined){
