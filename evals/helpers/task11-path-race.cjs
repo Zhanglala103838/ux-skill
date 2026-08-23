@@ -1,11 +1,28 @@
 'use strict';
+const fs=require('node:fs');
 const fsPromises=require('node:fs/promises');
+const {fileURLToPath}=require('node:url');
 const {syncBuiltinESMExports}=require('node:module');
+
+const configuredTarget=process.env.TASK11_RACE_PATH??null;
+let physicalTarget=configuredTarget;
+if(configuredTarget!==null){try{physicalTarget=fs.realpathSync.native(configuredTarget);}catch{}}
+const isTarget=(value)=>{
+ if(physicalTarget===null)return false;
+ let path;
+ try{
+  if(value instanceof URL)path=fileURLToPath(value);
+  else if(Buffer.isBuffer(value))path=value.toString();
+  else if(typeof value==='string')path=value;
+  else return false;
+ }catch{return false;}
+ try{return fs.realpathSync.native(path)===physicalTarget;}catch{return path===physicalTarget;}
+};
 
 const originalOpen=fsPromises.open;
 fsPromises.open=async function(path,...rest){
  const handle=await originalOpen.call(this,path,...rest);
- if(String(path)!==process.env.TASK11_RACE_PATH)return handle;
+ if(!isTarget(path))return handle;
  const mode=process.env.TASK11_RACE_MODE??'resize-after-stat';
  if(mode==='same-size-overwrite'){
   const replacement=await fsPromises.readFile(process.env.TASK11_RACE_REPLACEMENT_PATH);
