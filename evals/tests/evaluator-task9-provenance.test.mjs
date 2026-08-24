@@ -528,7 +528,7 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   assert.deepEqual(issues, []);
 });
 
-test('TASK10_REGISTRY_BINDING_SCOPE_RED classifies only registry binding failures as unavailable', async () => {
+test('TASK10_REGISTRY_BINDING_SCOPE_RED TASK10_REGISTRY_EXACT_PUBLIC_SET_RED enforces exact public registry and classifies only registry binding failures as unavailable', async () => {
   const issues = [];
   const [golden, registry] = await Promise.all([
     readFile(new URL('../golden/high-risk-delete.json', import.meta.url), 'utf8').then(JSON.parse),
@@ -604,6 +604,26 @@ test('TASK10_REGISTRY_BINDING_SCOPE_RED classifies only registry binding failure
     "authority_digest": "efc0c6ece87616cd4733adc12f655b6ea0a0a2ec5380d820f6ca7f458310e27e"
   }
 ];
+
+  const expectedAuthorityIds = [
+    'RW-DOCS-STRIPE-001',
+    'RW-WEBSITE-APPLE-001',
+    'RW-WEBSITE-GOVUK-001',
+    'RW-WEBSITE-IKEA-001',
+  ];
+  const actualAuthorityIds = registry.sources
+    .map((row) => row.source_authority_id)
+    .sort();
+  assert.equal(
+    registry.sources.length,
+    4,
+    'TASK10_REGISTRY_EXACT_PUBLIC_SET_RED registry must contain exactly four public sources',
+  );
+  assert.deepEqual(
+    actualAuthorityIds,
+    expectedAuthorityIds,
+    'TASK10_REGISTRY_EXACT_PUBLIC_SET_RED registry source_authority_id set drifted',
+  );
 
   for (const expected of expectedPublicSources) {
     const [publicCase, closure] = await Promise.all([
