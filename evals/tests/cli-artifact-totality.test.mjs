@@ -34,7 +34,7 @@ const [responseSchema,semanticSchema,bundle,fixtureBytes,snapshotFallbackBundle]
  readFile(new URL('../parity/scan.json',import.meta.url)),
  readFile(new URL('../golden/high-risk-delete.json',import.meta.url),'utf8').then(JSON.parse).then((value)=>{
   const fallback=value.bundle;
-  fallback.target_snapshot={target_snapshot_id:'task10-black-box-snapshot',target_kind:'black_box_site',canonical_locator:'public-sites/task10-example',snapshot_digest:'5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b'};
+  fallback.target_snapshot={target_snapshot_id:'RW-WEBSITE-APPLE-001',target_kind:'black_box_site',canonical_locator:'public-sites/rw-website-apple-001',snapshot_digest:'a5627f1a8312ac2be2973de6a551bdd6ca8ba85af648a16fe56b753bdb8404d0'};
   fallback.research_state={research_state_id:'task10-tamper-research',status:'authorized',authorization_ref:'task10-read-only'};
   fallback.adapter_evidence=[];fallback.snapshot_closure_result=null;return fallback;
  })

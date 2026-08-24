@@ -43,6 +43,6 @@
   "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
   "snapshot_source_registry": {
     "path": "evaluator/snapshot-source-registry.json",
-    "file_digest": "32be1c8cafdca28cdc18708918348d3bb65e8ee6750e61be41c3febcea7a5093"
+    "file_digest": "669764fe2c251ce4d550af0934619e4226c3d94f33e6d6fdf185068943c55ece"
   }
 }

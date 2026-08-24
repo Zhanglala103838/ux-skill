@@ -19,6 +19,64 @@ const closureIssue = Object.freeze({
   instance_pointer: '/snapshot_closure',
   dependency_id: null,
 });
+const TASK10_SYNTHETIC_SOURCE = Object.freeze({
+  source_authority_id: 'task10-example-source-v1',
+  target_snapshot_id: 'task10-black-box-snapshot',
+  target_kind: 'black_box_site',
+  canonical_locator: 'public-sites/task10-example',
+  entry_url: 'https://example.test/task10',
+  task_script_digest: '0ec48f7f3851c7e948824663e9d0f787dd74b40587eaf424663db483b63f0d4b',
+  capture_environment_digest: '478b2ce5472830245aca689bc2880dab4398aeb8656c69f6c6b99c7bf18dc24c',
+  allowed_snapshot_digests: ['5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b'],
+});
+
+const withIsolatedEvaluator = async (label, mutate, run) => {
+  const root = await mkdtemp(new URL('.task10-registry-', import.meta.url));
+  try {
+    await Promise.all(['evaluator', 'schemas', 'knowledge', 'references'].map((directory) =>
+      cp(
+        new URL('../../' + directory + '/', import.meta.url),
+        join(root, directory),
+        { recursive: true },
+      )
+    ));
+    await mutate(root);
+    const moduleUrl = pathToFileURL(join(root, 'evaluator/index.mjs'));
+    moduleUrl.searchParams.set('task10-isolation', label);
+    const isolated = await import(moduleUrl.href);
+    return await run(isolated.evaluate, root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
+const writeIsolatedRegistry = async (root, transform, { updateManifestDigest = true } = {}) => {
+  const registryPath = join(root, 'evaluator/snapshot-source-registry.json');
+  const manifestPath = join(root, 'evaluator/manifest.json');
+  const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+  const transformed = transform(clone(registry));
+  const registryBytes = Buffer.from(JSON.stringify(transformed, null, 2) + '\n', 'utf8');
+  await writeFile(registryPath, registryBytes);
+  if (updateManifestDigest) {
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.snapshot_source_registry.file_digest = sha(registryBytes);
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  }
+};
+
+const installSyntheticRegistry = (root, options) => writeIsolatedRegistry(root, (registry) => {
+  registry.sources.push(clone(TASK10_SYNTHETIC_SOURCE));
+  registry.sources.sort((left, right) =>
+    Buffer.compare(Buffer.from(left.source_authority_id), Buffer.from(right.source_authority_id))
+  );
+  return registry;
+}, options);
+
+const evaluateIsolated = (label, mutate, bundle) =>
+  withIsolatedEvaluator(label, mutate, (isolatedEvaluate) => isolatedEvaluate(clone(bundle)));
+
+const evaluateWithSyntheticRegistry = (label, bundle) =>
+  evaluateIsolated(label, installSyntheticRegistry, bundle);
 
 const serializeReplay = (replay) => ({
   run_status: replay.run_status,
@@ -211,7 +269,7 @@ test('TASK10_TASK9_PROVENANCE_RED binds real closure replay and fails closed', a
     if (result.closure?.manifest_digest) bundle.target_snapshot.snapshot_digest = result.closure.manifest_digest;
     bundle.snapshot_closure_result = clone(result);
     try {
-      assertNoRelease((await evaluate(bundle)).semantic_projection, label, issues);
+      assertNoRelease((await evaluateWithSyntheticRegistry(label, bundle)).semantic_projection, label, issues);
     } catch (error) {
       issues.push(label + ':rejected:' + (error?.code ?? error?.name ?? 'unknown'));
     }
@@ -253,8 +311,14 @@ test('TASK10_TASK9_PROVENANCE_RED binds real closure replay and fails closed', a
   const completeBundle = clone(blackBox);
   completeBundle.snapshot_closure_result = clone(complete);
   try {
-    const evaluated = await evaluate(completeBundle);
-    const repeated = await evaluate(clone(completeBundle));
+    const [evaluated, repeated] = await withIsolatedEvaluator(
+      'complete-repeat',
+      installSyntheticRegistry,
+      async (isolatedEvaluate) => [
+        await isolatedEvaluate(clone(completeBundle)),
+        await isolatedEvaluate(clone(completeBundle)),
+      ],
+    );
     const projection = evaluated.semantic_projection;
     const verification = projection.snapshot_closure_verification;
     if (projection.release_recommendation?.status === 'no_release') issues.push('complete:no-release');
@@ -340,16 +404,7 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   const completeBundle = clone(blackBox);
   completeBundle.snapshot_closure_result = clone(complete);
 
-  const expectedSource = {
-    source_authority_id: 'task10-example-source-v1',
-    target_snapshot_id: 'task10-black-box-snapshot',
-    target_kind: 'black_box_site',
-    canonical_locator: 'public-sites/task10-example',
-    entry_url: 'https://example.test/task10',
-    task_script_digest: '0ec48f7f3851c7e948824663e9d0f787dd74b40587eaf424663db483b63f0d4b',
-    capture_environment_digest: '478b2ce5472830245aca689bc2880dab4398aeb8656c69f6c6b99c7bf18dc24c',
-    allowed_snapshot_digests: ['5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b'],
-  };
+  const expectedSource = TASK10_SYNTHETIC_SOURCE;
   if (complete.closure.manifest_digest !== expectedSource.allowed_snapshot_digests[0]) {
     issues.push('fixture:closure-digest-drift');
   }
@@ -377,8 +432,8 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
       const registered = registry.sources?.find((row) =>
         row.source_authority_id === expectedSource.source_authority_id
       );
-      if (!registered || !jcs(registered).equals(jcs(expectedSource))) {
-        issues.push('authority:registered-source-row');
+      if (registered !== undefined) {
+        issues.push('authority:synthetic-source-shipped');
       }
     } catch (error) {
       issues.push('authority:registry-unreadable:' + (error?.code ?? error?.name ?? 'unknown'));
@@ -386,7 +441,12 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   }
 
   try {
-    const evaluated = await evaluate(clone(completeBundle));
+    const production = await evaluate(clone(completeBundle));
+    assertNoRelease(production.semantic_projection, 'authority:production-rejects-synthetic', issues);
+    if (production.audit_sidecar.snapshot_source_registry !== 'verified') {
+      issues.push('authority:production-registry-not-verified');
+    }
+    const evaluated = await evaluateWithSyntheticRegistry('authority-valid', completeBundle);
     const projection = evaluated.semantic_projection;
     if (projection.release_recommendation?.status === 'no_release') issues.push('authority:valid-no-release');
     if (projection.run_issues?.some((row) => row.instance_pointer === '/snapshot_closure')) {
@@ -405,7 +465,11 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   relabeled.snapshot_closure_result.source_identity.target_snapshot_id = 'different-target';
   relabeled.snapshot_closure_result.source_identity.canonical_locator = 'public-sites/different-target';
   try {
-    assertNoRelease((await evaluate(relabeled)).semantic_projection, 'authority:coordinated-relabel', issues);
+    assertNoRelease(
+      (await evaluateWithSyntheticRegistry('authority-coordinated-relabel', relabeled)).semantic_projection,
+      'authority:coordinated-relabel',
+      issues,
+    );
   } catch (error) {
     issues.push('authority:coordinated-relabel-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
   }
@@ -427,9 +491,57 @@ test('TASK10_REREVIEW_BLOCKERS_RED pins source authority and closes normalized e
   unregistered.snapshot_closure_result.replay_evidence.responses[0].request_url = unregisteredUrl;
   unregistered.snapshot_closure_result.replay_evidence.responses[0].final_url = unregisteredUrl;
   try {
-    assertNoRelease((await evaluate(unregistered)).semantic_projection, 'authority:unregistered-source', issues);
+    assertNoRelease(
+      (await evaluateWithSyntheticRegistry('authority-unregistered-source', unregistered)).semantic_projection,
+      'authority:unregistered-source',
+      issues,
+    );
   } catch (error) {
     issues.push('authority:unregistered-source-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
+  }
+
+  try {
+    const [rawDigestMismatch, semanticInvalid, concurrentA, concurrentB] = await Promise.all([
+      evaluateIsolated(
+        'authority-registry-raw-digest-mismatch',
+        (root) => installSyntheticRegistry(root, { updateManifestDigest: false }),
+        completeBundle,
+      ),
+      evaluateIsolated(
+        'authority-registry-semantic-invalid',
+        (root) => writeIsolatedRegistry(root, (registry) => {
+          const invalid = clone(TASK10_SYNTHETIC_SOURCE);
+          invalid.entry_url = 42;
+          registry.sources.push(invalid);
+          return registry;
+        }),
+        completeBundle,
+      ),
+      evaluateWithSyntheticRegistry('authority-concurrent-a', completeBundle),
+      evaluateWithSyntheticRegistry('authority-concurrent-b', completeBundle),
+    ]);
+    for (const [label, evaluated] of [
+      ['authority:raw-digest-mismatch', rawDigestMismatch],
+      ['authority:semantic-invalid', semanticInvalid],
+    ]) {
+      assertNoRelease(evaluated.semantic_projection, label, issues);
+      if (evaluated.audit_sidecar.snapshot_source_registry !== 'unavailable') {
+        issues.push(label + ':registry-not-unavailable');
+      }
+    }
+    for (const [label, evaluated] of [
+      ['authority:concurrent-a', concurrentA],
+      ['authority:concurrent-b', concurrentB],
+    ]) {
+      if (evaluated.semantic_projection.release_recommendation?.status === 'no_release') {
+        issues.push(label + ':no-release');
+      }
+      if (evaluated.audit_sidecar.snapshot_source_registry !== 'verified') {
+        issues.push(label + ':registry-not-verified');
+      }
+    }
+  } catch (error) {
+    issues.push('authority:isolation-probes-rejected:' + (error?.code ?? error?.name ?? 'unknown'));
   }
 
   const mixed = clone(golden.bundle);
@@ -611,13 +723,22 @@ test('TASK10_REGISTRY_BINDING_SCOPE_RED TASK10_REGISTRY_EXACT_PUBLIC_SET_RED enf
     'RW-WEBSITE-GOVUK-001',
     'RW-WEBSITE-IKEA-001',
   ];
-  const actualAuthorityIds = registry.sources
-    .map((row) => row.source_authority_id)
-    .sort();
+  const expectedAuthorities = expectedPublicSources.map((row) => row.authority);
+  const actualAuthorityIds = registry.sources.map((row) => row.source_authority_id);
+  assert.equal(
+    registry.registry_version,
+    'snapshot-source-registry-v1',
+    'TASK10_REGISTRY_EXACT_PUBLIC_SET_RED registry version drifted',
+  );
   assert.equal(
     registry.sources.length,
     4,
     'TASK10_REGISTRY_EXACT_PUBLIC_SET_RED registry must contain exactly four public sources',
+  );
+  assert.deepEqual(
+    jcs(registry.sources),
+    jcs(expectedAuthorities),
+    'TASK10_REGISTRY_EXACT_PUBLIC_SET_RED complete public authority rows drifted',
   );
   assert.deepEqual(
     actualAuthorityIds,
@@ -726,25 +847,6 @@ test('TASK10_REGISTRY_BINDING_SCOPE_RED TASK10_REGISTRY_EXACT_PUBLIC_SET_RED enf
   tamperBundle.adapter_evidence = [];
   tamperBundle.snapshot_closure_result = null;
 
-  const evaluateIsolated = async (label, mutate, bundle) => {
-    const root = await mkdtemp(new URL('.task10-tamper-', import.meta.url));
-    try {
-      await Promise.all(['evaluator', 'schemas', 'knowledge', 'references'].map((directory) =>
-        cp(
-          new URL('../../' + directory + '/', import.meta.url),
-          join(root, directory),
-          { recursive: true },
-        )
-      ));
-      await mutate(root);
-      const moduleUrl = pathToFileURL(join(root, 'evaluator/index.mjs'));
-      moduleUrl.searchParams.set('tamper', label);
-      const isolated = await import(moduleUrl.href);
-      return await isolated.evaluate(clone(bundle));
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  };
   const appendBytes = async (path, suffix) => {
     const bytes = await readFile(path);
     await writeFile(path, Buffer.concat([bytes, Buffer.from(suffix, 'utf8')]));

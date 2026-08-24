@@ -48,18 +48,6 @@
       "allowed_snapshot_digests": [
         "52f514488d50c2865fa1a82cf312446c910df8223cfe0eea5fcdcf0e88bab5ed"
       ]
-    },
-    {
-      "source_authority_id": "task10-example-source-v1",
-      "target_snapshot_id": "task10-black-box-snapshot",
-      "target_kind": "black_box_site",
-      "canonical_locator": "public-sites/task10-example",
-      "entry_url": "https://example.test/task10",
-      "task_script_digest": "0ec48f7f3851c7e948824663e9d0f787dd74b40587eaf424663db483b63f0d4b",
-      "capture_environment_digest": "478b2ce5472830245aca689bc2880dab4398aeb8656c69f6c6b99c7bf18dc24c",
-      "allowed_snapshot_digests": [
-        "5ba077ceb4c541a38eb64e9bd8c0579b5688cacc44a83248f84e11c2e0fb951b"
-      ]
     }
   ]
 }
