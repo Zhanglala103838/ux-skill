@@ -6,7 +6,7 @@
 
 **Architecture:** Implement one ESM Node.js evaluator as the sole semantic authority. JSON Schema validates inputs, small pure modules canonicalize and reduce them, and CLI, Skill, and HulianUI bridge only adapt transport into the same `EvaluationInputBundle`; none may duplicate UX rules. The first vertical slice intentionally keeps unsupported design-spec behavior visible as `not_run`, `unknown`, `escalation`, or `no_release` rather than claiming v0.1 stable coverage.
 
-**Tech Stack:** Node.js 22.22.2, pnpm 8.15.5, ESM `.mjs`, built-in `node:test`, Ajv 8.20.0, ajv-formats 3.0.1, json-canonicalize 2.0.1, YAML 2.9.0, GitHub Actions, JSON Schema 2020-12.
+**Tech Stack:** Node.js 22.22.2, pnpm 8.15.5, ESM `.mjs`, built-in `node:test`, Ajv 8.20.0, ajv-formats 3.0.1, json-canonicalize 2.0.0, YAML 2.9.0, GitHub Actions, JSON Schema 2020-12.
 
 **Spec:** `docs/superpowers/specs/2026-08-18-evidence-aware-product-ux-skill-design.md` at approved semantic commit `f596998c88ca088a0c74160e55d54328f7123a49`; status-only closure commit `95933b36360d28734f5b5cf6fd10f4bc5148a382`.
 
@@ -111,7 +111,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `scripts/check-vector-catalog.mjs
 `package.json` must contain:
 
 ```json
-{"name":"ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","capture:closure":"node scripts/capture-snapshot-closure.mjs","skill:check":"node scripts/validate-skill.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.1","yaml":"2.9.0"},"devDependencies":{"playwright":"1.62.1"}}
+{"name":"ux-skill","private":true,"type":"module","packageManager":"pnpm@8.15.5","engines":{"node":"22.22.2"},"scripts":{"test":"node --test evals/tests/*.test.mjs","vectors:check":"node scripts/check-vector-catalog.mjs","baseline:red":"node scripts/run-red-baseline.mjs","ux:evaluate":"node scripts/ux-evaluate.mjs","capture:closure":"node scripts/capture-snapshot-closure.mjs","skill:check":"node scripts/validate-skill.mjs","artifact:pack":"node scripts/pack-ustar.mjs","release:check":"node scripts/check-release.mjs"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","json-canonicalize":"2.0.0","yaml":"2.9.0"},"devDependencies":{"playwright":"1.62.1"}}
 ```
 
 Write `.nvmrc` as the single line `22.22.2`. Implement `loadVectorCatalog()` to reject duplicate IDs, missing `expected_contract`, and any difference between committed catalog IDs and the §18.1 Markdown table. Populate `evals/vector-catalog.json` with all 100 exact IDs and their full §18.1 contract text.
@@ -395,7 +395,7 @@ git commit -m "feat: add evidence-aware UX recommendation reducers"
 
 **Files:**
 - Create: all eight `references/*.md`
-- Create: `knowledge/manifest.json`, `knowledge/policy-manifest.json`, `scripts/check-knowledge.mjs`, `scripts/strict-json.mjs`
+- Create: `knowledge/manifest.json`, `knowledge/policy-manifest.json`, `scripts/check-knowledge.mjs`
 - Create: `evals/tests/knowledge-manifest.test.mjs`
 
 **Interfaces:**
@@ -429,7 +429,7 @@ Run: `node scripts/check-knowledge.mjs && node --test evals/tests/knowledge-mani
 Expected: PASS; changing one knowledge or reference byte fails the manifest check.
 
 ```bash
-git add references knowledge/manifest.json knowledge/policy-manifest.json scripts/check-knowledge.mjs scripts/strict-json.mjs evals/tests/knowledge-manifest.test.mjs
+git add references knowledge/manifest.json knowledge/policy-manifest.json scripts/check-knowledge.mjs evals/tests/knowledge-manifest.test.mjs
 git commit -m "feat: add UX knowledge and route manifest"
 ```
 
@@ -572,7 +572,7 @@ Expected: FAIL with missing evaluator entry point.
 
 - [ ] **Step 3: Implement the pipeline**
 
-Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json`, `knowledge/manifest.json`, and `knowledge/policy-manifest.json`. Compute `policy_manifest_digest` only as `digestJcs("ux-skill:manifest:v1", loadPolicyManifest())`; raw `decision-policies.json` SHA-256 and synthesized alternate manifests are invalid. Then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the canonical nine-module set. The fixed set is the eight modules already present at the end of Task 6 plus the future `evaluator/index.mjs`: `evaluator/authority.mjs`, `evaluator/canonical.mjs`, `evaluator/claims.mjs`, `evaluator/dependency-decision.mjs`, `evaluator/digests.mjs`, `evaluator/index.mjs`, `evaluator/projection.mjs`, `evaluator/rules-runtime.mjs`, `evaluator/validation.mjs`. Its evaluator path set must be byte-equal to the recursive local `.mjs` import closure rooted at `evaluator/index.mjs`; missing, extra, duplicate, nonlocal, or unimported evaluator modules are invalid. Schema, knowledge, and policy manifest digests remain separate manifest fields. The separate closed `snapshot_source_registry` manifest row binds `evaluator/snapshot-source-registry.json` by raw SHA-256 without changing the exact nine-module `.mjs` set. A verified registry retains the frozen v0.1 public evaluator identity `51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba`; registry raw/binding failure uses only the fixed domain-separated unavailable sentinel identity and never any unverified registry bytes or manifest binding. Each canonical row pins source authority id, target id/kind, canonical locator, entry URL, Task 9 task-script and capture-environment/runner/transport closure identities, plus an allowed closure/snapshot digest set. A black-box bundle must match exactly one repo-pinned row after Task 10 independently replays closure bytes, CAS, and evidence; caller registration, coordinated relabel, unregistered source, or registry tamper is fail-closed `no_release`. The four public rows use the frozen stable locators `public-sites/rw-docs-stripe-001`, `public-sites/rw-website-apple-001`, `public-sites/rw-website-govuk-001`, and `public-sites/rw-website-ikea-001`; their absolute `entry_url` values remain separate bindings in Task 9 cases, attempts, closure source identities, and Task 10 authority matching. Registry raw/binding failure alone is converted to a legal `/snapshot_closure` critical gap and non-authoritative `no_release` result without consuming tampered rows; its audit state is exactly `manifest_verification: "partial_failure"` and `snapshot_source_registry: "unavailable"`. Every other global artifact failure remains `ARTIFACT_VERIFICATION_FAILED`.
+Reject any out-of-band adapter evidence option; callers must construct one complete EvaluationInputBundle. Before evaluation, verify `schemas/manifest.json`, `knowledge/manifest.json`, and `knowledge/policy-manifest.json`. Compute `policy_manifest_digest` only as `digestJcs("ux-skill:manifest:v1", loadPolicyManifest())`; raw `decision-policies.json` SHA-256 and synthesized alternate manifests are invalid. Then write `evaluator/manifest.json` with exact `{path,file_digest}` rows for the canonical nine-module set. The fixed set is the eight modules already present at the end of Task 6 plus the future `evaluator/index.mjs`: `evaluator/authority.mjs`, `evaluator/canonical.mjs`, `evaluator/claims.mjs`, `evaluator/dependency-decision.mjs`, `evaluator/digests.mjs`, `evaluator/index.mjs`, `evaluator/projection.mjs`, `evaluator/rules-runtime.mjs`, `evaluator/validation.mjs`. Its evaluator path set must be byte-equal to the recursive local `.mjs` import closure rooted at `evaluator/index.mjs`; missing, extra, duplicate, nonlocal, or unimported evaluator modules are invalid. Schema, knowledge, and policy manifest digests remain separate manifest fields. The separate closed `snapshot_source_registry` manifest row binds `evaluator/snapshot-source-registry.json` by raw SHA-256 without changing the exact nine-module `.mjs` set. A verified registry retains the frozen v0.1 public evaluator identity `51a663d748bf762d3f52a64b0b1a553c68c47b15d556c0c7ba80da3f923207ba`; registry raw/binding failure uses only the fixed domain-separated unavailable sentinel identity and never any unverified registry bytes or manifest binding. Each canonical row pins source authority id, target id/kind, canonical locator, entry URL, Task 9 task-script and capture-environment/runner/transport closure identities, plus an allowed closure/snapshot digest set. A black-box bundle must match exactly one repo-pinned row after Task 10 independently replays closure bytes, CAS, and evidence; caller registration, coordinated relabel, unregistered source, or registry tamper is fail-closed `no_release`. The production registry contains exactly four complete rows, in source-authority-ID order, for `RW-DOCS-STRIPE-001`, `RW-WEBSITE-APPLE-001`, `RW-WEBSITE-GOVUK-001`, and `RW-WEBSITE-IKEA-001`; no fixture, example, test, duplicate, or fifth authority is distributable. Synthetic complete-closure authority data is test-only and may be installed only into a unique, auto-cleaned temporary evaluator copy whose raw registry digest is rebound before first import. The four public rows use the frozen stable locators `public-sites/rw-docs-stripe-001`, `public-sites/rw-website-apple-001`, `public-sites/rw-website-govuk-001`, and `public-sites/rw-website-ikea-001`; their absolute `entry_url` values remain separate bindings in Task 9 cases, attempts, closure source identities, and Task 10 authority matching. Registry raw/binding failure alone is converted to a legal `/snapshot_closure` critical gap and non-authoritative `no_release` result without consuming tampered rows; its audit state is exactly `manifest_verification: "partial_failure"` and `snapshot_source_registry: "unavailable"`. Every other global artifact failure remains `ARTIFACT_VERIFICATION_FAILED`.
 
 <!-- evaluator-import-closure:v1
 {"task10_evaluator_manifest_paths":["evaluator/authority.mjs","evaluator/canonical.mjs","evaluator/claims.mjs","evaluator/dependency-decision.mjs","evaluator/digests.mjs","evaluator/index.mjs","evaluator/projection.mjs","evaluator/rules-runtime.mjs","evaluator/validation.mjs"],"task13_artifact_manifest_evaluator_paths":["evaluator/authority.mjs","evaluator/canonical.mjs","evaluator/claims.mjs","evaluator/dependency-decision.mjs","evaluator/digests.mjs","evaluator/index.mjs","evaluator/projection.mjs","evaluator/rules-runtime.mjs","evaluator/validation.mjs"]}
@@ -628,7 +628,7 @@ test('transport metadata does not change semantic digest', async () => {
 
 Run: `node --test evals/tests/cli.test.mjs`
 
-Expected before: FAIL; after: PASS. The CLI and bridge must call `evaluate(bundle)` and contain no UX rule or recommendation table. For parity fixtures, the CLI/Skill complete bundle contains captured evidence E, while the bridge base omits the field and maps its tool result to byte-identical E.
+Expected before: FAIL; after: PASS. Task 11 extracts the shared strict JSON/bootstrap parser into `scripts/strict-json.mjs` and modifies `scripts/check-knowledge.mjs` to consume it. The CLI and bridge must call `evaluate(bundle)` and contain no UX rule or recommendation table. For parity fixtures, the CLI/Skill complete bundle contains captured evidence E, while the bridge base omits the field and maps its tool result to byte-identical E.
 
 - [x] **Step 3: Commit**
 
@@ -645,7 +645,7 @@ git commit -m "feat: expose UX evaluator transports"
 - Consume: `knowledge/manifest.json`, `scripts/ux-evaluate.mjs`
 
 **Interfaces:**
-- Skill invokes the existing `pnpm ux:evaluate -- --mode <mode> --input - --output json` transport and loads only the approved manifest route.
+- Skill invokes the existing `pnpm --silent ux:evaluate --mode <mode> --input - --output json` transport and loads only the approved manifest route.
 
 - [ ] **Step 1: Write the Skill contract test**
 
@@ -654,7 +654,7 @@ test('Skill is lean and routes to the existing CLI', async () => {
   const skill = await readFile('SKILL.md','utf8');
   assert.match(skill, /^---\nname: improving-product-ux\ndescription:/);
   assert.ok(skill.split('\n').length < 500);
-  assert.match(skill, /pnpm ux:evaluate/);
+  assert.match(skill, /^   Run pnpm --silent ux:evaluate --mode &lt;mode&gt; --input - --output json\.$/m);
   await access('scripts/ux-evaluate.mjs');
 });
 ```
@@ -711,7 +711,70 @@ test('one-file ustar is byte exact', async () => {
 });
 ```
 
-`knowledge/artifact-manifest.json` must contain a UTF-8-sorted canonical-set of exact distributable paths and no glob: `package.json`, `pnpm-lock.yaml`, `.nvmrc`, `SKILL.md`, `agents/openai.yaml`, all eight named references, all ten named domain schemas plus `schemas/manifest.json`, all seven knowledge JSON files plus `knowledge/artifact-manifest.json`, the exact canonical nine evaluator paths `evaluator/authority.mjs`, `evaluator/canonical.mjs`, `evaluator/claims.mjs`, `evaluator/dependency-decision.mjs`, `evaluator/digests.mjs`, `evaluator/index.mjs`, `evaluator/projection.mjs`, `evaluator/rules-runtime.mjs`, `evaluator/validation.mjs` plus `evaluator/manifest.json` and `evaluator/snapshot-source-registry.json`, all four HulianUI adapter files, and `scripts/ux-evaluate.mjs`, `scripts/check-knowledge.mjs`, `scripts/validate-skill.mjs`, `scripts/pack-ustar.mjs`, `scripts/capture-snapshot-closure.mjs`. The artifact manifest evaluator `.mjs` subset must be byte-equal to both the Task 10 evaluator manifest path set and the recursive local `.mjs` import closure rooted at `evaluator/index.mjs`; no stale fixed count, glob, missing path, extra path, or unimported module is allowed. It stores paths only, so including itself is not a digest cycle; docs, evals, node_modules, `.git`, and output tar are excluded.
+`knowledge/artifact-manifest.json` must contain exactly this 56-path UTF-8-sorted canonical set and no glob:
+
+```json
+[
+  ".nvmrc",
+  "LICENSE",
+  "SKILL.md",
+  "adapters/hulianui/adapter.mjs",
+  "adapters/hulianui/bridge.mjs",
+  "adapters/hulianui/contract.json",
+  "adapters/hulianui/fixture.json",
+  "agents/openai.yaml",
+  "evaluator/authority.mjs",
+  "evaluator/canonical.mjs",
+  "evaluator/claims.mjs",
+  "evaluator/dependency-decision.mjs",
+  "evaluator/digests.mjs",
+  "evaluator/index.mjs",
+  "evaluator/manifest.json",
+  "evaluator/projection.mjs",
+  "evaluator/rules-runtime.mjs",
+  "evaluator/snapshot-source-registry.json",
+  "evaluator/validation.mjs",
+  "knowledge/artifact-manifest.json",
+  "knowledge/assertions.json",
+  "knowledge/decision-policies.json",
+  "knowledge/manifest.json",
+  "knowledge/policy-manifest.json",
+  "knowledge/registries.json",
+  "knowledge/rules.json",
+  "knowledge/sources.json",
+  "package.json",
+  "pnpm-lock.yaml",
+  "references/claim-study.md",
+  "references/context-model.md",
+  "references/ethics.md",
+  "references/implementation-mapping.md",
+  "references/inquiry-design.md",
+  "references/journey-authority.md",
+  "references/risk-reporting.md",
+  "references/rules-runtime.md",
+  "schemas/adapters/hulian-component-doc-v1.schema.json",
+  "schemas/adapters/hulian-evaluation-request-v1.schema.json",
+  "schemas/adapters/ux-evaluate-response-v1.schema.json",
+  "schemas/core/authority.schema.json",
+  "schemas/core/candidate-solver-input.schema.json",
+  "schemas/core/claims.schema.json",
+  "schemas/core/evaluation-input.schema.json",
+  "schemas/core/real-world-case.schema.json",
+  "schemas/core/snapshot-closure.schema.json",
+  "schemas/evaluator/output.schema.json",
+  "schemas/evaluator/rule.schema.json",
+  "schemas/evaluator/semantic-projection.schema.json",
+  "schemas/manifest.json",
+  "scripts/capture-snapshot-closure.mjs",
+  "scripts/check-knowledge.mjs",
+  "scripts/pack-ustar.mjs",
+  "scripts/strict-json.mjs",
+  "scripts/ux-evaluate.mjs",
+  "scripts/validate-skill.mjs"
+]
+```
+
+The artifact manifest evaluator `.mjs` subset must be byte-equal to both the Task 10 evaluator manifest path set and the recursive local `.mjs` import closure rooted at `evaluator/index.mjs`; no glob, missing path, extra path, duplicate, or unimported module is allowed. It stores paths only, so including itself is not a digest cycle. `scripts/check-release.mjs`, docs, evals, `.git`, `node_modules`, and output tar are source/CI-only or excluded and are not distributable paths.
 
 The committed `ART-ONEFILE-001.json` must be this exact independent golden (file `a` contains one byte `x`):
 
