@@ -133,6 +133,11 @@ const expectKnowledgeOptions=async(issues)=>{
    try{assertKnowledgeFileSnapshot(before,after,1,'fixture');issues.push('knowledge:stat-'+field+'-'+kind+'-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-'+field+'-'+kind+'-code:'+(error?.code??error?.name));}
    if(coercionCalls!==0)issues.push('knowledge:stat-'+field+'-'+kind+'-coerced:'+coercionCalls);
   }
+  for(const [kind,primitive,sizeBytesRead] of [['number',1,1],['string','1',1],['boolean',true,1],['null',null,0],['undefined',undefined,1]]){
+   const before={size:1n,dev:1n,ino:1n},after={size:1n,dev:1n,ino:1n};before[field]=primitive;after[field]=primitive;
+   const bytesRead=field==='size'?sizeBytesRead:1;
+   try{assertKnowledgeFileSnapshot(before,after,bytesRead,'fixture');issues.push('knowledge:stat-'+field+'-'+kind+'-primitive-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-'+field+'-'+kind+'-primitive-code:'+(error?.code??error?.name));}
+  }
  }
  let pathCoercionCalls=0;
  const hostilePath={
@@ -150,7 +155,11 @@ const expectPackBufferBoundaries=(issues)=>{
   Object.defineProperty(hostile,property,{configurable:true,get(){getterCalls+=1;throw new Error('BUFFER_SHADOW_GETTER_EXECUTED');}});
   try{packCanonicalUstar([{path:'fixture.txt',content:hostile}]);issues.push('pack:buffer-'+property+'-getter-accepted');}catch(error){if(error?.code!=='USTAR_INPUT_INVALID')issues.push('pack:buffer-'+property+'-getter-code:'+(error?.code??error?.name));}
   if(getterCalls!==0)issues.push('pack:buffer-'+property+'-getter-executed:'+getterCalls);
+  const dataShadow=Buffer.from('x');
+  Object.defineProperty(dataShadow,property,{configurable:true,value:property==='length'?0:null});
+  try{packCanonicalUstar([{path:'fixture.txt',content:dataShadow}]);issues.push('pack:buffer-'+property+'-data-shadow-accepted');}catch(error){if(error?.code!=='USTAR_INPUT_INVALID')issues.push('pack:buffer-'+property+'-data-shadow-code:'+(error?.code??error?.name));}
  }
+ try{packCanonicalUstar([{path:'fixture.txt',content:Buffer.from('x')}]);}catch(error){issues.push('pack:plain-buffer-rejected:'+(error?.code??error?.name));}
 };
 const expectCaptureBoundaries=async(issues)=>{
  let argvTrapCalls=0;

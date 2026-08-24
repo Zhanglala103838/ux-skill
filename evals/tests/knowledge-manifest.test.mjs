@@ -720,14 +720,14 @@ if (importFailure) {
       failures.push('assertKnowledgeFileSnapshot export missing');
     } else {
       const path = 'knowledge/assertions.json';
-      const before = { dev: 11n, ino: 22n, size: 33 };
+      const before = { dev: 11n, ino: 22n, size: 33n };
       try {
         assertKnowledgeFileSnapshot(before, { ...before }, 33, path);
       } catch (error) {
         failures.push('stable snapshot rejected: ' + (error?.code ?? error?.name));
       }
       for (const [label, after, bytesRead] of [
-        ['size change', { ...before, size: 34 }, 33],
+        ['size change', { ...before, size: 34n }, 33],
         ['device change', { ...before, dev: 12n }, 33],
         ['inode change', { ...before, ino: 23n }, 33],
         ['short read', { ...before }, 32],
