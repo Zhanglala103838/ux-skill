@@ -246,7 +246,8 @@ function knowledgeSnapshot(value) {
     for (const key of ['size', 'dev', 'ino']) {
       const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')
-        || Object.hasOwn(descriptor, 'get') || Object.hasOwn(descriptor, 'set')) return null;
+        || Object.hasOwn(descriptor, 'get') || Object.hasOwn(descriptor, 'set')
+        || typeof descriptor.value !== 'bigint' || descriptor.value < 0n) return null;
       output[key] = descriptor.value;
     }
     return output;
@@ -256,6 +257,7 @@ function knowledgeSnapshot(value) {
 }
 
 export function assertKnowledgeFileSnapshot(before, after, bytesRead, path) {
+  if (typeof path !== 'string') fail('KNOWLEDGE_FILE_CHANGED_DURING_READ');
   const beforeSnapshot = knowledgeSnapshot(before);
   const afterSnapshot = knowledgeSnapshot(after);
   if (beforeSnapshot === null || afterSnapshot === null
@@ -264,8 +266,7 @@ export function assertKnowledgeFileSnapshot(before, after, bytesRead, path) {
   }
   const sizeMatches = beforeSnapshot.size === afterSnapshot.size;
   const identityMatches = beforeSnapshot.dev === afterSnapshot.dev && beforeSnapshot.ino === afterSnapshot.ino;
-  let completeRead = false;
-  try { completeRead = BigInt(bytesRead) === BigInt(beforeSnapshot.size); } catch { completeRead = false; }
+  const completeRead = BigInt(bytesRead) === beforeSnapshot.size;
   if (!sizeMatches || !identityMatches || !completeRead) fail('KNOWLEDGE_FILE_CHANGED_DURING_READ', path);
 }
 
