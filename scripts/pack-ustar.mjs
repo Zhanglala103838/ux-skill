@@ -79,8 +79,11 @@ function snapshotEntries(entries){
     seen.add(path);
     const content=contentDescriptor.value;
     if(utilTypes.isProxy(content)||!Buffer.isBuffer(content)||Object.getPrototypeOf(content)!==Buffer.prototype)fail('USTAR_INPUT_INVALID');
-    const contentKeys=Reflect.ownKeys(content);
-    if(contentKeys.some((key)=>typeof key!=='string'||!/^(0|[1-9][0-9]*)$/u.test(key)))fail('USTAR_INPUT_INVALID');
+    try{
+      for(const property of ['buffer','byteLength','length']){
+        if(Reflect.getOwnPropertyDescriptor(content,property)!==undefined)fail('USTAR_INPUT_INVALID');
+      }
+    }catch(error){if(error?.code==='USTAR_INPUT_INVALID')throw error;fail('USTAR_INPUT_INVALID');}
     let size;let backingBuffer;let resizable;
     try{
       size=Reflect.apply(TYPED_ARRAY_BYTE_LENGTH_GETTER,content,[]);
@@ -88,8 +91,7 @@ function snapshotEntries(entries){
       resizable=utilTypes.isArrayBuffer(backingBuffer)
         ?Reflect.apply(ARRAY_BUFFER_RESIZABLE_GETTER,backingBuffer,[]):true;
     }catch{fail('USTAR_INPUT_INVALID');}
-    if(!utilTypes.isArrayBuffer(backingBuffer)||resizable===true||contentKeys.length!==size
-      ||contentKeys.some((key,index)=>key!==String(index)))fail('USTAR_INPUT_INVALID');
+    if(!utilTypes.isArrayBuffer(backingBuffer)||resizable===true)fail('USTAR_INPUT_INVALID');
     if(size>MAX_FILE_BYTES)fail('USTAR_FILE_TOO_LARGE');
     if(totalContent>MAX_TOTAL_CONTENT_BYTES-size)fail('USTAR_TOTAL_TOO_LARGE');
     totalContent+=size;
