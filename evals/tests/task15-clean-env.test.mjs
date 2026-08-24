@@ -138,6 +138,14 @@ const expectKnowledgeOptions=async(issues)=>{
    const bytesRead=field==='size'?sizeBytesRead:1;
    try{assertKnowledgeFileSnapshot(before,after,bytesRead,'fixture');issues.push('knowledge:stat-'+field+'-'+kind+'-primitive-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-'+field+'-'+kind+'-primitive-code:'+(error?.code??error?.name));}
   }
+  const negativeBefore={size:1n,dev:1n,ino:1n},negativeAfter={size:1n,dev:1n,ino:1n};negativeBefore[field]=-1n;negativeAfter[field]=-1n;
+  try{assertKnowledgeFileSnapshot(negativeBefore,negativeAfter,field==='size'?0:1,'fixture');issues.push('knowledge:stat-'+field+'-negative-bigint-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-'+field+'-negative-bigint-code:'+(error?.code??error?.name));}
+  let boxedCoercionCalls=0;
+  const boxed=Object(1n);
+  Object.defineProperty(boxed,Symbol.toPrimitive,{configurable:true,get(){boxedCoercionCalls+=1;throw new Error('BOXED_BIGINT_COERCION_EXECUTED');}});
+  const boxedBefore={size:1n,dev:1n,ino:1n},boxedAfter={size:1n,dev:1n,ino:1n};boxedBefore[field]=boxed;boxedAfter[field]=boxed;
+  try{assertKnowledgeFileSnapshot(boxedBefore,boxedAfter,1,'fixture');issues.push('knowledge:stat-'+field+'-boxed-bigint-accepted');}catch(error){if(error?.code!=='KNOWLEDGE_FILE_CHANGED_DURING_READ')issues.push('knowledge:stat-'+field+'-boxed-bigint-code:'+(error?.code??error?.name));}
+  if(boxedCoercionCalls!==0)issues.push('knowledge:stat-'+field+'-boxed-bigint-coerced:'+boxedCoercionCalls);
  }
  let pathCoercionCalls=0;
  const hostilePath={
