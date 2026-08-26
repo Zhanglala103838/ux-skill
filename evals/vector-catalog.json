@@ -309,7 +309,7 @@
   },
   {
     "vector_id": "ADAPTER-HULIAN-ALERT-001",
-    "expected_contract": "固定 HulianUI JCS row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims"
+    "expected_contract": "固定 HulianUI JCS row digest=a14b5fec69cebe5802d6d34ff02fd8e4b571b3468832127b6a43c19989e0b4a9；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims"
   },
   {
     "vector_id": "ADAPTER-EXPORTS-ORDER-001",

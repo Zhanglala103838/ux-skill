@@ -55,6 +55,18 @@ pnpm --silent ux:evaluate --mode scan --input - --output json < evaluation-input
 
 Replace `scan` with `guide`, `refactor`, or `verify` as needed. Preserve the CLI exit code and release decision; `no_release`, incomplete evidence, and failed runs must not be converted into approval.
 
+### Refresh the HulianUI adapter contract
+
+The HulianUI fixture is **captured, never written**. An earlier hand-written fixture described a `structuredContent` shape no real `@hulianui/mcp` ever produced, so the adapter threw `ADAPTER_RESULT_NOT_MAPPABLE` on live output while the whole suite stayed green — because every test was fed that same invented fixture.
+
+```sh
+pnpm capture:hulian --repository-commit <40-char hulianui/hulian sha>
+```
+
+This spawns the real server over stdio (`npx -y @hulianui/mcp@<version>` by default, or `--server <path-to-entry>`), rewrites `adapters/hulianui/fixture.json` and the self-attested pins in `adapters/hulianui/contract.json`, and prints the new `CONTRACT_DIGEST` / `SCHEMA_RAW_DIGEST` to paste into `adapters/hulianui/adapter.mjs`. Then re-run `pnpm test`.
+
+`repository_commit` is the one pin the server cannot attest to, so it must be supplied explicitly; the script refuses to reuse the previous value. Evidence is anchored on `source.artifactDigests`, which requires `@hulianui/mcp >= 0.11.0` ([hulianui/hulian#332](https://github.com/hulianui/hulian/issues/332)). Older servers cannot anchor an artifact: they classify as `incompatible_source` and `mapHulianComponentDoc` throws `SOURCE_UNANCHORED`.
+
 ### Build the canonical artifact
 
 ```sh
@@ -139,6 +151,18 @@ pnpm --silent ux:evaluate --mode scan --input - --output json < evaluation-input
 ```
 
 可按需要将 `scan` 替换为 `guide`、`refactor` 或 `verify`。必须保留 CLI 退出码和发布结论，不能把 `no_release`、证据不完整或执行失败改写成批准。
+
+### 刷新 HulianUI adapter 契约
+
+HulianUI 的 fixture **只能抓，不能写**。此前那份手写 fixture 描述的 `structuredContent` 形状在任何真实的 `@hulianui/mcp` 上都不存在，于是 adapter 对着真实输出一直抛 `ADAPTER_RESULT_NOT_MAPPABLE`，而全套测试仍然全绿 —— 因为每个测试喂的都是同一份编出来的 fixture。
+
+```sh
+pnpm capture:hulian --repository-commit <40 位 hulianui/hulian commit sha>
+```
+
+它会走 stdio 起一个真的 server（默认 `npx -y @hulianui/mcp@<版本>`，也可 `--server <入口路径>`），重写 `adapters/hulianui/fixture.json` 与 `adapters/hulianui/contract.json` 里服务端能自证的引脚，并打印新的 `CONTRACT_DIGEST` / `SCHEMA_RAW_DIGEST` 供抄进 `adapters/hulianui/adapter.mjs`。抄完再跑 `pnpm test`。
+
+`repository_commit` 是唯一服务端自证不了的引脚，必须显式给出 —— 脚本拒绝沿用上一版的值，因为那正是上一版脱档的方式。证据锚点取自 `source.artifactDigests`，需要 `@hulianui/mcp >= 0.11.0`（见 [hulianui/hulian#332](https://github.com/hulianui/hulian/issues/332)）。更旧的 server 锚不住产物：分类为 `incompatible_source`，`mapHulianComponentDoc` 抛 `SOURCE_UNANCHORED`。
 
 ### 构建规范化产物
 

@@ -4,76 +4,138 @@
   "content": [
     {
       "type": "text",
-      "text": "Pinned AlertDialog component documentation."
+      "text": "{\n  \"version\": \"0.57.0\",\n  \"components\": [\n    {\n      \"slug\": \"alert-dialog\",\n      \"name\": \"AlertDialog\",\n      \"category\": \"feedback\",\n      \"import\": \"import { AlertDialog, AlertDialogTrigger, AlertDialogClose, AlertDialogContent } from \\\"@hulianui/ui\\\"\",\n      \"exports\": [\n        \"AlertDialog\",\n        \"AlertDialogTrigger\",\n        \"AlertDialogClose\",\n        \"AlertDialogContent\"\n      ],\n      \"doc\": \"https://github.com/hulianui/hulian/blob/master/packages/ui/src/alert-dialog/alert-dialog.md\",\n      \"props\": [\n        {\n          \"name\": \"className\",\n          \"owner\": \"AlertDialogContent\",\n          \"required\": false,\n          \"kind\": \"string\",\n          \"type\": \"string\",\n          \"default\": null,\n          \"description\": \"内容容器类名\"\n        },\n        {\n          \"name\": \"title\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"标题（a11y label，必填）\",\n          \"kind\": \"slot\"\n        },\n        {\n          \"name\": \"description\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"说明文案。**只能放 phrasing content**（文本 / `span` / `strong` / `a`），它渲染成 `<p>`；块级内容放 `body`\",\n          \"kind\": \"slot\"\n        },\n        {\n          \"name\": \"body\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"正文区，渲染在 `description` 之下、动作区之上，不包 `<p>`，可放块级内容（删除对象摘要卡、受影响项列表）\",\n          \"kind\": \"slot\"\n        },\n        {\n          \"name\": \"icon\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"标题行左侧的状态图标；组件只做 flex 对齐，颜色自己给（危险 `text-danger` / 警告 `text-warning`）\",\n          \"kind\": \"slot\"\n        },\n        {\n          \"name\": \"children\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"底部操作区，放「取消 / 确认」按钮（取消用 `AlertDialogClose`）\",\n          \"kind\": \"slot\"\n        },\n        {\n          \"name\": \"onOpenChange\",\n          \"owner\": \"AlertDialog\",\n          \"required\": false,\n          \"kind\": \"event\",\n          \"type\": \"(open: boolean) => void\",\n          \"default\": null,\n          \"description\": \"开关态变化回调（透传 Base UI AlertDialog Root）\"\n        }\n      ],\n      \"events\": [\n        {\n          \"name\": \"onOpenChange\",\n          \"owner\": \"AlertDialog\",\n          \"required\": false,\n          \"kind\": \"function\",\n          \"type\": \"(open: boolean) => void\",\n          \"default\": null,\n          \"description\": \"开关态变化回调（透传 Base UI AlertDialog Root）\"\n        }\n      ],\n      \"slots\": [\n        {\n          \"name\": \"title\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"标题（a11y label，必填）\"\n        },\n        {\n          \"name\": \"description\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"说明文案。**只能放 phrasing content**（文本 / `span` / `strong` / `a`），它渲染成 `<p>`；块级内容放 `body`\"\n        },\n        {\n          \"name\": \"body\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"正文区，渲染在 `description` 之下、动作区之上，不包 `<p>`，可放块级内容（删除对象摘要卡、受影响项列表）\"\n        },\n        {\n          \"name\": \"icon\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"标题行左侧的状态图标；组件只做 flex 对齐，颜色自己给（危险 `text-danger` / 警告 `text-warning`）\"\n        },\n        {\n          \"name\": \"children\",\n          \"owner\": \"AlertDialogContent\",\n          \"type\": \"ReactNode\",\n          \"description\": \"底部操作区，放「取消 / 确认」按钮（取消用 `AlertDialogClose`）\"\n        }\n      ]\n    }\n  ]\n}\n\n---\n数据源 remote:https://hulianui.haloritual.com · registry v0.57.0 · 缓存 300s"
     }
   ],
   "structuredContent": {
-    "source_artifact": {
-      "path": "apps/www/public/llms-props.json",
-      "sha256": "729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5",
-      "version": "0.52.0"
-    },
+    "version": "0.57.0",
     "components": [
       {
-        "name": "AlertDialog",
         "slug": "alert-dialog",
+        "name": "AlertDialog",
         "category": "feedback",
-        "import": "import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from '@hulianui/ui';",
+        "import": "import { AlertDialog, AlertDialogTrigger, AlertDialogClose, AlertDialogContent } from \"@hulianui/ui\"",
         "exports": [
           "AlertDialog",
-          "AlertDialogAction",
-          "AlertDialogCancel",
-          "AlertDialogContent",
-          "AlertDialogDescription",
-          "AlertDialogTitle",
-          "AlertDialogTrigger"
+          "AlertDialogTrigger",
+          "AlertDialogClose",
+          "AlertDialogContent"
         ],
+        "doc": "https://github.com/hulianui/hulian/blob/master/packages/ui/src/alert-dialog/alert-dialog.md",
         "props": [
           {
-            "owner": "AlertDialog",
-            "name": "open",
-            "kind": "boolean",
+            "name": "className",
+            "owner": "AlertDialogContent",
             "required": false,
-            "description": "Controlled open state."
+            "kind": "string",
+            "type": "string",
+            "default": null,
+            "description": "内容容器类名"
           },
           {
+            "name": "title",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "标题（a11y label，必填）",
+            "kind": "slot"
+          },
+          {
+            "name": "description",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "说明文案。**只能放 phrasing content**（文本 / `span` / `strong` / `a`），它渲染成 `<p>`；块级内容放 `body`",
+            "kind": "slot"
+          },
+          {
+            "name": "body",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "正文区，渲染在 `description` 之下、动作区之上，不包 `<p>`，可放块级内容（删除对象摘要卡、受影响项列表）",
+            "kind": "slot"
+          },
+          {
+            "name": "icon",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "标题行左侧的状态图标；组件只做 flex 对齐，颜色自己给（危险 `text-danger` / 警告 `text-warning`）",
+            "kind": "slot"
+          },
+          {
+            "name": "children",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "底部操作区，放「取消 / 确认」按钮（取消用 `AlertDialogClose`）",
+            "kind": "slot"
+          },
+          {
+            "name": "onOpenChange",
             "owner": "AlertDialog",
-            "name": "defaultOpen",
-            "kind": "boolean",
             "required": false,
-            "description": "Initial uncontrolled open state."
+            "kind": "event",
+            "type": "(open: boolean) => void",
+            "default": null,
+            "description": "开关态变化回调（透传 Base UI AlertDialog Root）"
           }
         ],
         "events": [
           {
-            "owner": "AlertDialog",
             "name": "onOpenChange",
+            "owner": "AlertDialog",
+            "required": false,
             "kind": "function",
-            "required": true,
-            "description": "Called when the open state changes."
+            "type": "(open: boolean) => void",
+            "default": null,
+            "description": "开关态变化回调（透传 Base UI AlertDialog Root）"
           }
         ],
         "slots": [
           {
-            "owner": "AlertDialog",
-            "name": "trigger",
-            "kind": "slot",
-            "required": true,
-            "description": "Opens the dialog."
+            "name": "title",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "标题（a11y label，必填）"
           },
           {
-            "owner": "AlertDialog",
-            "name": "content",
-            "kind": "slot",
-            "required": true,
-            "description": "Contains the modal dialog content."
+            "name": "description",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "说明文案。**只能放 phrasing content**（文本 / `span` / `strong` / `a`），它渲染成 `<p>`；块级内容放 `body`"
+          },
+          {
+            "name": "body",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "正文区，渲染在 `description` 之下、动作区之上，不包 `<p>`，可放块级内容（删除对象摘要卡、受影响项列表）"
+          },
+          {
+            "name": "icon",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "标题行左侧的状态图标；组件只做 flex 对齐，颜色自己给（危险 `text-danger` / 警告 `text-warning`）"
+          },
+          {
+            "name": "children",
+            "owner": "AlertDialogContent",
+            "type": "ReactNode",
+            "description": "底部操作区，放「取消 / 确认」按钮（取消用 `AlertDialogClose`）"
           }
         ]
       }
     ],
-    "missing": [],
-    "versionSkew": null,
-    "stale": false,
-    "fallbacks": []
+    "source": {
+      "mode": "remote",
+      "origin": "https://hulianui.haloritual.com",
+      "version": null,
+      "artifactVersion": "0.57.0",
+      "sourceVersion": null,
+      "versionSkew": null,
+      "generatedAt": null,
+      "cacheTtlMs": 300000,
+      "artifactDigests": {
+        "llms-props.json": "sha256:9b7022c6a66c72340469844e4fba1e7e449d5474fb2d4427e0a49be7783da293"
+      },
+      "fallbacks": [],
+      "stale": null
+    }
   }
 }

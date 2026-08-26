@@ -69,9 +69,9 @@
   },
   "adapter_evidence": [
     {
-      "adapter_evidence_id": "hulianui.get-component-doc.alert-dialog.v1",
-      "adapter_contract_id": "hulianui.get-component-doc.alert-dialog.v1",
-      "artifact_digest": "9041876c0cd50cb4e194b4fa83b1b60bb5f69ae8c6b8d5e3588fa0a93e4f5ee3"
+      "adapter_evidence_id": "hulianui.get-component-doc.alert-dialog.v2",
+      "adapter_contract_id": "hulianui.get-component-doc.alert-dialog.v2",
+      "artifact_digest": "aa3682d91ab51a1b8fc915d11e690430ef223238030a2bf54a0dbea1f96a52d9"
     }
   ],
   "policy_digests": {

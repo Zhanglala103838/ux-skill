@@ -5,10 +5,10 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {canonicalize} from 'json-canonicalize';
 
-const CONTRACT_DIGEST='f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c';
+const CONTRACT_DIGEST='a14b5fec69cebe5802d6d34ff02fd8e4b571b3468832127b6a43c19989e0b4a9';
 const SCHEMA_PATH='schemas/adapters/hulian-component-doc-v1.schema.json';
 const SCHEMA_ID='https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json';
-const SCHEMA_RAW_DIGEST='8f19b813eff476e7aafc1ea7cadc086e8c807bc6907545067adb22e65faaade1';
+const SCHEMA_RAW_DIGEST='3b7e9140e2c10934ba203691082f00d431fb6d09833bec28e7523befd5f06383';
 const MAX_SNAPSHOT_BYTES=1_048_576;
 const MAX_DEPTH=64;
 const MAX_NODES=8_192;
@@ -173,10 +173,40 @@ const resultSnapshot=(result)=>{
  if(!exactKeys(value,RESULT_KEYS)||!TRANSPORT_STATUSES.has(value.transport_status)||typeof value.isError!=='boolean'||!contentValid(value.content)||(value.structuredContent!==null&&typeof value.structuredContent!=='object'))fail('ADAPTER_RESULT_INVALID');
  return value;
 };
+const ARTIFACT_DIGEST_PREFIX='sha256:';
+/**
+ * 产物三元组从**这次响应**里取，不从 contract 抄。
+ *
+ * contract 里那份说的是「我们当初照着写的是哪一份」，响应里这份说的是「你这次实际拿到的是
+ * 哪一份」—— 两者对得上才谈得上证据，对不上就是 incompatible_source。上一版把 source_artifact
+ * 当成服务端会直接给的顶层字段，而真实的 @hulianui/mcp 从来没有这个字段，于是这条比对从未
+ * 真正发生过：唯一被比对的是 contract 跟它自己。
+ *
+ * 现在的来源是 source.artifactDigests（@hulianui/mcp >= 0.11.0，hulianui/hulian#332）：
+ * 键是产物名，值是该产物的字节摘要，可以用 shasum -a 256 独立复核。
+ */
+const sourceArtifactOf=(document)=>{
+ if(document===null||typeof document!=='object')return null;
+ const source=document.source;
+ if(source===null||typeof source!=='object'||Array.isArray(source))return null;
+ const digests=source.artifactDigests;
+ if(digests===null||typeof digests!=='object'||Array.isArray(digests))return null;
+ const paths=Object.keys(digests);
+ // 一次调用读了多份产物就锚不到唯一一份，宁可判锚不住，也不要挑一个当代表。
+ if(paths.length!==1)return null;
+ const path=paths[0],prefixed=digests[path];
+ if(typeof prefixed!=='string'||!prefixed.startsWith(ARTIFACT_DIGEST_PREFIX))return null;
+ const candidate={path,sha256:prefixed.slice(ARTIFACT_DIGEST_PREFIX.length),version:document.version};
+ return validateSource(candidate)===true?candidate:null;
+};
 const sameSource=(left,right)=>SOURCE_KEYS.every((key)=>left[key]===right[key]);
-const sourceMismatch=(document,contract)=>document!==null&&typeof document==='object'&&validateSource(document.source_artifact)===true&&!sameSource(document.source_artifact,contract.source_artifact);
 const identityMatches=(component,contract)=>['name','slug','category'].every((key)=>component[key]===contract.component_identity[key]);
-const partial=(document)=>document.missing?.length>0||document.versionSkew!==null||document.stale===true||document.fallbacks.length>0;
+/**
+ * 四个「回答不完整」的信号，全部住在 source 下（顶层的 missing 除外）。
+ * stale 在真实服务端是 {stale:true,reasons:[…]} 或 null，不是布尔 —— 上一版按布尔判，
+ * 对着真实响应永远读到 undefined，于是本地产物陈旧这件事一次都不会被报成 partial。
+ */
+const partial=(document)=>document.missing?.length>0||document.source.versionSkew!==null||document.source.stale!==null||document.source.fallbacks.length>0;
 const notFound=(result)=>result.isError===true&&result.structuredContent===null&&result.content.length>0&&result.content[0].text.startsWith('没有名为');
 const inspected=(status,contract_valid,details={})=>({status,contract_valid,...details});
 const inspect=(result,contract)=>{
@@ -184,14 +214,20 @@ const inspect=(result,contract)=>{
  let value;try{value=resultSnapshot(result);}catch{return inspected('server_error',true);}
  if(value.transport_status==='invalid_request')return inspected('invalid_request',true);
  if(value.transport_status==='auth_error')return inspected('auth_error',true);
- if(sourceMismatch(value.structuredContent,fixed))return inspected('incompatible_source',true);
+ const artifact=sourceArtifactOf(value.structuredContent);
+ if(artifact!==null&&!sameSource(artifact,fixed.source_artifact))return inspected('incompatible_source',true);
  if(value.transport_status==='timeout')return inspected('timeout',true);
  if(value.transport_status==='server_error')return inspected('server_error',true);
  if(value.transport_status==='cancelled')return inspected('cancelled',true);
  const validDocument=validateDocument(value.structuredContent)===true&&value.structuredContent.components.length===1&&identityMatches(value.structuredContent.components[0],fixed);
- if(validDocument&&value.isError===false&&partial(value.structuredContent))return inspected('partial',true,{result:value,contract:fixed});
+ // 形状合法但服务端一个产物摘要都给不出（@hulianui/mcp < 0.11.0）：这不是坏响应，是**锚不住
+ // 证据**。对外仍报 incompatible_source —— 评估器那套 TOOL_STATUSES 是封闭集合，为此新开一个
+ // 状态要动评估器核心；而这两种情形对评估器的处方本来就相同：不许拿它当证据。真正的区别
+ // （该重抓 vs 该升级 server）由 map 抛出的错误码说清楚，那才是给人看的通道。
+ if(validDocument&&value.isError===false&&artifact===null)return inspected('incompatible_source',true,{unanchored:true});
+ if(validDocument&&value.isError===false&&partial(value.structuredContent))return inspected('partial',true,{result:value,contract:fixed,artifact});
  if(notFound(value))return inspected('not_found',true);
- if(validDocument&&value.isError===false&&!partial(value.structuredContent))return inspected('success',true,{result:value,contract:fixed});
+ if(validDocument&&value.isError===false&&!partial(value.structuredContent))return inspected('success',true,{result:value,contract:fixed,artifact});
  return inspected('server_error',true);
 };
 const canonicalSet=(items,keyOf)=>{
@@ -205,13 +241,27 @@ const canonicalSet=(items,keyOf)=>{
  }
  return result;
 };
+/**
+ * 证据里的成员形状。三条：
+ *   · name / type / description 是服务端保证有的，照抄。
+ *   · owner / kind / required 是**可选**的 —— 真实目录里 3533 条 props 只有 358 条带 owner，
+ *     slots 整族既没有 kind 也没有 required。上一版把它们写成必填，等于要求服务端给出它
+ *     从来没给过的东西。缺就保持缺，不补默认值（补 false 会把「没说」讲成「不必填」）。
+ *   · default / values / valueType / resolvedType 刻意不进证据：它们描述默认值与类型推导，
+ *     不是接口契约本身，而 contract.evidence_scope 声明的范围里没有它们。
+ */
 const memberCopy=(item)=>{
- const copy={owner:item.owner,name:item.name,kind:item.kind};
- if(Object.hasOwn(item,"required"))copy.required=item.required;
+ const copy={};
+ if(Object.hasOwn(item,'owner'))copy.owner=item.owner;
+ copy.name=item.name;
+ if(Object.hasOwn(item,'kind'))copy.kind=item.kind;
+ if(Object.hasOwn(item,'required'))copy.required=item.required;
+ copy.type=item.type;
  copy.description=item.description;
  return copy;
 };
-const memberSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(memberCopy(items[index]));return canonicalSet(copies,(item)=>[item.owner,item.name,item.kind]);};
+// 去重键要能容忍 owner / kind 缺席：用 null 占位，null 与字符串在 JCS 下不会撞。
+const memberSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(memberCopy(items[index]));return canonicalSet(copies,(item)=>[item.owner??null,item.name,item.kind??null]);};
 const stringSet=(items)=>{const copies=[];for(let index=0;index<items.length;index+=1)copies.push(items[index]);return canonicalSet(copies,(item)=>item);};
 
 export const classifyHulianResult=(result,contract)=>inspect(result,contract).status;
@@ -219,6 +269,9 @@ export const classifyHulianResult=(result,contract)=>inspect(result,contract).st
 export const mapHulianComponentDoc=(result,contract)=>{
  const checked=inspect(result,contract);
  if(checked.contract_valid===false)fail('ADAPTER_CONTRACT_INVALID');
+ // 锚不住与锚错了分成两个码：前者的处方是升级 @hulianui/mcp 到 >= 0.11.0，后者是重新抓
+ // contract 引脚。归成一个码只会让人对着「不兼容」去重抓，抓多少次都还是没有摘要。
+ if(checked.unanchored===true)fail('SOURCE_UNANCHORED');
  if(checked.status==='incompatible_source')fail('INCOMPATIBLE_SOURCE');
  if(checked.status!=='success'&&checked.status!=='partial')fail('ADAPTER_RESULT_NOT_MAPPABLE');
  const component=checked.result.structuredContent.components[0];
@@ -229,11 +282,12 @@ export const mapHulianComponentDoc=(result,contract)=>{
   import:component.import,
   props:memberSet(component.props),
   slots:memberSet(component.slots),
+  // 取自响应而非 contract：上面已证明两者逐字相同，但证据该记「实际读到的是哪一份」。
   source_artifact_identity:{
-   path:checked.contract.source_artifact.path,
+   path:checked.artifact.path,
    schema_identity:{id:SCHEMA_ID,path:SCHEMA_PATH,raw_sha256:SCHEMA_RAW_DIGEST},
-   sha256:checked.contract.source_artifact.sha256,
-   version:checked.contract.source_artifact.version
+   sha256:checked.artifact.sha256,
+   version:checked.artifact.version
   }
  };
 };
