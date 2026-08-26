@@ -3,9 +3,11 @@ name: CI
 on:
   push:
     branches:
+      - main
       - implementation/v0.1-vertical-slice
   pull_request:
     branches:
+      - main
       - implementation/v0.1-vertical-slice
   workflow_dispatch:
 

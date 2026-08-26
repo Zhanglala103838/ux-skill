@@ -247,7 +247,7 @@ const expectWorkflows=async(issues)=>{
   issues.push(...workflowIssues(ciSource,'ci'));
   const workflow=parse(ciSource),trigger=workflow?.on,jobs=workflow?.jobs??{};
   const triggerKeys=trigger&&typeof trigger==='object'?Object.keys(trigger).sort():[];
-  const expectedBranch=['implementation/v0.1-vertical-slice'];
+  const expectedBranch=['main','implementation/v0.1-vertical-slice'];
   const emptyTrigger=(value)=>value===null||(value&&typeof value==='object'&&Object.keys(value).length===0);
   if(JSON.stringify(triggerKeys)!==JSON.stringify(['pull_request','push','workflow_dispatch'])||JSON.stringify(trigger?.push?.branches)!==JSON.stringify(expectedBranch)||Object.keys(trigger?.push??{}).length!==1||JSON.stringify(trigger?.pull_request?.branches)!==JSON.stringify(expectedBranch)||Object.keys(trigger?.pull_request??{}).length!==1||!emptyTrigger(trigger?.workflow_dispatch))issues.push('ci:triggers');
   if(JSON.stringify(Object.keys(jobs).sort())!==JSON.stringify(REQUIRED_JOBS))issues.push('ci:job-set');
