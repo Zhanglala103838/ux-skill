@@ -5,7 +5,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {canonicalize} from 'json-canonicalize';
 
-const CONTRACT_DIGEST='a14b5fec69cebe5802d6d34ff02fd8e4b571b3468832127b6a43c19989e0b4a9';
+const CONTRACT_DIGEST='e51715715770fcf21273262582cc64207054949b1cbed18e70b8ca810df1b5a7';
 const SCHEMA_PATH='schemas/adapters/hulian-component-doc-v1.schema.json';
 const SCHEMA_ID='https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json';
 const SCHEMA_RAW_DIGEST='3b7e9140e2c10934ba203691082f00d431fb6d09833bec28e7523befd5f06383';

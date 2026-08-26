@@ -60,7 +60,8 @@ Replace `scan` with `guide`, `refactor`, or `verify` as needed. Preserve the CLI
 The HulianUI fixture is **captured, never written**. An earlier hand-written fixture described a `structuredContent` shape no real `@hulianui/mcp` ever produced, so the adapter threw `ADAPTER_RESULT_NOT_MAPPABLE` on live output while the whole suite stayed green — because every test was fed that same invented fixture.
 
 ```sh
-pnpm capture:hulian --repository-commit <40-char hulianui/hulian sha>
+# reproduces the committed fixture byte for byte
+pnpm capture:hulian --repository-commit c0edaf47c4e889abd637aa07875da907666c4aa1
 ```
 
 This spawns the real server over stdio (`npx -y @hulianui/mcp@<version>` by default, or `--server <path-to-entry>`), rewrites `adapters/hulianui/fixture.json` and the self-attested pins in `adapters/hulianui/contract.json`, and prints the new `CONTRACT_DIGEST` / `SCHEMA_RAW_DIGEST` to paste into `adapters/hulianui/adapter.mjs`. Then re-run `pnpm test`.
@@ -157,7 +158,8 @@ pnpm --silent ux:evaluate --mode scan --input - --output json < evaluation-input
 HulianUI 的 fixture **只能抓，不能写**。此前那份手写 fixture 描述的 `structuredContent` 形状在任何真实的 `@hulianui/mcp` 上都不存在，于是 adapter 对着真实输出一直抛 `ADAPTER_RESULT_NOT_MAPPABLE`，而全套测试仍然全绿 —— 因为每个测试喂的都是同一份编出来的 fixture。
 
 ```sh
-pnpm capture:hulian --repository-commit <40 位 hulianui/hulian commit sha>
+# 这条命令逐字节复现仓库里那份 fixture
+pnpm capture:hulian --repository-commit c0edaf47c4e889abd637aa07875da907666c4aa1
 ```
 
 它会走 stdio 起一个真的 server（默认 `npx -y @hulianui/mcp@<版本>`，也可 `--server <入口路径>`），重写 `adapters/hulianui/fixture.json` 与 `adapters/hulianui/contract.json` 里服务端能自证的引脚，并打印新的 `CONTRACT_DIGEST` / `SCHEMA_RAW_DIGEST` 供抄进 `adapters/hulianui/adapter.mjs`。抄完再跑 `pnpm test`。

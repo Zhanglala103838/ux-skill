@@ -6,7 +6,7 @@ import {init,parse} from 'es-module-lexer';
 import {assertCanonicalRelativePath,jcsBytes} from '../../evaluator/canonical.mjs';
 import * as adapter from '../../adapters/hulianui/adapter.mjs';
 
-const DIGEST='a14b5fec69cebe5802d6d34ff02fd8e4b571b3468832127b6a43c19989e0b4a9';
+const DIGEST='e51715715770fcf21273262582cc64207054949b1cbed18e70b8ca810df1b5a7';
 const urls={contract:new URL('../../adapters/hulianui/contract.json',import.meta.url),fixture:new URL('../../adapters/hulianui/fixture.json',import.meta.url),red:new URL('../red/ADAPTER-HULIAN-ALERT-001.json',import.meta.url),golden:new URL('../golden/ADAPTER-HULIAN-ALERT-001.json',import.meta.url),unanchored:new URL('../red/ADAPTER-HULIAN-UNANCHORED-001.json',import.meta.url)};
 const json=async(url)=>JSON.parse(await readFile(url,'utf8'));
 const [contract,captured,golden]=await Promise.all([json(urls.contract),json(urls.red),json(urls.golden)]);
