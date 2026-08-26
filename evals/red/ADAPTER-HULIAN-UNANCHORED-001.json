@@ -131,9 +131,6 @@
       "versionSkew": null,
       "generatedAt": null,
       "cacheTtlMs": 300000,
-      "artifactDigests": {
-        "llms-props.json": "sha256:9b7022c6a66c72340469844e4fba1e7e449d5474fb2d4427e0a49be7783da293"
-      },
       "fallbacks": [],
       "stale": null
     }

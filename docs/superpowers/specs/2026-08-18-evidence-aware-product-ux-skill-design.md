@@ -465,17 +465,19 @@ Task 10 固定的 evaluator 模块集合是 Task 6 结束时已经存在的八�
 AdapterContract JCS：
 
 ~~~json
-{"adapter_contract_id":"hulianui.get-component-doc.alert-dialog.v1","component_identity":{"category":"feedback","name":"AlertDialog","slug":"alert-dialog"},"evidence_scope":["component-identity","import","exports","props","events","slots"],"npm_integrity":"sha512-8jmvIG9yU7hGJ17n4TLChWlWQ0XXCMxr5ZJiMXiwe53Tib9yBQBZOdlTrRseoAcArlPgZVNiEnfhz6CXRtE8xg==","prohibited_claims":["ux-outcome","wcag-conformance","user-success","complete-destructive-flow"],"provider_namespace":"https://hulianui.com/mcp","repository_commit":"c2a76dabf5801f275ddf4aca16b9e63ce2d4d372","request":{"format":"json","name":"alert-dialog","sections":["props","events","slots"]},"server_package":"@hulianui/mcp","server_version":"0.10.0","source_artifact":{"path":"apps/www/public/llms-props.json","sha256":"729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5","version":"0.52.0"},"tool_name":"get_component_doc"}
+{"adapter_contract_id":"hulianui.get-component-doc.alert-dialog.v2","component_identity":{"category":"feedback","name":"AlertDialog","slug":"alert-dialog"},"evidence_scope":["component-identity","import","exports","props","events","slots"],"npm_integrity":"sha512-J3XFDMZ1/4BlVeKK9Rutl/wMh4Hcc53jUNfVa5OTQqLDxGb+MBc3BHU1gPH1w+ldgxdg1ymz3vL6+u18W40Pag==","prohibited_claims":["ux-outcome","wcag-conformance","user-success","complete-destructive-flow"],"provider_namespace":"https://hulianui.haloritual.com/mcp","repository_commit":"c0edaf47c4e889abd637aa07875da907666c4aa1","request":{"format":"json","name":"alert-dialog","sections":["props","events","slots"]},"server_package":"@hulianui/mcp","server_version":"0.11.0","source_artifact":{"path":"llms-props.json","sha256":"9b7022c6a66c72340469844e4fba1e7e449d5474fb2d4427e0a49be7783da293","version":"0.57.0"},"tool_name":"get_component_doc"}
 ~~~
 
-adapter_contract_digest（JCS SHA-256）固定为 f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c。
+adapter_contract_digest（JCS SHA-256）固定为 e51715715770fcf21273262582cc64207054949b1cbed18e70b8ca810df1b5a7。
 
-来源固定：hulianui/hulian commit c2a76dabf5801f275ddf4aca16b9e63ce2d4d372；@hulianui/mcp 0.10.0；UI artifact 0.52.0；llms-props SHA-256 729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5。
+来源固定：hulianui/hulian commit c0edaf47c4e889abd637aa07875da907666c4aa1；@hulianui/mcp 0.11.0；UI artifact 0.57.0；llms-props SHA-256 9b7022c6a66c72340469844e4fba1e7e449d5474fb2d4427e0a49be7783da293。
+
+> **2026-08-26 更正。** 本节此前记录的 structuredContent 形状（顶层 `source_artifact`、布尔 `stale`、必填 `owner` 与 `kind`）在任何真实的 @hulianui/mcp 上都不存在 —— 它是手写的，从未对着跑起来的 server 核验过。后果是 adapter 对真实输出一直抛 `ADAPTER_RESULT_NOT_MAPPABLE`，而全套测试仍然全绿，因为测试喂的是同一份手写 fixture。现在的形状抓自真跑的 server，并已对 llms-props 目录里全部 395 个组件 / 4304 个成员逐条验过。产物三元组改为从响应的 `source.artifactDigests` 派生（需 @hulianui/mcp >= 0.11.0，见 hulianui/hulian#332）；给不出摘要的旧版本一律判 `incompatible_source`，由 `SOURCE_UNANCHORED` 这个错误码说明处方是升级 server 而不是重抓 contract。fixture 与 contract 引脚一律由 `pnpm capture:hulian` 抓取生成，不再手写。
 
 MCP 没有 outputSchema，adapter 必须用自有 hulian-component-doc-v1 schema 验证 structuredContent。状态 classifier 按下列顺序首个命中，后序分支必须排除前序：
 
 1. structuredContent 可解析但 source artifact version/digest 不匹配 pinned row → incompatible_source + tool_failed；
-2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且 (missing 非空 OR versionSkew!=null OR stale=true OR fallbacks 非空) → partial；
+2. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且 (missing 非空 OR source.versionSkew!=null OR source.stale!=null OR source.fallbacks 非空) → partial；
 3. isError=false、schema valid、恰一 component、slug/name/category 与 source 匹配，且 missing 不存在或空、versionSkew=null、stale=false 或缺失、fallbacks 空 → success；
 4. isError=true、无 structuredContent、首个 text 以“没有名为”开头 → not_found；
 5. 其他 isError/schema/identity failure → server_error/tool_failed。
@@ -662,7 +664,7 @@ Withdrawal 立即阻止后续收集/干预，并按 protocol/policy形成已收�
 | VALID-UNICODE-001 | NFC 通过，非 NFC → UNICODE_NOT_NFC |
 | PATH-DOUBLE-SLASH-001 | double slash、dot segment、反斜杠或 percent-encoded separator → PATH_INVALID |
 | ADAPTER-TRANSPORT-001 | canonical evidence equal，audit sidecar different |
-| ADAPTER-HULIAN-ALERT-001 | 固定 HulianUI JCS row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims |
+| ADAPTER-HULIAN-ALERT-001 | 固定 HulianUI JCS row digest=e51715715770fcf21273262582cc64207054949b1cbed18e70b8ca810df1b5a7；request/result 只形成 component/import/exports/props/events/slots evidence，不形成 prohibited claims |
 | ADAPTER-EXPORTS-ORDER-001 | provider exports 逆序输入 → canonical-set<string> 排序/去重后的唯一 bytes |
 | ADAPTER-MISMATCH-PARTIAL-001 | artifact mismatch+stale=true 同时存在 → first-match incompatible_source/tool_failed |
 | ADAPTER-STALE-FALSE-001 | source match+stale=false+其他完整 → success，不因字段存在判 partial |
@@ -757,7 +759,7 @@ Task 10 对 `black_box_site` 的 SnapshotClosure 只接受仓库固定的 `evalu
 | RW-WEBSITE-APPLE-001 / 品牌与产品决策官网 / fixed_anchor / brand-marketing-website | https://www.apple.com.cn/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=f853dfb57dd9305aa5656f604e91f96974b152a3d2fa88dc3ed763eaec07ecfb | 从首页找到 iPhone 产品族，说明至少两个可观察的选择因素，找到比较、购买与支持路径；以 apple-desktop-keyboard-standard、apple-desktop-keyboard-reduced、apple-mobile-touch-standard 三个 exact replay_profile_id 复放；停在 checkout/login/form 前 | 渐进叙事、导航和产品比较入口可能帮助形成购买选择；动效、信息密度和路径命名也可能造成理解或操作成本，必须由任务证据判定 | black-box page/content+read-only runtime；Apple 声誉不是证据；不得声称真实购买成功、总体满意、源码事实或 WCAG conformant |
 | RW-ADMIN-APPSMITH-001 / Admin 与内部工具 / fixed_anchor / admin-internal-tool | appsmithorg/appsmith@03266b555b5451e91614840ec5b2577538bd8e6e，Apache-2.0 | 在固定 seed 的隔离实例创建内部 CRUD 页面、连接 sample datasource、配置表格与表单、预览并恢复一次输入错误；禁用外发连接 | 数据绑定与编辑/预览上下文切换可能影响可发现性、错误恢复和效率 | code+isolated runtime；初次 baseline 不改 upstream；候选干预只在派生副本 |
 | RW-TRANSACTION-CAL-001 / 消费者交易流程 / fixed_anchor / consumer-transaction | calcom/cal.diy@176037d0afbe572f870a3c702985e7cd83fe6c0c，MIT | 在固定时区/日历 seed 选择 30 分钟时段、识别时区、处理时段冲突并取消；邮件/日历写入只到 fake sink | 时区可见性和冲突恢复可能降低误订与回退成本；需任务证据验证 | code+isolated runtime；零真实邀请、零真实日历/支付 effect |
-| RW-HULIAN-DELETE-001 / HulianUI 迁移目标 / fixed_anchor / admin-internal-tool | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v1；row digest=f297ea75545ceefa627a4d977d528ec7e48be736f6e9015c07cda2444e0deb8c | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
+| RW-HULIAN-DELETE-001 / HulianUI 迁移目标 / fixed_anchor / admin-internal-tool | 第 13 节 adapter_contract_id=hulianui.get-component-doc.alert-dialog.v2；row digest=e51715715770fcf21273262582cc64207054949b1cbed18e70b8ca810df1b5a7 | 把一个高风险 Admin 删除审批场景映射为 AlertDialog candidate，保留标题、说明、确认/取消、busy/error/retry、keyboard/focus requirements | 组件 contract 只能证明候选能力，完整安全体验取决于产品流、状态与运行验证 | component contract + 后续隔离 harness；不得用组件存在推导 flow complete 或 WCAG conformant |
 | RW-WEBSITE-IKEA-001 / 零售商品发现 / rotation_candidate / retail-commerce-discovery | https://www.ikea.cn/cn/zh/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=fb9bcdb69f2c7f90bb5db9b03bee0507e50b17c2ec8752fe593989bbd31428d8 | 在固定“中国/北京、匿名、拒绝定位”seed 下查找宽度不超过 120cm、价格不超过 ¥1500 的书桌，比较两个候选并识别配送/库存信息；不登录、不加购、不结算 | 搜索、筛选、比较和履约信息可能支持约束型选择；库存地域依赖和过滤反馈也可能增加不确定性 | black-box page/content+read-only runtime；价格/库存仅属于快照时点；不得推断实际可配送或购买成功 |
 | RW-DOCS-STRIPE-001 / 开发者文档 / rotation_candidate / developer-documentation | https://docs.stripe.com/；discovery capture_started_at=2026-08-18T06:03:22Z；HTTP 200；HTML SHA-256=19c3a909d2be6d6336a73679b6370a15aa8b2b1d33ef1f7ad08b603b9d9e45b7 | 从文档首页定位服务端支付集成路径、前置条件、失败/恢复说明和对应 API reference；不登录、不创建 key、不调用 API | 信息气味、概念分层和示例到 reference 的路径可能降低实现成本；是否能完成真实集成必须由独立隔离任务验证 | black-box page/content+read-only runtime；动态 HTML 漂移即新 snapshot；不得声称 API 可用、实现正确或开发者成功 |
 

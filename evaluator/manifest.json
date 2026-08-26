@@ -38,7 +38,7 @@
       "file_digest": "ce4e8079a39fab8f67920e8d46d101c72e336c56fb428f92c37976717782d010"
     }
   ],
-  "schema_manifest_digest": "7c66ac79b3f6b820377b8d56eaa2e3a9b383f659e6cc3a54dbcf73a76a9622aa",
+  "schema_manifest_digest": "87897057a4305f592ec8a5d54ef1f8763805e40b6e4b516e6a560c30770cc075",
   "knowledge_manifest_digest": "1704ad07fd1e9557ab64c1e484f68b069f8c4f017e79ed979a34db47e5a0ce50",
   "policy_manifest_digest": "90fdff12d689f2870d7c8af7e5ecf2ad83e9dac91c8d9d355bc34642ec19be29",
   "snapshot_source_registry": {

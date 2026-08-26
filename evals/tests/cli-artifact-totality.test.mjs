@@ -341,7 +341,9 @@ test('CLI closes bootstrap, schema-closure, and torn-snapshot trust failures',as
   const rows=await isolatedEvaluatorRuns(async()=>{});expectSuccess(rows.cli,'normal manifests CLI');expectDirect(rows.direct,{status:'success'},'normal manifests direct');
  });
  const evaluatorManifestDuplicateCases=[
-  ['evaluator manifest same-value top-level duplicate',async(root)=>{const path=join(root,EVALUATOR_MANIFEST_PATH),needle='  "schema_manifest_digest": "7c66ac79b3f6b820377b8d56eaa2e3a9b383f659e6cc3a54dbcf73a76a9622aa",';await replaceUnique(path,needle,needle+'\n'+needle);}],
+  // needle 从**这一份**清单里读出来，不写死：写死的摘要每次重封摘要链都会脱档，
+  // 而它脱档的表现是「mutation anchor 1 !== 2」—— 读起来像被测行为坏了，其实是测试自己旧了。
+  ['evaluator manifest same-value top-level duplicate',async(root)=>{const path=join(root,EVALUATOR_MANIFEST_PATH),needle='  "schema_manifest_digest": "'+JSON.parse(await readFile(path,'utf8')).schema_manifest_digest+'",';await replaceUnique(path,needle,needle+'\n'+needle);}],
   ['evaluator manifest escaped-equivalent row duplicate',async(root)=>{const path=join(root,EVALUATOR_MANIFEST_PATH),needle='      "path": "evaluator/authority.mjs",',escaped='      "pa\\u0074h": "evaluator/authority.mjs",';await replaceUnique(path,needle,needle+'\n'+escaped);}]
  ];
  for(const [label,mutate] of evaluatorManifestDuplicateCases){

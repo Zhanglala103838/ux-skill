@@ -9,60 +9,111 @@
       "owner": "AlertDialog",
       "name": "onOpenChange",
       "kind": "function",
-      "required": true,
-      "description": "Called when the open state changes."
+      "required": false,
+      "type": "(open: boolean) => void",
+      "description": "开关态变化回调（透传 Base UI AlertDialog Root）"
     }
   ],
   "exports": [
     "AlertDialog",
-    "AlertDialogAction",
-    "AlertDialogCancel",
+    "AlertDialogClose",
     "AlertDialogContent",
-    "AlertDialogDescription",
-    "AlertDialogTitle",
     "AlertDialogTrigger"
   ],
-  "import": "import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from '@hulianui/ui';",
+  "import": "import { AlertDialog, AlertDialogTrigger, AlertDialogClose, AlertDialogContent } from \"@hulianui/ui\"",
   "props": [
     {
       "owner": "AlertDialog",
-      "name": "defaultOpen",
-      "kind": "boolean",
+      "name": "onOpenChange",
+      "kind": "event",
       "required": false,
-      "description": "Initial uncontrolled open state."
+      "type": "(open: boolean) => void",
+      "description": "开关态变化回调（透传 Base UI AlertDialog Root）"
     },
     {
-      "owner": "AlertDialog",
-      "name": "open",
-      "kind": "boolean",
+      "owner": "AlertDialogContent",
+      "name": "body",
+      "kind": "slot",
+      "type": "ReactNode",
+      "description": "正文区，渲染在 `description` 之下、动作区之上，不包 `<p>`，可放块级内容（删除对象摘要卡、受影响项列表）"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "children",
+      "kind": "slot",
+      "type": "ReactNode",
+      "description": "底部操作区，放「取消 / 确认」按钮（取消用 `AlertDialogClose`）"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "className",
+      "kind": "string",
       "required": false,
-      "description": "Controlled open state."
+      "type": "string",
+      "description": "内容容器类名"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "description",
+      "kind": "slot",
+      "type": "ReactNode",
+      "description": "说明文案。**只能放 phrasing content**（文本 / `span` / `strong` / `a`），它渲染成 `<p>`；块级内容放 `body`"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "icon",
+      "kind": "slot",
+      "type": "ReactNode",
+      "description": "标题行左侧的状态图标；组件只做 flex 对齐，颜色自己给（危险 `text-danger` / 警告 `text-warning`）"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "title",
+      "kind": "slot",
+      "type": "ReactNode",
+      "description": "标题（a11y label，必填）"
     }
   ],
   "slots": [
     {
-      "owner": "AlertDialog",
-      "name": "content",
-      "kind": "slot",
-      "required": true,
-      "description": "Contains the modal dialog content."
+      "owner": "AlertDialogContent",
+      "name": "body",
+      "type": "ReactNode",
+      "description": "正文区，渲染在 `description` 之下、动作区之上，不包 `<p>`，可放块级内容（删除对象摘要卡、受影响项列表）"
     },
     {
-      "owner": "AlertDialog",
-      "name": "trigger",
-      "kind": "slot",
-      "required": true,
-      "description": "Opens the dialog."
+      "owner": "AlertDialogContent",
+      "name": "children",
+      "type": "ReactNode",
+      "description": "底部操作区，放「取消 / 确认」按钮（取消用 `AlertDialogClose`）"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "description",
+      "type": "ReactNode",
+      "description": "说明文案。**只能放 phrasing content**（文本 / `span` / `strong` / `a`），它渲染成 `<p>`；块级内容放 `body`"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "icon",
+      "type": "ReactNode",
+      "description": "标题行左侧的状态图标；组件只做 flex 对齐，颜色自己给（危险 `text-danger` / 警告 `text-warning`）"
+    },
+    {
+      "owner": "AlertDialogContent",
+      "name": "title",
+      "type": "ReactNode",
+      "description": "标题（a11y label，必填）"
     }
   ],
   "source_artifact_identity": {
-    "path": "apps/www/public/llms-props.json",
+    "path": "llms-props.json",
     "schema_identity": {
       "id": "https://ux-skill.invalid/schemas/adapters/hulian-component-doc-v1.schema.json",
       "path": "schemas/adapters/hulian-component-doc-v1.schema.json",
-      "raw_sha256": "8f19b813eff476e7aafc1ea7cadc086e8c807bc6907545067adb22e65faaade1"
+      "raw_sha256": "3b7e9140e2c10934ba203691082f00d431fb6d09833bec28e7523befd5f06383"
     },
-    "sha256": "729bace87b8ba5639971263d23ef6d729b803acbb4559868366e109af56168b5",
-    "version": "0.52.0"
+    "sha256": "9b7022c6a66c72340469844e4fba1e7e449d5474fb2d4427e0a49be7783da293",
+    "version": "0.57.0"
   }
 }
